@@ -1,0 +1,23 @@
+{
+  "name": "omnedu",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.12.0",
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "concurrently \"pnpm dev:api\" \"pnpm dev:web\"",
+    "dev:api": "pnpm --filter @omnedu/api start:dev",
+    "dev:web": "pnpm --filter @omnedu/web dev",
+    "build": "pnpm --filter @omnedu/api build && pnpm --filter @omnedu/web build",
+    "db:up": "docker-compose up -d postgres redis",
+    "db:migrate": "pnpm --filter @omnedu/api db:migrate",
+    "db:studio": "pnpm --filter @omnedu/api db:studio",
+    "db:seed": "pnpm --filter @omnedu/api db:seed"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  }
+}
