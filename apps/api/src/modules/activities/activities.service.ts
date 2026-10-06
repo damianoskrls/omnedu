@@ -1,26 +1,71 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class ActivitiesService {
+  private readonly logger = new Logger(ActivitiesService.name);
+
   constructor(private prisma: PrismaService) {}
 
   async findAll(schoolId: string, type?: string) {
-    return this.prisma.activity.findMany({
-      where: { schoolId, isActive: true, ...(type ? { activityType: type } : {}) },
-      include: {
-        _count: { select: { registrations: true } },
-        instructorLinks: {
-          include: {
-            instructor: {
-              select: { id: true, name: true, title: true, bio: true, photoUrl: true },
+    const where = { schoolId, isActive: true, ...(type ? { activityType: type } : {}) };
+    try {
+      return await this.prisma.activity.findMany({
+        where,
+        include: {
+          _count: { select: { registrations: true } },
+          instructorLinks: {
+            include: {
+              instructor: {
+                select: { id: true, name: true, title: true, bio: true, photoUrl: true },
+              },
             },
           },
+          scheduleSlots: true,
         },
-        scheduleSlots: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+        orderBy: { createdAt: 'desc' },
+      });
+    } catch (error) {
+      this.logger.warn(`Activity list fell back to the base columns: ${error}`);
+      try {
+        return await this.prisma.activity.findMany({ where, orderBy: { createdAt: 'desc' } });
+      } catch (fallbackError) {
+        this.logger.error(fallbackError);
+        return this.listActivitiesRaw(schoolId, type);
+      }
+    }
+  }
+
+  /** Used when the database is behind the Prisma schema, so the page still opens. */
+  private async listActivitiesRaw(schoolId: string, type?: string) {
+    const rows = type
+      ? await this.prisma.$queryRaw<any[]>`
+          SELECT id, title, description, activity_type AS "activityType",
+                 monthly_cost AS "monthlyCost", one_time_cost AS "oneTimeCost",
+                 max_capacity AS "maxCapacity", starts_on AS "startsOn", ends_on AS "endsOn",
+                 deadline, is_active AS "isActive", created_at AS "createdAt"
+          FROM activities
+          WHERE school_id = ${schoolId} AND is_active = true AND activity_type = ${type}
+          ORDER BY created_at DESC`
+      : await this.prisma.$queryRaw<any[]>`
+          SELECT id, title, description, activity_type AS "activityType",
+                 monthly_cost AS "monthlyCost", one_time_cost AS "oneTimeCost",
+                 max_capacity AS "maxCapacity", starts_on AS "startsOn", ends_on AS "endsOn",
+                 deadline, is_active AS "isActive", created_at AS "createdAt"
+          FROM activities
+          WHERE school_id = ${schoolId} AND is_active = true
+          ORDER BY created_at DESC`;
+    return rows.map((row) => ({
+      ...row,
+      monthlyCost: row.monthlyCost == null ? null : Number(row.monthlyCost),
+      oneTimeCost: row.oneTimeCost == null ? null : Number(row.oneTimeCost),
+      audienceType: 'all',
+      audienceIds: '[]',
+      imageUrl: null,
+      scheduleSlots: [],
+      instructorLinks: [],
+      _count: { registrations: 0 },
+    }));
   }
 
   async findOne(id: string, schoolId: string) {

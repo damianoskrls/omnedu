@@ -38,7 +38,7 @@ export class SchoolPostsService {
     mediaUrls?: string[];
     publishedAt?: string;
     audienceType?: string;
-    audienceIds?: string[];
+    audienceIds?: string[] | string;
   }) {
     return this.prisma.schoolPost.create({
       data: {
@@ -50,7 +50,7 @@ export class SchoolPostsService {
         mediaUrls: data.mediaUrls ?? [],
         publishedAt: data.publishedAt ? new Date(data.publishedAt) : new Date(),
         audienceType: data.audienceType ?? 'all',
-        audienceIds: JSON.stringify(data.audienceIds ?? []),
+        audienceIds: this.audienceIds(data.audienceIds),
       },
       include: {
         author: { select: { id: true, fullName: true, avatarUrl: true } },
@@ -65,7 +65,7 @@ export class SchoolPostsService {
     mediaUrls?: string[];
     publishedAt?: string | null;
     audienceType?: string;
-    audienceIds?: string[];
+    audienceIds?: string[] | string;
   }) {
     const post = await this.prisma.schoolPost.findFirst({ where: { id, schoolId } });
     if (!post) throw new NotFoundException('Post not found');
@@ -81,12 +81,17 @@ export class SchoolPostsService {
           publishedAt: data.publishedAt ? new Date(data.publishedAt) : null,
         }),
         ...(data.audienceType !== undefined && { audienceType: data.audienceType }),
-        ...(data.audienceIds !== undefined && { audienceIds: JSON.stringify(data.audienceIds) }),
+        ...(data.audienceIds !== undefined && { audienceIds: this.audienceIds(data.audienceIds) }),
       },
       include: {
         author: { select: { id: true, fullName: true, avatarUrl: true } },
       },
     });
+  }
+
+  private audienceIds(value?: string[] | string) {
+    if (typeof value === 'string') return value.trim().startsWith('[') ? value : JSON.stringify(value ? [value] : []);
+    return JSON.stringify(value ?? []);
   }
 
   async delete(id: string, schoolId: string) {

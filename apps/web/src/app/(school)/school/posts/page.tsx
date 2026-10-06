@@ -55,6 +55,7 @@ export default function PostsPage() {
   const [modal, setModal] = useState<Partial<Post> | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [formError, setFormError] = useState('');
   const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
   const [levels, setLevels] = useState<{ id: string; name: string }[]>([]);
 
@@ -81,7 +82,7 @@ export default function PostsPage() {
     });
   }, [schoolId, activeTab]);
 
-  const openNew = () => setModal({
+  const openNew = () => { setFormError(''); setModal({
     postType: 'excursion',
     title: '',
     content: '',
@@ -89,18 +90,19 @@ export default function PostsPage() {
     publishedAt: new Date().toISOString().slice(0, 10),
     audienceType: 'all',
     audienceIds: '[]',
-  });
+  }); };
 
-  const openEdit = (post: Post) => setModal({
+  const openEdit = (post: Post) => { setFormError(''); setModal({
     ...post,
     publishedAt: post.publishedAt ? post.publishedAt.slice(0, 10) : new Date().toISOString().slice(0, 10),
     audienceType: post.audienceType ?? 'all',
     audienceIds: post.audienceIds ?? '[]',
-  });
+  }); };
 
   const save = async () => {
     if (!modal?.title?.trim() || !schoolId) return;
     setSaving(true);
+    setFormError('');
     try {
       const audienceIds: string[] = (() => { try { return JSON.parse(modal.audienceIds ?? '[]'); } catch { return []; } })();
       const payload = {
@@ -119,6 +121,9 @@ export default function PostsPage() {
       }
       setModal(null);
       await load(activeTab);
+    } catch (err: any) {
+      const message = err?.message;
+      setFormError(Array.isArray(message) ? message.join(' ') : message || 'Η δημοσίευση δεν αποθηκεύτηκε. Δοκίμασε ξανά.');
     } finally {
       setSaving(false);
     }
@@ -135,7 +140,11 @@ export default function PostsPage() {
     try {
       const res = await schoolPostsApi.uploadMedia(schoolId, file) as any;
       const url: string = res.data?.url ?? res.url;
+      if (!url) throw new Error('Η φωτογραφία δεν ανέβηκε.');
       setModal(prev => prev ? { ...prev, mediaUrls: [...(prev.mediaUrls ?? []), url] } : prev);
+    } catch (err: any) {
+      const message = err?.message;
+      setFormError(Array.isArray(message) ? message.join(' ') : message || 'Η φωτογραφία δεν ανέβηκε. Μπορείς να δημοσιεύσεις και χωρίς φωτογραφία.');
     } finally {
       setUploading(false);
     }
@@ -206,6 +215,7 @@ export default function PostsPage() {
           onClose={() => setModal(null)}
           saving={saving}
           uploading={uploading}
+          error={formError}
           onUploadImage={uploadImage}
           onRemoveImage={removeImage}
           classes={classes}
@@ -291,7 +301,7 @@ function PostCard({
 // ─── PostModal ───────────────────────────────────────────────────────────────
 
 function PostModal({
-  post, onChange, onSave, onClose, saving, uploading, onUploadImage, onRemoveImage, classes, levels,
+  post, onChange, onSave, onClose, saving, uploading, error, onUploadImage, onRemoveImage, classes, levels,
 }: {
   post: Partial<Post>;
   onChange: (p: Partial<Post>) => void;
@@ -299,6 +309,7 @@ function PostModal({
   onClose: () => void;
   saving: boolean;
   uploading: boolean;
+  error?: string;
   onUploadImage: (f: File) => void;
   onRemoveImage: (idx: number) => void;
   classes: { id: string; name: string }[];
@@ -446,6 +457,7 @@ function PostModal({
           </div>
         </div>
 
+        {error && <div className="mx-6 mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
         {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 shrink-0">
           <button onClick={onClose} className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50">Ακύρωση</button>

@@ -1,10 +1,12 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, Query, Req, UseGuards, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { SchoolPostsService } from './school-posts.service';
 import { StorageService } from '../../common/storage/storage.service';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 
 @ApiTags('school-posts')
 @ApiBearerAuth('access-token')
@@ -29,10 +31,10 @@ export class SchoolPostsController {
   @Post()
   create(
     @Param('schoolId') schoolId: string,
-    @Req() req: any,
-    @Body() body: { title: string; content?: string; postType?: string; mediaUrls?: string[]; publishedAt?: string },
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { title: string; content?: string; postType?: string; mediaUrls?: string[]; publishedAt?: string; audienceType?: string; audienceIds?: string[] | string },
   ) {
-    return this.service.create(schoolId, req.user.id, body);
+    return this.service.create(schoolId, user.sub, body);
   }
 
   @Post('media')
@@ -56,10 +58,10 @@ export class SchoolPostsController {
   update(
     @Param('schoolId') schoolId: string,
     @Param('id') id: string,
-    @Req() req: any,
-    @Body() body: { title?: string; content?: string; postType?: string; mediaUrls?: string[]; publishedAt?: string | null },
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { title?: string; content?: string; postType?: string; mediaUrls?: string[]; publishedAt?: string | null; audienceType?: string; audienceIds?: string[] | string },
   ) {
-    return this.service.update(id, schoolId, req.user.id, body);
+    return this.service.update(id, schoolId, user.sub, body);
   }
 
   @Delete(':id')

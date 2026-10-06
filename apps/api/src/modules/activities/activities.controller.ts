@@ -24,6 +24,23 @@ export class ActivitiesController {
     return this.activities.findAll(schoolId, type);
   }
 
+  @Get('schedule/all')
+  @Roles('school_admin')
+  getSchedule(@Param('schoolId') schoolId: string) {
+    return this.activities.getSchedule(schoolId);
+  }
+
+  @Get('instructors/all')
+  @Roles('school_admin')
+  getInstructors(@Param('schoolId') schoolId: string) {
+    return this.activities.getInstructors(schoolId);
+  }
+
+  @Get('registrations/mine')
+  myRegistrations(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
+    return this.activities.getRegistrationsForParent(user.sub, schoolId);
+  }
+
   @Get(':id')
   findOne(@Param('schoolId') schoolId: string, @Param('id') id: string) {
     return this.activities.findOne(id, schoolId);
@@ -47,11 +64,6 @@ export class ActivitiesController {
   @Delete(':id/register/:studentId')
   cancel(@Param('id') activityId: string, @Param('studentId') studentId: string) {
     return this.activities.cancelRegistration(activityId, studentId);
-  }
-
-  @Get('registrations/mine')
-  myRegistrations(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
-    return this.activities.getRegistrationsForParent(user.sub, schoolId);
   }
 
   @Get(':id/registrations')
@@ -124,12 +136,6 @@ export class ActivitiesController {
 
   // ── Schedule ─────────────────────────────────────────────
 
-  @Get('schedule/all')
-  @Roles('school_admin')
-  getSchedule(@Param('schoolId') schoolId: string) {
-    return this.activities.getSchedule(schoolId);
-  }
-
   @Post(':id/schedule')
   @Roles('school_admin')
   addScheduleSlot(
@@ -147,12 +153,6 @@ export class ActivitiesController {
   }
 
   // ── Instructors ───────────────────────────────────────────
-
-  @Get('instructors/all')
-  @Roles('school_admin')
-  getInstructors(@Param('schoolId') schoolId: string) {
-    return this.activities.getInstructors(schoolId);
-  }
 
   @Post('instructors/create')
   @Roles('school_admin')

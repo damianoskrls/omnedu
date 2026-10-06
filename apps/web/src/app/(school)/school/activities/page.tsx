@@ -98,6 +98,7 @@ export default function ActivitiesPage() {
   // ── Activities tab state ───────────────────────────────────────────────────
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [registrations, setRegistrations] = useState<Record<string, Registration[]>>({});
   const [showActivityModal, setShowActivityModal] = useState(false);
@@ -134,7 +135,13 @@ export default function ActivitiesPage() {
   const loadActivities = useCallback(async () => {
     if (!schoolId) return;
     setLoading(true);
+    setLoadError('');
     try { setActivities((await activitiesApi.list(schoolId)) as unknown as Activity[]); }
+    catch (err: any) {
+      const message = err?.message;
+      setLoadError(Array.isArray(message) ? message.join(' ') : message || 'Οι δραστηριότητες δεν φορτώθηκαν. Δοκίμασε ξανά.');
+      setActivities([]);
+    }
     finally { setLoading(false); }
   }, [schoolId]);
 
@@ -357,6 +364,7 @@ export default function ActivitiesPage() {
       {/* ── Tab: Activities ────────────────────────────────────────────────── */}
       {activeTab === 'activities' && (
         <>
+          {loadError && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{loadError}</div>}
           {loading ? (
             <div className="flex justify-center py-12 text-gray-400">Φόρτωση...</div>
           ) : activities.length === 0 ? (
