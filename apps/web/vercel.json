@@ -1,3 +1,4 @@
 {
+  "outputDirectory": ".next",
   "installCommand": "cd ../../ && pnpm install --frozen-lockfile"
 }
