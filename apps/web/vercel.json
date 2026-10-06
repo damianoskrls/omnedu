@@ -1,6 +1,3 @@
 {
-  "framework": "nextjs",
-  "buildCommand": "cd ../.. && pnpm install --frozen-lockfile && pnpm --filter @omnedu/web build",
-  "outputDirectory": ".next",
-  "installCommand": "echo 'install handled by buildCommand'"
+  "installCommand": "cd ../../ && pnpm install --frozen-lockfile"
 }
