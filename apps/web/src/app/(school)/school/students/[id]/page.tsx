@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { studentsApi, billingApi, classesApi, activitiesApi, extraServicesApi, medicationRequestsApi, studentFormsApi, broadcastsApi, schoolEventsApi } from '@/lib/api';
 import { StudentStatement } from './student-statement';
+import { buildStudentQuoteInput, chargeMatchesQuote, isOpenMonth, quoteStudentMonth, schoolYearMonths } from '@/lib/month-quote';
 import { useStoredUser } from '@/lib/auth';
 import {
   ArrowLeft, Phone, Mail, MapPin, Droplets,
@@ -127,7 +128,6 @@ export default function StudentProfilePage() {
   const [payingChargeId, setPayingChargeId] = useState<string | null>(null);
   const [payAmount, setPayAmount] = useState('');
   const [savingPay, setSavingPay] = useState(false);
-  const [generatingMonth, setGeneratingMonth] = useState<string | null>(null);
   const [editingInfo, setEditingInfo] = useState(false);
   const [infoForm, setInfoForm] = useState<any>(null);
   const [savingInfo, setSavingInfo] = useState(false);
@@ -194,49 +194,97 @@ export default function StudentProfilePage() {
       setClasses(Array.isArray(cls) ? cls : []);
       setLoading(false);
     }).catch(() => setLoading(false));
-    // Load billing summary, medications, questionnaire in background
     const curYear = new Date().getFullYear();
     Promise.all([
-      billingApi.getStudentCharges(schoolId, id).catch(() => []),
-      billingApi.getOneTimeCharges(schoolId, { studentId: id }).catch(() => []),
       medicationRequestsApi.list(schoolId, { studentId: id }).catch(() => []),
       studentFormsApi.get(schoolId, id, curYear).catch(() => null),
-    ]).then(([ch, otc, meds, qForm]: any) => {
-      const monthly = Array.isArray(ch) ? ch : [];
-      const oneTime = Array.isArray(otc) ? otc : [];
-      setOverviewCharges(monthly);
-      setOverviewOneTime(oneTime);
+    ]).then(([meds, qForm]: any) => {
       setMedications(Array.isArray(meds) ? meds.filter((m: any) => m.status !== 'completed') : []);
       setQuestionnaire(qForm ?? null);
     });
+    loadBillingData();
   }, [schoolId, id]);
 
   const loadBillingData = async () => {
     if (!schoolId) return;
     setChargesLoading(true);
     try {
-      const [ch, subs, otc, lf, fee, card] = await Promise.all([
+      const [ch, subs, otc, lf, fee, card, freshStudent, cls]: any = await Promise.all([
         billingApi.getStudentCharges(schoolId, id).catch(() => []),
         billingApi.getSubsidies(schoolId, id).catch(() => []),
         billingApi.getOneTimeCharges(schoolId, { studentId: id }).catch(() => []),
         billingApi.getLevelFees(schoolId).catch(() => []),
         billingApi.getStudentFee(schoolId, id).catch(() => null),
         billingApi.getStudentStatement(schoolId, id).catch(() => null),
+        studentsApi.get(schoolId, id).catch(() => null),
+        classesApi.list(schoolId).catch(() => []),
       ]);
       const monthly = Array.isArray(ch) ? ch : [];
+      const subsidyRows = Array.isArray(subs) ? subs : [];
+      const feeRows = Array.isArray(lf) ? lf : [];
+      const classRows = Array.isArray(cls) ? cls : [];
+      const override = fee && !fee.message ? fee : null;
+      if (freshStudent) setStudent(freshStudent);
+      if (classRows.length) setClasses(classRows);
+      const aligned = await alignOpenCharges(freshStudent, classRows, feeRows, subsidyRows, override, monthly);
       const oneTime = Array.isArray(otc) ? otc : [];
-      setCharges(monthly);
-      setOverviewCharges(monthly);
-      setSubsidies(Array.isArray(subs) ? subs : []);
+      setCharges(aligned);
+      setOverviewCharges(aligned);
+      setSubsidies(subsidyRows);
       setOneTimeCharges(oneTime);
       setOverviewOneTime(oneTime);
-      setLevelFees(Array.isArray(lf) ? lf : []);
-      setFeeOverride(fee && !fee.message ? fee : null);
+      setLevelFees(feeRows);
+      setFeeOverride(override);
       setStatement(card && Array.isArray(card.months) ? card : null);
     } finally {
       setChargesLoading(false);
     }
   };
+
+  async function alignOpenCharges(pupil: any, classRows: any[], feeRows: any[], subsidyRows: any[], override: any, monthly: any[]) {
+    const input = buildStudentQuoteInput(pupil, classRows, feeRows, subsidyRows, override);
+    if (!input.levelMonthly && !input.fixedAmount && input.buses.length === 0 && input.activities.length === 0) {
+      return monthly;
+    }
+    const rows = monthly.slice();
+    const now = new Date();
+    for (const slot of schoolYearMonths(now)) {
+      if (!isOpenMonth(slot.month, slot.year, now)) continue;
+      const quote = quoteStudentMonth({ ...input, month: slot.month, year: slot.year });
+      let charge = rows.find((row) => row.month === slot.month && row.year === slot.year);
+      if (!charge && (quote.totalDue > 0 || quote.lines.length > 0)) {
+        try {
+          await billingApi.generateStudentCharge(schoolId, id, slot.month, slot.year);
+          const again: any = await billingApi.getStudentCharges(schoolId, id).catch(() => null);
+          if (Array.isArray(again)) {
+            rows.splice(0, rows.length, ...again);
+            charge = rows.find((row) => row.month === slot.month && row.year === slot.year);
+          }
+        } catch {
+          charge = undefined;
+        }
+      }
+      if (!charge || charge.status === 'paid') continue;
+      if (chargeMatchesQuote(charge, quote)) continue;
+      const paidAmount = Number(charge.paidAmount ?? 0);
+      const status = quote.totalDue <= paidAmount ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
+      try {
+        const saved: any = await billingApi.updateCharge(schoolId, charge.id, {
+          schoolFee: quote.schoolFee,
+          busFee: quote.busFee,
+          activityFees: quote.activityFees,
+          subsidyTotal: quote.subsidyTotal,
+          totalDue: quote.totalDue,
+          status,
+        });
+        const index = rows.findIndex((row) => row.id === charge.id);
+        if (index >= 0) rows[index] = { ...charge, ...saved, schoolFee: quote.schoolFee, busFee: quote.busFee, activityFees: quote.activityFees, subsidyTotal: quote.subsidyTotal, totalDue: quote.totalDue, status };
+      } catch {
+        // The month still renders from the live quote when the stored row cannot be rewritten.
+      }
+    }
+    return rows;
+  }
 
   useEffect(() => {
     if (tab !== 'billing') return;
@@ -392,6 +440,7 @@ export default function StudentProfilePage() {
       const fresh: any = await studentsApi.get(schoolId, id);
       setStudent(fresh);
       setEditingInfo(false);
+      await loadBillingData();
     } finally {
       setSavingInfo(false);
     }
@@ -1084,6 +1133,7 @@ export default function StudentProfilePage() {
                             await activitiesApi.removeRegistration(schoolId, reg.activity.id, reg.id);
                             const fresh: any = await studentsApi.get(schoolId, id);
                             setStudent(fresh);
+                            await loadBillingData();
                           }}
                           className="p-1 text-gray-300 hover:text-red-500 rounded"
                         >
@@ -1311,6 +1361,7 @@ export default function StudentProfilePage() {
                                 await extraServicesApi.removeStudentService(schoolId, svc.id, ss.id);
                                 const fresh: any = await studentsApi.get(schoolId, id);
                                 setStudent(fresh);
+                                await loadBillingData();
                               }}
                               className="p-1.5 text-gray-300 hover:text-red-500 rounded"
                               title="Διαγραφή"
@@ -1560,52 +1611,17 @@ export default function StudentProfilePage() {
         const cmpMonth = (m1: number, y1: number, m2: number, y2: number) =>
           y1 !== y2 ? y1 - y2 : m1 - m2;
 
-        // Expected monthly amount (before charge exists)
-        const levelId = student?.enrollments?.[0]?.class?.level?.id;
-        const levelName = student?.enrollments?.[0]?.class?.level?.name;
-        const levelFee = levelFees.find((f: any) => f.levelId === levelId);
-        const levelMonthly = levelFee ? Number(levelFee.monthlyFee) : 0;
-        const round2 = (n: number) => Math.round(n * 100) / 100;
-        let schoolNet = levelMonthly;
+        const quoteInput = buildStudentQuoteInput(student, classes, levelFees, subsidies, feeOverride);
+        const currentQuote = quoteStudentMonth({ ...quoteInput, month: curMonth, year: curYear });
+        const levelName = quoteInput.levelName;
+        const levelMonthly = quoteInput.levelMonthly;
         let schoolAdjust = 'τιμή βαθμίδας';
         if (feeOverride?.fixedAmount != null) {
-          schoolNet = Number(feeOverride.fixedAmount);
           schoolAdjust = `ειδική τιμή αντί για €${levelMonthly.toFixed(0)} της βαθμίδας`;
         } else if (feeOverride?.discountPct != null) {
-          schoolNet = round2(levelMonthly * (1 - Number(feeOverride.discountPct) / 100));
           schoolAdjust = `έκπτωση ${Number(feeOverride.discountPct)}% στην τιμή βαθμίδας €${levelMonthly.toFixed(0)}`;
         }
-        const busLines = (student.studentServices ?? [])
-          .filter((ss: any) => ss.service?.serviceType === 'bus')
-          .map((ss: any) => {
-            const mode = ss.serviceMode ?? 'both';
-            const base = mode === 'pickup'
-              ? Number(ss.service.pickupCost ?? ss.service.monthlyCost ?? 0)
-              : mode === 'dropoff'
-              ? Number(ss.service.dropoffCost ?? ss.service.monthlyCost ?? 0)
-              : Number(ss.service.monthlyCost ?? 0);
-            const discount = Number(ss.discountAmount ?? 0);
-            return { id: ss.id, name: ss.service.name, base, discount, net: Math.max(0, round2(base - discount)) };
-          });
-        const activityLines = (student.activityRegistrations ?? [])
-          .filter((r: any) => (r.status === 'approved' || r.status === 'pending') && r.activity?.monthlyCost != null)
-          .map((r: any) => ({ id: r.id, name: r.activity.title, amount: Number(r.activity.monthlyCost) }));
-        const busTotal = busLines.reduce((s: number, l: any) => s + l.net, 0);
-        const activityTotal = activityLines.reduce((s: number, l: any) => s + l.amount, 0);
-        const subsidyTotal = subsidies.filter((s: any) => s.isActive).reduce((sum: number, s: any) => sum + Number(s.monthlyAmount), 0);
-        const monthlyTotal = Math.max(0, round2(schoolNet + busTotal + activityTotal - subsidyTotal));
-        const expectedNet = monthlyTotal;
-
-        const handleGenerateMonth = async (m: number, y: number) => {
-          const key = `${m}-${y}`;
-          setGeneratingMonth(key);
-          try {
-            await (billingApi as any).generateStudentCharge(schoolId, id, m, y);
-            await loadBillingData();
-          } finally {
-            setGeneratingMonth(null);
-          }
-        };
+        const quoteFor = (m: number, y: number) => quoteStudentMonth({ ...quoteInput, month: m, year: y });
 
         const handleQuickPay = async (charge: any) => {
           setSavingPay(true);
@@ -1634,11 +1650,17 @@ export default function StudentProfilePage() {
         // Year totals
         const yearStats = (sy: string) => {
           const ms = monthsOf(sy);
-          const syCharges = charges.filter((c: any) => ms.some(({m, y}) => c.month === m && c.year === y));
-          return {
-            totalDue: syCharges.reduce((s: number, c: any) => s + Number(c.totalDue), 0),
-            totalPaid: syCharges.reduce((s: number, c: any) => s + Number(c.paidAmount), 0),
-          };
+          let totalDue = 0;
+          let totalPaid = 0;
+          for (const slot of ms) {
+            if (cmpMonth(slot.m, slot.y, curMonth, curYear) > 0) continue;
+            const charge = charges.find((c: any) => c.month === slot.m && c.year === slot.y);
+            const quote = quoteFor(slot.m, slot.y);
+            const frozen = charge?.status === 'paid';
+            totalDue += frozen ? Number(charge.totalDue) : quote.totalDue;
+            totalPaid += Number(charge?.paidAmount ?? 0);
+          }
+          return { totalDue, totalPaid };
         };
 
         // Financial summary across all categories
@@ -1649,13 +1671,6 @@ export default function StudentProfilePage() {
         const eventsPaid = eventEnrollments
           .filter((e: any) => e.status === 'paid')
           .reduce((s: number, e: any) => s + Number(e.event?.costPerChild ?? 0), 0);
-        const activityDue = (student.activityRegistrations ?? [])
-          .filter((r: any) => r.status === 'approved')
-          .reduce((s: number, r: any) => s + Number(r.activity?.oneTimeCost ?? 0), 0);
-        const monthlyDue = charges.reduce((s: number, c: any) => s + Number(c.totalDue ?? 0), 0);
-        const monthlyPaid = charges.reduce((s: number, c: any) => s + Number(c.paidAmount ?? 0), 0);
-        const otcDue = oneTimeCharges.reduce((s: number, c: any) => s + Number(c.amount ?? 0), 0);
-        const otcPaid = oneTimeCharges.filter((c: any) => c.status === 'paid').reduce((s: number, c: any) => s + Number(c.amount ?? 0), 0);
 
         const handleMarkEventPaid = async (enr: any, paid: boolean) => {
           setMarkingEventPayment(enr.id);
@@ -1718,47 +1733,32 @@ export default function StudentProfilePage() {
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <div className="flex items-start justify-between gap-4 mb-4">
                 <div>
-                  <h3 className="font-semibold text-gray-900">Μηνιαία χρέωση</h3>
+                  <h3 className="font-semibold text-gray-900">Μηνιαία χρέωση · {MONTH_FULL[curMonth]}</h3>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    Ισχύει κάθε μήνα της σχολικής χρονιάς{levelName ? ` · βαθμίδα ${levelName}` : ''}
+                    Υπολογίζεται μόνη της από τη βαθμίδα{levelName ? ` ${levelName}` : ''}, το voucher, το σχολικό και τις δραστηριότητες του μήνα
                   </p>
                 </div>
                 <div className="text-right">
-                  <div className="text-2xl font-extrabold text-[#77328D]">€{monthlyTotal.toFixed(2)}</div>
-                  <div className="text-xs text-gray-400">σύνολο / μήνα</div>
+                  <div className="text-2xl font-extrabold text-[#77328D]">€{currentQuote.totalDue.toFixed(2)}</div>
+                  <div className="text-xs text-gray-400">τρέχων μήνας</div>
                 </div>
               </div>
               <div className="divide-y divide-gray-50 rounded-xl border border-gray-100">
-                <div className="flex items-center gap-3 px-4 py-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900">Σχολείο</p>
-                    <p className="text-xs text-gray-500">{schoolAdjust}{feeOverride?.reason ? ` · ${feeOverride.reason}` : ''}</p>
-                  </div>
-                  <span className="text-sm font-semibold text-gray-800">€{schoolNet.toFixed(2)}</span>
-                </div>
-                {busLines.map((line: any) => (
-                  <div key={line.id} className="flex items-center gap-3 px-4 py-3">
+                {currentQuote.lines.length === 0 ? (
+                  <p className="px-4 py-3 text-sm text-gray-400">Μόλις οριστεί τάξη με τιμή βαθμίδας, η μηνιαία χρέωση εμφανίζεται εδώ.</p>
+                ) : currentQuote.lines.map((line, index) => (
+                  <div key={`${line.label}-${index}`} className="flex items-center gap-3 px-4 py-3">
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900">Σχολικό · {line.name}</p>
-                      {line.discount > 0 && (
-                        <p className="text-xs text-orange-700">€{line.base.toFixed(0)} − έκπτωση €{line.discount.toFixed(0)}</p>
+                      <p className={`text-sm font-medium ${line.amount < 0 ? 'text-emerald-800' : 'text-gray-900'}`}>{line.label}</p>
+                      {line.label.startsWith('Φοίτηση') && (
+                        <p className="text-xs text-gray-500">{schoolAdjust}{feeOverride?.reason ? ` · ${feeOverride.reason}` : ''}</p>
                       )}
                     </div>
-                    <span className="text-sm font-semibold text-gray-800">€{line.net.toFixed(2)}</span>
+                    <span className={`text-sm font-semibold ${line.amount < 0 ? 'text-emerald-700' : 'text-gray-800'}`}>
+                      {line.amount < 0 ? `−€${Math.abs(line.amount).toFixed(2)}` : `€${line.amount.toFixed(2)}`}
+                    </span>
                   </div>
                 ))}
-                {activityLines.map((line: any) => (
-                  <div key={line.id} className="flex items-center gap-3 px-4 py-3">
-                    <p className="flex-1 text-sm font-medium text-gray-900">Δραστηριότητα · {line.name}</p>
-                    <span className="text-sm font-semibold text-gray-800">€{line.amount.toFixed(2)}</span>
-                  </div>
-                ))}
-                {subsidyTotal > 0 && (
-                  <div className="flex items-center gap-3 px-4 py-3">
-                    <p className="flex-1 text-sm font-medium text-emerald-800">Επιδοτήσεις</p>
-                    <span className="text-sm font-semibold text-emerald-700">−€{subsidyTotal.toFixed(2)}</span>
-                  </div>
-                )}
               </div>
 
               {isAdmin && (
@@ -1838,32 +1838,8 @@ export default function StudentProfilePage() {
               )}
             </div>
 
-            {!statement && (
+            {!statement && eventEnrollments.length > 0 && (
             <>
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-              <h3 className="font-semibold text-gray-900 mb-4">Οικονομική Επισκόπηση</h3>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <div className="bg-blue-50 rounded-xl p-3">
-                  <p className="text-xs text-blue-600 font-medium mb-1">Μηνιαία Δίδακτρα</p>
-                  <p className="text-lg font-bold text-blue-800">€{monthlyPaid.toFixed(0)}<span className="text-xs font-normal text-blue-500"> / €{monthlyDue.toFixed(0)}</span></p>
-                </div>
-                <div className="bg-violet-50 rounded-xl p-3">
-                  <p className="text-xs text-violet-600 font-medium mb-1">Εκδηλώσεις</p>
-                  <p className="text-lg font-bold text-violet-800">€{eventsPaid.toFixed(0)}<span className="text-xs font-normal text-violet-500"> / €{eventsDue.toFixed(0)}</span></p>
-                </div>
-                <div className="bg-amber-50 rounded-xl p-3">
-                  <p className="text-xs text-amber-600 font-medium mb-1">Εκτακτες Χρεώσεις</p>
-                  <p className="text-lg font-bold text-amber-800">€{otcPaid.toFixed(0)}<span className="text-xs font-normal text-amber-500"> / €{otcDue.toFixed(0)}</span></p>
-                </div>
-                <div className={`rounded-xl p-3 ${(monthlyDue + eventsDue + otcDue - monthlyPaid - eventsPaid - otcPaid) > 0 ? 'bg-red-50' : 'bg-green-50'}`}>
-                  <p className={`text-xs font-medium mb-1 ${(monthlyDue + eventsDue + otcDue - monthlyPaid - eventsPaid - otcPaid) > 0 ? 'text-red-600' : 'text-green-600'}`}>Υπόλοιπο</p>
-                  <p className={`text-lg font-bold ${(monthlyDue + eventsDue + otcDue - monthlyPaid - eventsPaid - otcPaid) > 0 ? 'text-red-700' : 'text-green-700'}`}>
-                    €{Math.max(0, monthlyDue + eventsDue + otcDue - monthlyPaid - eventsPaid - otcPaid).toFixed(0)}
-                  </p>
-                </div>
-              </div>
-            </div>
-
             {/* Events billing section */}
             {eventEnrollments.length > 0 && (
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -2047,22 +2023,49 @@ export default function StudentProfilePage() {
                   <div className="divide-y divide-gray-50">
                     {months.map(({m, y}) => {
                       const charge = charges.find((c: any) => c.month === m && c.year === y);
+                      const monthQuote = quoteFor(m, y);
+                      const frozen = charge?.status === 'paid';
+                      const shownTotal = frozen ? Number(charge.totalDue) : monthQuote.totalDue;
+                      const shownLines = frozen
+                        ? [
+                            Number(charge.schoolFee) > 0 ? `Δίδακτρα €${Number(charge.schoolFee).toFixed(0)}` : null,
+                            Number(charge.busFee) > 0 ? `Σχολικό €${Number(charge.busFee).toFixed(0)}` : null,
+                            Number(charge.activityFees) > 0 ? `Δραστ. €${Number(charge.activityFees).toFixed(0)}` : null,
+                            Number(charge.subsidyTotal) > 0 ? `−€${Number(charge.subsidyTotal).toFixed(0)} επιδότηση` : null,
+                          ].filter(Boolean)
+                        : monthQuote.lines.map((line) => line.amount < 0
+                          ? `−€${Math.abs(line.amount).toFixed(0)} ${line.label}`
+                          : `${line.label} €${line.amount.toFixed(0)}`);
                       const monthOTC = oneTimeCharges.filter((c: any) => {
                         const d = new Date(c.chargeDate);
                         return d.getMonth() + 1 === m && d.getFullYear() === y;
                       });
                       const cmp = cmpMonth(m, y, curMonth, curYear);
-                      const isPast = cmp < 0;
                       const isCurrent = cmp === 0;
                       const isFuture = cmp > 0;
                       const genKey = `${m}-${y}`;
-                      const isGenerating = generatingMonth === genKey;
                       const isPaying = payingChargeId === charge?.id;
+                      const statusText = frozen
+                        ? (shownTotal <= 0 ? 'Καλύπτεται' : 'Εξοφλήθη')
+                        : isFuture
+                          ? 'Θα ανοίξει τον μήνα'
+                          : charge?.status === 'partial'
+                            ? 'Μερική πληρωμή'
+                            : shownTotal <= 0 && monthQuote.lines.length > 0
+                              ? 'Καλύπτεται'
+                              : 'Αναμονή πληρωμής';
+                      const statusClass = frozen || statusText === 'Καλύπτεται'
+                        ? 'bg-green-100 text-green-700'
+                        : isFuture
+                          ? 'bg-gray-100 text-gray-500'
+                          : charge?.status === 'partial'
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-amber-100 text-amber-800';
 
                       return (
                         <div
                           key={genKey}
-                          className={`px-5 py-3 transition-colors ${isFuture ? 'opacity-40' : ''} ${isCurrent ? 'bg-indigo-50/40' : 'hover:bg-gray-50/50'}`}
+                          className={`px-5 py-3 transition-colors ${isCurrent ? 'bg-indigo-50/40' : 'hover:bg-gray-50/50'}`}
                         >
                           {/* Month main row */}
                           <div className="flex items-center gap-3">
@@ -2072,42 +2075,35 @@ export default function StudentProfilePage() {
                               <div className="text-xs text-gray-400">{y}</div>
                             </div>
 
-                            {charge ? (
+                            {shownLines.length > 0 || charge ? (
                               <>
-                                {/* Breakdown */}
                                 <div className="flex-1 min-w-0">
                                   <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500">
-                                    {Number(charge.schoolFee) > 0 && <span>Δίδακτρα €{Number(charge.schoolFee).toFixed(0)}</span>}
-                                    {Number(charge.busFee) > 0 && <span>Σχολικό €{Number(charge.busFee).toFixed(0)}</span>}
-                                    {Number(charge.activityFees) > 0 && <span>Δραστ. €{Number(charge.activityFees).toFixed(0)}</span>}
-                                    {Number(charge.subsidyTotal) > 0 && <span className="text-emerald-600">−€{Number(charge.subsidyTotal).toFixed(0)} επιδότηση</span>}
+                                    {shownLines.map((line, lineIndex) => <span key={lineIndex}>{line}</span>)}
                                   </div>
-                                  {charge.status === 'partial' && (
-                                    <div className="text-xs text-blue-600 mt-0.5">Πληρ.: €{Number(charge.paidAmount).toFixed(0)} · Υπόλ.: €{(Number(charge.totalDue) - Number(charge.paidAmount)).toFixed(0)}</div>
+                                  {charge?.status === 'partial' && !frozen && (
+                                    <div className="text-xs text-blue-600 mt-0.5">Πληρ.: €{Number(charge.paidAmount).toFixed(0)} · Υπόλ.: €{Math.max(0, shownTotal - Number(charge.paidAmount)).toFixed(0)}</div>
+                                  )}
+                                  {isFuture && (
+                                    <div className="text-xs text-gray-400 mt-0.5">Το ποσό ανοίγει αυτόματα μόλις αλλάξει ο μήνας</div>
                                   )}
                                 </div>
 
-                                {/* Total */}
                                 <div className="text-right shrink-0">
-                                  <div className="font-bold text-gray-900">€{Number(charge.totalDue).toFixed(0)}</div>
+                                  <div className="font-bold text-gray-900">€{shownTotal.toFixed(0)}</div>
                                 </div>
 
-                                {/* Status */}
-                                <span className={`shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${
-                                  charge.status === 'paid' ? 'bg-green-100 text-green-700' :
-                                  charge.status === 'partial' ? 'bg-blue-100 text-blue-700' :
-                                  'bg-amber-100 text-amber-700'
-                                }`}>
-                                  {charge.status === 'paid' ? 'Εξοφλήθη' : charge.status === 'partial' ? 'Μερική' : 'Εκκρεμεί'}
+                                <span className={`shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${statusClass}`}>
+                                  {statusText}
                                 </span>
 
                                 {/* Actions */}
-                                {isAdmin && !isFuture && (
+                                {isAdmin && !isFuture && charge && (
                                   <div className="flex items-center gap-1 shrink-0">
                                     {charge.status !== 'paid' && (
                                       <>
                                         <button
-                                          onClick={() => handleQuickPay(charge)}
+                                          onClick={() => handleQuickPay({ ...charge, totalDue: shownTotal })}
                                           disabled={savingPay}
                                           className="p-1.5 rounded-lg hover:bg-green-50 text-gray-400 hover:text-green-600"
                                           title="Εξόφληση ολόκληρου ποσού"
@@ -2115,7 +2111,7 @@ export default function StudentProfilePage() {
                                           <Check className="h-3.5 w-3.5" />
                                         </button>
                                         <button
-                                          onClick={() => { setPayingChargeId(charge.id); setPayAmount(String(Number(charge.totalDue) - Number(charge.paidAmount))); }}
+                                          onClick={() => { setPayingChargeId(charge.id); setPayAmount(String(Math.max(0, shownTotal - Number(charge.paidAmount)))); }}
                                           className="p-1.5 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-indigo-600"
                                           title="Καταχώρηση πληρωμής"
                                         >
@@ -2136,21 +2132,9 @@ export default function StudentProfilePage() {
                                 )}
                               </>
                             ) : (
-                              <>
-                                {/* No charge yet */}
-                                <div className="flex-1 text-xs text-gray-400 italic">
-                                  {isFuture ? 'Μελλοντικός μήνας' : expectedNet > 0 ? `~€${expectedNet.toFixed(0)} αναμενόμενο` : 'Δεν έχει υπολογιστεί'}
-                                </div>
-                                {isAdmin && !isFuture && (
-                                  <button
-                                    onClick={() => handleGenerateMonth(m, y)}
-                                    disabled={isGenerating}
-                                    className="shrink-0 text-xs px-2.5 py-1 border border-indigo-200 text-indigo-600 rounded-lg hover:bg-indigo-50 disabled:opacity-50"
-                                  >
-                                    {isGenerating ? '...' : '+ Δημιουργία'}
-                                  </button>
-                                )}
-                              </>
+                              <div className="flex-1 text-xs text-gray-400 italic">
+                                {isFuture ? 'Θα υπολογιστεί όταν ανοίξει ο μήνας' : 'Δεν υπάρχει χρέωση για αυτόν τον μήνα'}
+                              </div>
                             )}
                           </div>
 
@@ -2402,6 +2386,7 @@ export default function StudentProfilePage() {
                     const fresh: any = await studentsApi.get(schoolId, id);
                     setStudent(fresh);
                     setShowEnrollActivity(false);
+                    await loadBillingData();
                   } finally { setEnrollingActivity(false); }
                 }}
                 className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
@@ -2641,6 +2626,7 @@ export default function StudentProfilePage() {
                       const fresh: any = await studentsApi.get(schoolId, id);
                       setStudent(fresh);
                       setShowAssignService(false);
+                      await loadBillingData();
                       setEditingSs(null);
                       // reset
                       setAssignServiceMode('both'); setPickupContact(''); setAssignDropoffContact('');

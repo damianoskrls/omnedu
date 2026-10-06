@@ -274,14 +274,20 @@ export class BillingService {
 
   async updateCharge(schoolId: string, chargeId: string, data: {
     paidAmount?: number; status?: string; notes?: string; paidAt?: string;
+    schoolFee?: number; busFee?: number; activityFees?: number; subsidyTotal?: number; totalDue?: number;
   }) {
     const charge = await this.prisma.monthlyCharge.findFirst({ where: { id: chargeId, schoolId } });
     if (!charge) throw new NotFoundException('Charge not found');
+    if (charge.status === 'paid' && data.paidAmount === undefined && data.status !== 'unpaid') {
+      return charge;
+    }
 
+    const nextTotal = data.totalDue !== undefined ? Number(data.totalDue) : Number(charge.totalDue);
+    const nextPaid = data.paidAmount !== undefined ? Number(data.paidAmount) : Number(charge.paidAmount);
     let status = data.status;
-    if (data.paidAmount !== undefined && status === undefined) {
-      if (data.paidAmount <= 0) status = 'unpaid';
-      else if (data.paidAmount >= Number(charge.totalDue)) status = 'paid';
+    if (status === undefined && (data.paidAmount !== undefined || data.totalDue !== undefined)) {
+      if (nextPaid <= 0) status = nextTotal <= 0 ? 'paid' : 'unpaid';
+      else if (nextPaid + 0.009 >= nextTotal) status = 'paid';
       else status = 'partial';
     }
 

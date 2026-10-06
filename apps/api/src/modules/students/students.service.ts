@@ -34,7 +34,12 @@ export class StudentsService {
       include: {
         enrollments: {
           include: {
-            class: { include: { instructions: { orderBy: { sortOrder: 'asc' } } } },
+            class: {
+              include: {
+                level: { select: { id: true, name: true } },
+                instructions: { orderBy: { sortOrder: 'asc' } },
+              },
+            },
             academicYear: true,
           },
           orderBy: { academicYear: { startsOn: 'desc' } },
