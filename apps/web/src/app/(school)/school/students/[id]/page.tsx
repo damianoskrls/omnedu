@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { studentsApi, billingApi, classesApi, activitiesApi, extraServicesApi, medicationRequestsApi, studentFormsApi, broadcastsApi, schoolEventsApi } from '@/lib/api';
 import { StudentStatement } from './student-statement';
-import { buildStudentQuoteInput, chargeMatchesQuote, isOpenMonth, quoteStudentMonth, schoolYearMonths } from '@/lib/month-quote';
+import { buildStudentQuoteInput, chargeMatchesQuote, findStationeryCharge, isOpenMonth, quoteStudentMonth, schoolYearMonths, schoolYearOf } from '@/lib/month-quote';
 import { useStoredUser } from '@/lib/auth';
 import {
   ArrowLeft, Phone, Mail, MapPin, Droplets,
@@ -100,6 +100,7 @@ export default function StudentProfilePage() {
   const [tab, setTab] = useState('general');
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const billingFlight = useRef<Promise<void> | null>(null);
   const isAdmin = user?.role === 'school_admin';
   const [overviewCharges, setOverviewCharges] = useState<any[] | null>(null);
   const [overviewOneTime, setOverviewOneTime] = useState<any[] | null>(null);
@@ -205,8 +206,10 @@ export default function StudentProfilePage() {
     loadBillingData();
   }, [schoolId, id]);
 
-  const loadBillingData = async () => {
-    if (!schoolId) return;
+  const loadBillingData = () => {
+    if (!schoolId) return Promise.resolve();
+    if (billingFlight.current) return billingFlight.current;
+    const job = (async () => {
     setChargesLoading(true);
     try {
       const [ch, subs, otc, lf, fee, card, freshStudent, cls]: any = await Promise.all([
@@ -227,7 +230,7 @@ export default function StudentProfilePage() {
       if (freshStudent) setStudent(freshStudent);
       if (classRows.length) setClasses(classRows);
       const aligned = await alignOpenCharges(freshStudent, classRows, feeRows, subsidyRows, override, monthly);
-      const oneTime = Array.isArray(otc) ? otc : [];
+      const oneTime = await ensureStationeryCharge(freshStudent, classRows, feeRows, Array.isArray(otc) ? otc : []);
       setCharges(aligned);
       setOverviewCharges(aligned);
       setSubsidies(subsidyRows);
@@ -239,7 +242,33 @@ export default function StudentProfilePage() {
     } finally {
       setChargesLoading(false);
     }
+    })();
+    billingFlight.current = job;
+    return job.finally(() => {
+      if (billingFlight.current === job) billingFlight.current = null;
+    });
   };
+
+  async function ensureStationeryCharge(pupil: any, classRows: any[], feeRows: any[], oneTime: any[]) {
+    const now = new Date();
+    const { startYear, label } = schoolYearOf(now.getMonth() + 1, now.getFullYear());
+    if (findStationeryCharge(oneTime, startYear)) return oneTime;
+    const input = buildStudentQuoteInput(pupil, classRows, feeRows, [], null);
+    if (!input.annualFee || input.annualFee <= 0) return oneTime;
+    try {
+      await billingApi.createOneTimeCharge(schoolId, {
+        studentId: id,
+        description: 'Γραφική ύλη',
+        amount: input.annualFee,
+        chargeDate: `${startYear}-09-01`,
+        notes: `Έναρξη σχολικής χρονιάς ${label}`,
+      });
+      const again: any = await billingApi.getOneTimeCharges(schoolId, { studentId: id }).catch(() => null);
+      return Array.isArray(again) ? again : oneTime;
+    } catch {
+      return oneTime;
+    }
+  }
 
   async function alignOpenCharges(pupil: any, classRows: any[], feeRows: any[], subsidyRows: any[], override: any, monthly: any[]) {
     const input = buildStudentQuoteInput(pupil, classRows, feeRows, subsidyRows, override);
@@ -1838,6 +1867,56 @@ export default function StudentProfilePage() {
               )}
             </div>
 
+            {!statement?.stationery && (() => {
+              const stationeryStart = curMonth >= 9 ? curYear : curYear - 1;
+              const stationeryLabel = `${stationeryStart}-${stationeryStart + 1}`;
+              const stationeryCharge = findStationeryCharge(oneTimeCharges, stationeryStart);
+              const stationeryAmount = stationeryCharge ? Number(stationeryCharge.amount) : Number(quoteInput.annualFee || 0);
+              const stationeryPaid = !!stationeryCharge && (
+                stationeryCharge.status === 'paid'
+                || Number(stationeryCharge.paidAmount ?? 0) + 0.009 >= Number(stationeryCharge.amount ?? 0)
+              );
+              const stationeryPartial = !!stationeryCharge && !stationeryPaid && Number(stationeryCharge.paidAmount ?? 0) > 0;
+              return (
+                <div className={`rounded-2xl border shadow-sm p-5 flex items-center gap-4 flex-wrap ${stationeryPaid ? 'bg-emerald-50 border-emerald-100' : 'bg-white border-amber-100'}`}>
+                  <div className="flex-1 min-w-[200px]">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Έναρξη χρονιάς</p>
+                    <h3 className="font-bold text-gray-900">Γραφική ύλη</h3>
+                    <p className="text-xs text-gray-500">Μία φορά για τη σχολική χρονιά {stationeryLabel}</p>
+                  </div>
+                  {stationeryAmount > 0 ? (
+                    <div className="text-right">
+                      <div className="text-xl font-extrabold text-gray-900">€{stationeryAmount.toFixed(2)}</div>
+                      <span className={`inline-block mt-1 text-xs font-semibold px-2 py-0.5 rounded-full ${stationeryPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
+                        {stationeryPaid ? 'Πληρώθηκε' : stationeryPartial ? 'Μερική πληρωμή' : 'Δεν έχει πληρωθεί'}
+                      </span>
+                      {stationeryPartial && (
+                        <p className="text-xs text-blue-700 mt-1">Υπόλοιπο €{(stationeryAmount - Number(stationeryCharge.paidAmount)).toFixed(2)}</p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">Δεν έχει οριστεί ποσό γραφικής ύλης στη βαθμίδα.</p>
+                  )}
+                  {isAdmin && stationeryCharge && !stationeryPaid && (
+                    <button
+                      onClick={() => handlePayOneTime(stationeryCharge, stationeryAmount)}
+                      className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
+                    >
+                      Σημείωσε ως πληρωμένη
+                    </button>
+                  )}
+                  {isAdmin && stationeryCharge && stationeryPaid && (
+                    <button
+                      onClick={() => handlePayOneTime(stationeryCharge, 0)}
+                      className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-500 hover:text-red-600"
+                    >
+                      Αναίρεση
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+
             {!statement && eventEnrollments.length > 0 && (
             <>
             {/* Events billing section */}
@@ -2999,11 +3078,12 @@ function StudentSnapshot({
   for (const charge of oneTimeCharges ?? []) {
     const remain = Number(charge.amount ?? 0) - Number(charge.paidAmount ?? 0);
     if (charge.status === 'paid' || charge.status === 'cancelled' || remain <= 0.005) continue;
+    const stationeryItem = String(charge.description ?? '').toLowerCase().includes('γραφικ') || charge.description === 'Ετήσια Εγγραφή';
     debts.push({
       key: charge.id,
       tab: 'billing',
       label: charge.description || 'Έκτακτη χρέωση',
-      detail: 'Έκτακτη',
+      detail: stationeryItem ? 'Δεν έχει πληρωθεί' : 'Έκτακτη',
       amount: remain,
     });
   }
@@ -3058,6 +3138,19 @@ function StudentSnapshot({
       <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
         <p className="text-sm font-semibold text-gray-800 mb-2">Έχει</p>
         <div className="space-y-1.5">
+          {(() => {
+            const today = new Date();
+            const startYear = today.getMonth() + 1 >= 9 ? today.getFullYear() : today.getFullYear() - 1;
+            const stationery = findStationeryCharge(oneTimeCharges, startYear);
+            const paid = stationery && (stationery.status === 'paid' || Number(stationery.paidAmount ?? 0) + 0.009 >= Number(stationery.amount ?? 0));
+            if (!paid) return null;
+            return (
+              <button onClick={() => onOpen('billing')} className="w-full rounded-lg bg-white px-3 py-2 text-left hover:bg-emerald-50">
+                <span className="block text-sm font-medium text-gray-900">Γραφική ύλη</span>
+                <span className="block text-xs text-emerald-700">Πληρώθηκε · €{Number(stationery.amount).toFixed(2)}</span>
+              </button>
+            );
+          })()}
           {buses.length === 0 ? (
             <button onClick={() => onOpen('bus')} className="w-full rounded-lg bg-white px-3 py-2 text-left text-sm text-gray-500 hover:bg-emerald-50">
               Χωρίς σχολικό

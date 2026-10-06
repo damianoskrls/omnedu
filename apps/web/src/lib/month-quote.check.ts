@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-import { buildStudentQuoteInput, isOpenMonth, quoteStudentMonth, schoolYearMonths } from './month-quote';
+import { buildStudentQuoteInput, findStationeryCharge, isOpenMonth, quoteStudentMonth, schoolYearMonths } from './month-quote';
 
 const now = new Date('2026-10-06T12:00:00Z');
 const student = {
@@ -51,6 +51,17 @@ const withActivity = buildStudentQuoteInput({
 assert.equal(quoteStudentMonth({ ...withActivity, month: 9, year: 2026 }).totalDue, 240);
 assert.equal(quoteStudentMonth({ ...withActivity, month: 10, year: 2026 }).totalDue, 265);
 assert.equal(quoteStudentMonth({ ...withActivity, month: 11, year: 2026 }).totalDue, 265);
+
+const withStationeryFee = buildStudentQuoteInput(student, classes, [
+  { levelId: 'lvl-nip', academicYear: '2026-2027', monthlyFee: 420, annualFee: 100 },
+], [], null);
+assert.equal(withStationeryFee.annualFee, 100);
+const stationery = findStationeryCharge([
+  { description: 'Γραφική ύλη', chargeDate: '2026-09-01', status: 'unpaid', amount: 100 },
+  { description: 'Εκδρομή', chargeDate: '2026-10-06', status: 'unpaid', amount: 12 },
+], 2026);
+assert.equal(stationery.description, 'Γραφική ύλη');
+assert.equal(findStationeryCharge([{ description: 'Γραφική ύλη', chargeDate: '2025-09-01' }], 2026), null);
 
 const open = schoolYearMonths(now).filter((slot) => isOpenMonth(slot.month, slot.year, now));
 assert.deepEqual(open.map((slot) => slot.month), [9, 10]);

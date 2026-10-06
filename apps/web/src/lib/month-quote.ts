@@ -148,10 +148,12 @@ export function buildStudentQuoteInput(
     .slice()
     .sort((a, b) => String(b.academicYear ?? '').localeCompare(String(a.academicYear ?? '')));
   const levelMonthly = feeRows[0] ? Number(feeRows[0].monthlyFee) : 0;
+  const annualFee = feeRows[0]?.annualFee != null ? Number(feeRows[0].annualFee) : 0;
 
   return {
     levelName: level?.name ?? null,
     levelMonthly,
+    annualFee,
     fixedAmount: feeOverride?.fixedAmount != null ? Number(feeOverride.fixedAmount) : null,
     discountPct: feeOverride?.fixedAmount == null && feeOverride?.discountPct != null
       ? Number(feeOverride.discountPct)
@@ -175,6 +177,22 @@ export function buildStudentQuoteInput(
       endsAt: row.endsAt,
     })),
   };
+}
+
+export function isStationeryCharge(charge: { description?: string; chargeDate?: string | Date }, startYear: number) {
+  const description = String(charge?.description ?? '');
+  const text = description.toLowerCase();
+  const named = text.includes('γραφικ') || description === 'Ετήσια Εγγραφή';
+  if (!named || !charge?.chargeDate) return false;
+  const date = new Date(charge.chargeDate);
+  if (Number.isNaN(date.getTime())) return false;
+  const from = Date.UTC(startYear, 8, 1);
+  const to = Date.UTC(startYear + 1, 7, 31, 23, 59, 59);
+  return date.getTime() >= from && date.getTime() <= to;
+}
+
+export function findStationeryCharge(charges: any[] | null | undefined, startYear: number) {
+  return (charges ?? []).find((charge) => isStationeryCharge(charge, startYear)) ?? null;
 }
 
 export function chargeMatchesQuote(charge: any, quote: MonthQuote) {
