@@ -650,7 +650,7 @@ async function main() {
     const date = new Date(menuBase);
     date.setDate(menuBase.getDate() + day.d);
     await prisma.dailyMenu.upsert({
-      where: { schoolId_date: { schoolId: school.id, date } },
+      where: { schoolId_date_audienceType_audienceIds: { schoolId: school.id, date, audienceType: 'all', audienceIds: '[]' } },
       update: { breakfast: day.b, lunch: day.m, midMorning: day.l, afternoon: day.a },
       create: {
         schoolId: school.id,

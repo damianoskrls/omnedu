@@ -772,18 +772,20 @@ model ParentMeeting {
 // ─────────────────────────────────────────────────────────
 
 model DailyMenu {
-  id          String   @id @default(uuid())
-  schoolId    String   @map("school_id")
-  date        DateTime @db.Date
-  breakfast   String?
-  midMorning  String?  @map("mid_morning")
-  lunch       String?
-  afternoon   String?
-  notes       String?
+  id           String   @id @default(uuid())
+  schoolId     String   @map("school_id")
+  date         DateTime @db.Date
+  breakfast    String?
+  midMorning   String?  @map("mid_morning")
+  lunch        String?
+  afternoon    String?
+  notes        String?
+  audienceType String   @default("all") @map("audience_type") // all | class | level | teachers
+  audienceIds  String   @default("[]") @map("audience_ids") // JSON array of class/level ids
 
   school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
-  @@unique([schoolId, date])
+  @@unique([schoolId, date, audienceType, audienceIds])
   @@index([schoolId, date])
   @@map("daily_menus")
 }
@@ -793,12 +795,16 @@ model DailyMenu {
 // ─────────────────────────────────────────────────────────
 
 model MenuTemplate {
-  id          String   @id @default(uuid())
-  schoolId    String   @map("school_id")
-  name        String
-  description String?
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id           String   @id @default(uuid())
+  schoolId     String   @map("school_id")
+  name         String
+  description  String?
+  kind         String   @default("week") // week = same meals each weekday, month = dated school days
+  sourceMonth  String?  @map("source_month") // yyyy-MM when kind = month
+  audienceType String   @default("all") @map("audience_type")
+  audienceIds  String   @default("[]") @map("audience_ids")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   school  School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   entries MenuTemplateEntry[]
