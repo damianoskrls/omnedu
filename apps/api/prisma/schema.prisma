@@ -23,6 +23,8 @@ model School {
   subscriptionPlan      String    @default("trial") @map("subscription_plan")
   subscriptionExpiresAt DateTime? @map("subscription_expires_at")
   isActive              Boolean   @default(true) @map("is_active")
+  operatingRegulation   String?   @map("operating_regulation") @db.Text
+  financialRegulation   String?   @map("financial_regulation") @db.Text
   createdAt             DateTime  @default(now()) @map("created_at")
 
   members            SchoolMember[]
