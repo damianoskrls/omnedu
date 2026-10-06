@@ -55,6 +55,7 @@ model School {
   activityInstructors  ActivityInstructor[]
   schoolPosts          SchoolPost[]
   schoolEvents         SchoolEvent[]
+  questionnaires       Questionnaire[]
 
   @@map("schools")
 }
@@ -890,6 +891,27 @@ model StudentForm {
   @@unique([schoolId, studentId, academicYear])
   @@index([schoolId])
   @@map("student_forms")
+}
+
+// ─────────────────────────────────────────────────────────
+// QUESTIONNAIRES (ΕΡΩΤΗΜΑΤΟΛΟΓΙΑ)
+// ─────────────────────────────────────────────────────────
+
+model Questionnaire {
+  id           String   @id @default(uuid())
+  schoolId     String   @map("school_id")
+  title        String
+  description  String?
+  academicYear Int      @map("academic_year")
+  scopeType    String   @default("all") @map("scope_type") // "all" | "class" | "level"
+  scopeIds     String   @default("[]") @map("scope_ids") // JSON array of class/level UUIDs
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId])
+  @@map("questionnaires")
 }
 
 // ─────────────────────────────────────────────────────────

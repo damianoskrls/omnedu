@@ -20,6 +20,7 @@ import { MedicationRequestsModule } from './modules/medication-requests/medicati
 import { MenuTemplatesModule } from './modules/menu-templates/menu-templates.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ExtraServicesModule } from './modules/extra-services/extra-services.module';
+import { QuestionnairesModule } from './modules/questionnaires/questionnaires.module';
 import { SchoolPostsModule } from './modules/school-posts/school-posts.module';
 import { SchoolEventsModule } from './modules/school-events/school-events.module';
 import { StorageModule } from './common/storage/storage.module';
@@ -48,6 +49,7 @@ import { HealthController } from './modules/health/health.controller';
     MenuTemplatesModule,
     NotificationsModule,
     ExtraServicesModule,
+    QuestionnairesModule,
     SchoolPostsModule,
     SchoolEventsModule,
     StorageModule,

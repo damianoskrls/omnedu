@@ -216,6 +216,17 @@ export const dailyMenusApi = {
     api.delete(`/schools/${schoolId}/daily-menus/${id}`),
 };
 
+export const questionnairesApi = {
+  list: (schoolId: string, academicYear?: number) =>
+    api.get(`/schools/${schoolId}/questionnaires`, { params: academicYear ? { academicYear } : {} }),
+  create: (schoolId: string, data: any) =>
+    api.post(`/schools/${schoolId}/questionnaires`, data),
+  update: (schoolId: string, id: string, data: any) =>
+    api.patch(`/schools/${schoolId}/questionnaires/${id}`, data),
+  remove: (schoolId: string, id: string) =>
+    api.delete(`/schools/${schoolId}/questionnaires/${id}`),
+};
+
 export const studentFormsApi = {
   list: (schoolId: string, academicYear?: number) =>
     api.get(`/schools/${schoolId}/student-forms`, { params: { academicYear } }),
