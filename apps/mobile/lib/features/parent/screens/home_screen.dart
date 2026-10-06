@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/widgets/app_image.dart';
-import 'child_detail_screen.dart';
+import 'child_hub_screen.dart';
 import 'school_posts_screen.dart';
 
 final myChildrenProvider = FutureProvider.family<List<dynamic>, String>(
@@ -291,7 +291,10 @@ class HomeScreen extends ConsumerWidget {
                             child: children[i],
                             onTap: () => Navigator.of(context).push(
                               MaterialPageRoute(
-                                builder: (_) => ChildDetailScreen(child: children[i]),
+                                builder: (_) => ChildHubScreen(
+                                  schoolId: schoolId,
+                                  child: Map<String, dynamic>.from(children[i] as Map),
+                                ),
                               ),
                             ),
                           ),

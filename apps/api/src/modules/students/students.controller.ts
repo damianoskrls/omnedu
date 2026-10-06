@@ -21,9 +21,11 @@ export class StudentsController {
   @Get()
   findAll(
     @Param('schoolId') schoolId: string,
+    @CurrentUser() user: JwtPayload,
     @Query('classId') classId?: string,
     @Query('isActive') isActive?: string,
   ) {
+    if (user.role === 'parent') return this.students.findByParent(user.sub, schoolId);
     const active = isActive === 'false' ? false : isActive === 'true' ? true : undefined;
     return this.students.findAll(schoolId, classId, active);
   }
@@ -34,8 +36,12 @@ export class StudentsController {
   }
 
   @Get(':id')
-  findOne(@Param('schoolId') schoolId: string, @Param('id') id: string) {
-    return this.students.findOne(id, schoolId);
+  findOne(
+    @Param('schoolId') schoolId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.students.findOne(id, schoolId, user.role === 'parent' ? user.sub : undefined);
   }
 
   @Post()
