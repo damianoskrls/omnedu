@@ -65,7 +65,7 @@ export class StudentsService {
         studentServices: {
           where: { isActive: true },
           include: {
-            service: { select: { id: true, name: true, serviceType: true, monthlyCost: true } },
+            service: { select: { id: true, name: true, serviceType: true, monthlyCost: true, pickupCost: true, dropoffCost: true } },
             route: { select: { id: true, name: true } },
             stop: { select: { id: true, name: true, address: true, pickupTime: true, dropoffTime: true } },
           },

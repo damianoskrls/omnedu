@@ -49,17 +49,45 @@ export class BillingService {
     fixedAmount?: number | null;
     reason?: string;
   }) {
-    return this.prisma.studentFeeOverride.upsert({
+    const saved = await this.prisma.studentFeeOverride.upsert({
       where: { studentId },
       create: { schoolId, studentId, ...data },
       update: data,
     });
+    await this.refreshUnpaidCharges(schoolId, studentId);
+    return saved;
   }
 
   async deleteStudentFeeOverride(schoolId: string, studentId: string) {
     const override = await this.prisma.studentFeeOverride.findFirst({ where: { schoolId, studentId } });
     if (!override) throw new NotFoundException('Fee override not found');
-    return this.prisma.studentFeeOverride.delete({ where: { studentId } });
+    const deleted = await this.prisma.studentFeeOverride.delete({ where: { studentId } });
+    await this.refreshUnpaidCharges(schoolId, studentId);
+    return deleted;
+  }
+
+  private async refreshUnpaidCharges(schoolId: string, studentId: string) {
+    const unpaid = await this.prisma.monthlyCharge.findMany({
+      where: { schoolId, studentId, status: 'unpaid' },
+    });
+    for (const charge of unpaid) {
+      await this.generateStudentCharge(schoolId, studentId, charge.month, charge.year);
+    }
+  }
+
+  private busNet(ss: {
+    serviceMode?: string | null;
+    discountAmount?: unknown;
+    service: { serviceType: string; monthlyCost?: unknown; pickupCost?: unknown; dropoffCost?: unknown };
+  }) {
+    if (ss.service.serviceType !== 'bus') return 0;
+    const mode = ss.serviceMode ?? 'both';
+    const base = mode === 'pickup'
+      ? Number(ss.service.pickupCost ?? ss.service.monthlyCost ?? 0)
+      : mode === 'dropoff'
+      ? Number(ss.service.dropoffCost ?? ss.service.monthlyCost ?? 0)
+      : Number(ss.service.monthlyCost ?? 0);
+    return Math.max(0, Math.round((base - Number(ss.discountAmount ?? 0)) * 100) / 100);
   }
 
   // ── Subsidies ────────────────────────────────────────────
@@ -196,7 +224,7 @@ export class BillingService {
           },
         },
         activityRegistrations: {
-          where: { status: { not: 'cancelled' } },
+          where: { status: { in: ['approved', 'pending'] } },
           include: {
             activity: { select: { monthlyCost: true, oneTimeCost: true } },
           },
@@ -231,24 +259,11 @@ export class BillingService {
         if (student.feeOverride.fixedAmount !== null) {
           schoolFee = Number(student.feeOverride.fixedAmount);
         } else if (student.feeOverride.discountPct !== null) {
-          schoolFee = schoolFee * (1 - Number(student.feeOverride.discountPct) / 100);
+          schoolFee = Math.round(schoolFee * (1 - Number(student.feeOverride.discountPct) / 100) * 100) / 100;
         }
       }
 
-      // Bus fee — cost depends on serviceMode (pickup | dropoff | both)
-      const busFee = student.studentServices
-        .filter(ss => ss.service.serviceType === 'bus')
-        .reduce((sum, ss) => {
-          const mode = (ss as any).serviceMode ?? 'both';
-          const cost = mode === 'pickup'
-            ? Number((ss.service as any).pickupCost ?? ss.service.monthlyCost ?? 0)
-            : mode === 'dropoff'
-            ? Number((ss.service as any).dropoffCost ?? ss.service.monthlyCost ?? 0)
-            : Number(ss.service.monthlyCost ?? 0);
-          return sum + cost;
-        }, 0);
-
-      // Activity fees
+      const busFee = student.studentServices.reduce((sum, ss) => sum + this.busNet(ss), 0);
       const activityFees = student.activityRegistrations
         .reduce((sum, r) => sum + Number(r.activity.monthlyCost ?? 0), 0);
 
@@ -376,7 +391,7 @@ export class BillingService {
           include: { service: { select: { serviceType: true, monthlyCost: true, pickupCost: true, dropoffCost: true } } },
         },
         activityRegistrations: {
-          where: { status: { not: 'cancelled' } },
+          where: { status: { in: ['approved', 'pending'] } },
           include: { activity: { select: { monthlyCost: true } } },
         },
         feeOverride: true,
@@ -396,16 +411,11 @@ export class BillingService {
     }
     if (student.feeOverride) {
       if (student.feeOverride.fixedAmount !== null) schoolFee = Number(student.feeOverride.fixedAmount);
-      else if (student.feeOverride.discountPct !== null) schoolFee *= (1 - Number(student.feeOverride.discountPct) / 100);
+      else if (student.feeOverride.discountPct !== null) {
+        schoolFee = Math.round(schoolFee * (1 - Number(student.feeOverride.discountPct) / 100) * 100) / 100;
+      }
     }
-    const busFee = student.studentServices.filter(ss => ss.service.serviceType === 'bus')
-      .reduce((sum, ss) => {
-        const mode = (ss as any).serviceMode ?? 'both';
-        const cost = mode === 'pickup' ? Number((ss.service as any).pickupCost ?? ss.service.monthlyCost ?? 0)
-          : mode === 'dropoff' ? Number((ss.service as any).dropoffCost ?? ss.service.monthlyCost ?? 0)
-          : Number(ss.service.monthlyCost ?? 0);
-        return sum + cost;
-      }, 0);
+    const busFee = student.studentServices.reduce((sum, ss) => sum + this.busNet(ss), 0);
     const activityFees = student.activityRegistrations.reduce((sum, r) => sum + Number(r.activity.monthlyCost ?? 0), 0);
     const subsidyTotal = student.subsidies.reduce((sum, s) => sum + Number(s.monthlyAmount), 0);
     const totalDue = Math.max(0, schoolFee + busFee + activityFees - subsidyTotal);
