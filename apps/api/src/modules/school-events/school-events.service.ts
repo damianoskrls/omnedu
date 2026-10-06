@@ -37,7 +37,9 @@ export class SchoolEventsService {
   }
 
   async create(schoolId: string, userId: string, dto: any) {
-    const { title, description, eventType, eventDate, costPerChild, classIds, mediaUrls, teacherIds, status } = dto;
+    const { title, description, eventType, eventDate, costPerChild, classIds, mediaUrls, teacherIds, status, audienceType, audienceIds } = dto;
+
+    const resolvedClassIds = await this.resolveAudienceToClassIds(schoolId, audienceType, audienceIds, classIds);
 
     const event = await this.prisma.schoolEvent.create({
       data: {
@@ -48,7 +50,9 @@ export class SchoolEventsService {
         eventType: eventType ?? 'general',
         eventDate: eventDate ? new Date(eventDate) : null,
         costPerChild: costPerChild != null ? costPerChild : null,
-        classIds: classIds ?? [],
+        classIds: resolvedClassIds,
+        audienceType: audienceType ?? 'all',
+        audienceIds: JSON.stringify(audienceIds ?? []),
         mediaUrls: mediaUrls ?? [],
         status: status ?? 'draft',
         teachers: teacherIds?.length
@@ -60,9 +64,8 @@ export class SchoolEventsService {
       },
     });
 
-    // If published, auto-enroll students from the selected classes
-    if (event.status === 'published' && classIds?.length) {
-      await this.enrollStudentsForClasses(schoolId, event.id, classIds);
+    if (event.status === 'published' && resolvedClassIds.length) {
+      await this.enrollStudentsForClasses(schoolId, event.id, resolvedClassIds);
     }
 
     return event;
@@ -72,10 +75,14 @@ export class SchoolEventsService {
     const existing = await this.prisma.schoolEvent.findFirst({ where: { id: eventId, schoolId } });
     if (!existing) throw new NotFoundException('Event not found');
 
-    const { title, description, eventType, eventDate, costPerChild, classIds, mediaUrls, teacherIds, status } = dto;
+    const { title, description, eventType, eventDate, costPerChild, classIds, mediaUrls, teacherIds, status, audienceType, audienceIds } = dto;
 
     const wasPublished = existing.status === 'published';
     const becomesPublished = status === 'published' && !wasPublished;
+
+    const resolvedClassIds = (audienceType !== undefined || audienceIds !== undefined)
+      ? await this.resolveAudienceToClassIds(schoolId, audienceType, audienceIds, classIds)
+      : classIds;
 
     const event = await this.prisma.schoolEvent.update({
       where: { id: eventId },
@@ -85,9 +92,11 @@ export class SchoolEventsService {
         ...(eventType !== undefined && { eventType }),
         ...(eventDate !== undefined && { eventDate: eventDate ? new Date(eventDate) : null }),
         ...(costPerChild !== undefined && { costPerChild }),
-        ...(classIds !== undefined && { classIds }),
+        ...(resolvedClassIds !== undefined && { classIds: resolvedClassIds }),
         ...(mediaUrls !== undefined && { mediaUrls }),
         ...(status !== undefined && { status }),
+        ...(audienceType !== undefined && { audienceType }),
+        ...(audienceIds !== undefined && { audienceIds: JSON.stringify(audienceIds) }),
         ...(teacherIds !== undefined && {
           teachers: {
             deleteMany: {},
@@ -101,12 +110,38 @@ export class SchoolEventsService {
       },
     });
 
-    // Auto-enroll when event is first published
-    if (becomesPublished && classIds?.length) {
-      await this.enrollStudentsForClasses(schoolId, eventId, classIds);
+    if (becomesPublished && resolvedClassIds?.length) {
+      await this.enrollStudentsForClasses(schoolId, eventId, resolvedClassIds);
     }
 
     return event;
+  }
+
+  private async resolveAudienceToClassIds(
+    schoolId: string,
+    audienceType?: string,
+    audienceIds?: string[],
+    fallbackClassIds?: string[],
+  ): Promise<string[]> {
+    if (!audienceType || audienceType === 'all') {
+      // Enroll all classes in the school
+      const classes = await this.prisma.class.findMany({ where: { schoolId }, select: { id: true } });
+      return classes.map(c => c.id);
+    }
+    if (audienceType === 'class') {
+      return audienceIds ?? fallbackClassIds ?? [];
+    }
+    if (audienceType === 'level' && audienceIds?.length) {
+      const classes = await this.prisma.class.findMany({
+        where: { schoolId, levelId: { in: audienceIds } },
+        select: { id: true },
+      });
+      return classes.map(c => c.id);
+    }
+    if (audienceType === 'teachers') {
+      return []; // No student enrollment for teacher-only events
+    }
+    return fallbackClassIds ?? [];
   }
 
   async remove(schoolId: string, eventId: string) {

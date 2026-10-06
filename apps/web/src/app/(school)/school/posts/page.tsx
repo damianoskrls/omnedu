@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { schoolPostsApi } from '@/lib/api';
+import { schoolPostsApi, classesApi, levelsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
 import {
   Plus, X, Pencil, Trash2, Image as ImageIcon, CalendarDays,
-  Newspaper, Upload, ChevronDown,
+  Newspaper, Upload, Users,
 } from 'lucide-react';
+import { AudienceSelector, AudienceValue, audienceLabel } from '@/components/AudienceSelector';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -21,6 +22,8 @@ type Post = {
   publishedAt?: string;
   createdAt: string;
   author?: { fullName?: string };
+  audienceType?: string;
+  audienceIds?: string;
 };
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -52,6 +55,8 @@ export default function PostsPage() {
   const [modal, setModal] = useState<Partial<Post> | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
+  const [levels, setLevels] = useState<{ id: string; name: string }[]>([]);
 
   const load = async (type?: PostType | 'all') => {
     if (!schoolId) return;
@@ -64,7 +69,17 @@ export default function PostsPage() {
     }
   };
 
-  useEffect(() => { load(activeTab); }, [schoolId, activeTab]);
+  useEffect(() => {
+    if (!schoolId) return;
+    load(activeTab);
+    Promise.all([
+      classesApi.list(schoolId) as Promise<any>,
+      levelsApi.list(schoolId) as Promise<any>,
+    ]).then(([c, l]) => {
+      setClasses(Array.isArray(c) ? c : []);
+      setLevels(Array.isArray(l) ? l : []);
+    });
+  }, [schoolId, activeTab]);
 
   const openNew = () => setModal({
     postType: 'excursion',
@@ -72,23 +87,30 @@ export default function PostsPage() {
     content: '',
     mediaUrls: [],
     publishedAt: new Date().toISOString().slice(0, 10),
+    audienceType: 'all',
+    audienceIds: '[]',
   });
 
   const openEdit = (post: Post) => setModal({
     ...post,
     publishedAt: post.publishedAt ? post.publishedAt.slice(0, 10) : new Date().toISOString().slice(0, 10),
+    audienceType: post.audienceType ?? 'all',
+    audienceIds: post.audienceIds ?? '[]',
   });
 
   const save = async () => {
     if (!modal?.title?.trim() || !schoolId) return;
     setSaving(true);
     try {
+      const audienceIds: string[] = (() => { try { return JSON.parse(modal.audienceIds ?? '[]'); } catch { return []; } })();
       const payload = {
         title: modal.title,
         content: modal.content || undefined,
         postType: modal.postType ?? 'general',
         mediaUrls: modal.mediaUrls ?? [],
         publishedAt: modal.publishedAt ? new Date(modal.publishedAt).toISOString() : undefined,
+        audienceType: modal.audienceType ?? 'all',
+        audienceIds,
       };
       if (modal.id) {
         await schoolPostsApi.update(schoolId, modal.id, payload);
@@ -170,7 +192,7 @@ export default function PostsPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map(post => (
-            <PostCard key={post.id} post={post} onEdit={openEdit} onDelete={remove} />
+            <PostCard key={post.id} post={post} onEdit={openEdit} onDelete={remove} classes={classes} levels={levels} />
           ))}
         </div>
       )}
@@ -186,6 +208,8 @@ export default function PostsPage() {
           uploading={uploading}
           onUploadImage={uploadImage}
           onRemoveImage={removeImage}
+          classes={classes}
+          levels={levels}
         />
       )}
     </div>
@@ -194,11 +218,21 @@ export default function PostsPage() {
 
 // ─── PostCard ────────────────────────────────────────────────────────────────
 
-function PostCard({ post, onEdit, onDelete }: { post: Post; onEdit: (p: Post) => void; onDelete: (id: string) => void }) {
+function PostCard({
+  post, onEdit, onDelete,
+  classes, levels,
+}: {
+  post: Post;
+  onEdit: (p: Post) => void;
+  onDelete: (id: string) => void;
+  classes: { id: string; name: string }[];
+  levels: { id: string; name: string }[];
+}) {
   const meta = TYPE_META[post.postType] ?? TYPE_META.general;
   const date = post.publishedAt
     ? new Date(post.publishedAt).toLocaleDateString('el-GR', { day: 'numeric', month: 'short', year: 'numeric' })
     : '';
+  const audience = audienceLabel(post.audienceType ?? 'all', post.audienceIds ?? '[]', classes, levels);
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col hover:shadow-md transition-shadow">
@@ -231,6 +265,10 @@ function PostCard({ post, onEdit, onDelete }: { post: Post; onEdit: (p: Post) =>
         {post.content && (
           <p className="text-xs text-gray-500 line-clamp-2 flex-1">{post.content}</p>
         )}
+        <div className="flex items-center gap-1 mt-2">
+          <Users className="w-3 h-3 text-gray-400" />
+          <span className="text-xs text-gray-400 truncate">{audience}</span>
+        </div>
         <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
           <button
             onClick={() => onEdit(post)}
@@ -253,7 +291,7 @@ function PostCard({ post, onEdit, onDelete }: { post: Post; onEdit: (p: Post) =>
 // ─── PostModal ───────────────────────────────────────────────────────────────
 
 function PostModal({
-  post, onChange, onSave, onClose, saving, uploading, onUploadImage, onRemoveImage,
+  post, onChange, onSave, onClose, saving, uploading, onUploadImage, onRemoveImage, classes, levels,
 }: {
   post: Partial<Post>;
   onChange: (p: Partial<Post>) => void;
@@ -263,6 +301,8 @@ function PostModal({
   uploading: boolean;
   onUploadImage: (f: File) => void;
   onRemoveImage: (idx: number) => void;
+  classes: { id: string; name: string }[];
+  levels: { id: string; name: string }[];
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -323,6 +363,20 @@ function PostModal({
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               value={post.publishedAt ?? ''}
               onChange={e => onChange({ ...post, publishedAt: e.target.value })}
+            />
+          </div>
+
+          {/* Audience */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-2">Απευθύνεται σε</label>
+            <AudienceSelector
+              value={{
+                audienceType: (post.audienceType ?? 'all') as any,
+                audienceIds: (() => { try { return JSON.parse(post.audienceIds ?? '[]'); } catch { return []; } })(),
+              }}
+              onChange={v => onChange({ ...post, audienceType: v.audienceType, audienceIds: JSON.stringify(v.audienceIds) })}
+              classes={classes}
+              levels={levels}
             />
           </div>
 

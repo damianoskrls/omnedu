@@ -436,6 +436,8 @@ model Activity {
   startsOn     DateTime? @map("starts_on") @db.Date
   endsOn       DateTime? @map("ends_on") @db.Date
   deadline     DateTime?
+  audienceType String    @default("all") @map("audience_type")
+  audienceIds  String    @default("[]") @map("audience_ids")
   isActive     Boolean   @default(true) @map("is_active")
   createdAt    DateTime  @default(now()) @map("created_at")
 
@@ -1103,15 +1105,17 @@ model ActivityInstructorAssignment {
 }
 
 model SchoolPost {
-  id          String    @id @default(uuid())
-  schoolId    String    @map("school_id")
-  authorId    String    @map("author_id")
-  title       String
-  content     String?
-  postType    String    @default("general") @map("post_type")
-  mediaUrls   String[]  @map("media_urls")
-  publishedAt DateTime? @map("published_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
+  id           String    @id @default(uuid())
+  schoolId     String    @map("school_id")
+  authorId     String    @map("author_id")
+  title        String
+  content      String?
+  postType     String    @default("general") @map("post_type")
+  mediaUrls    String[]  @map("media_urls")
+  publishedAt  DateTime? @map("published_at")
+  audienceType String    @default("all") @map("audience_type")
+  audienceIds  String    @default("[]") @map("audience_ids")
+  createdAt    DateTime  @default(now()) @map("created_at")
 
   school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   author User   @relation(fields: [authorId], references: [id])
@@ -1125,19 +1129,21 @@ model SchoolPost {
 // ─────────────────────────────────────────────────────────
 
 model SchoolEvent {
-  id          String    @id @default(uuid())
-  schoolId    String    @map("school_id")
-  createdById String    @map("created_by_id")
-  title       String
-  description String?
-  eventType   String    @default("general") @map("event_type") // excursion | theater | event | general
-  eventDate   DateTime? @map("event_date")
-  costPerChild Decimal? @map("cost_per_child") @db.Decimal(10, 2)
-  classIds    String[]  @map("class_ids")     // which classes this applies to
-  mediaUrls   String[]  @map("media_urls")    // pre-event images (poster etc)
-  status      String    @default("draft") // draft | published | completed
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  id           String    @id @default(uuid())
+  schoolId     String    @map("school_id")
+  createdById  String    @map("created_by_id")
+  title        String
+  description  String?
+  eventType    String    @default("general") @map("event_type") // excursion | theater | event | general
+  eventDate    DateTime? @map("event_date")
+  costPerChild Decimal?  @map("cost_per_child") @db.Decimal(10, 2)
+  classIds     String[]  @map("class_ids")      // kept for backward compat / enrollment resolution
+  audienceType String    @default("all") @map("audience_type")
+  audienceIds  String    @default("[]") @map("audience_ids")
+  mediaUrls    String[]  @map("media_urls")     // pre-event images (poster etc)
+  status       String    @default("draft")      // draft | published | completed
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   school      School                  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   createdBy   User                    @relation(fields: [createdById], references: [id])

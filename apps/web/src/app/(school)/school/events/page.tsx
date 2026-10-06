@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { schoolEventsApi, classesApi, schoolsApi } from '@/lib/api';
+import { schoolEventsApi, classesApi, levelsApi, schoolsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
 import {
   Plus, X, CalendarDays, Users, Euro, BookOpen, Check, Clock,
   Pencil, Trash2, ChevronDown, ChevronUp, Image, Upload,
 } from 'lucide-react';
+import { AudienceSelector, AudienceValue, audienceLabel } from '@/components/AudienceSelector';
 
 const EVENT_TYPES: Record<string, { label: string; color: string; bg: string }> = {
   excursion: { label: 'Εκδρομή', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
@@ -37,6 +38,7 @@ export default function EventsPage() {
 
   const [events, setEvents] = useState<any[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
+  const [levels, setLevels] = useState<any[]>([]);
   const [staff, setStaff]   = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -45,7 +47,8 @@ export default function EventsPage() {
   const [editingEvent, setEditingEvent] = useState<any>(null);
   const [form, setForm] = useState<any>({
     title: '', description: '', eventType: 'excursion', eventDate: '',
-    costPerChild: '', classIds: [], teacherIds: [], mediaUrls: [], status: 'draft',
+    costPerChild: '', classIds: [], audienceType: 'all', audienceIds: [],
+    teacherIds: [], mediaUrls: [], status: 'draft',
   });
   const [saving, setSaving] = useState(false);
   const [uploadingImg, setUploadingImg] = useState(false);
@@ -66,18 +69,21 @@ export default function EventsPage() {
     Promise.all([
       schoolEventsApi.list(schoolId).then(r => setEvents(r ?? [])),
       classesApi.list(schoolId).then(r => setClasses(r ?? [])),
+      (levelsApi.list(schoolId) as Promise<any>).then(r => setLevels(Array.isArray(r) ? r : [])),
       schoolsApi.getMembers(schoolId, 'teacher').then(r => setStaff(r ?? [])),
     ]).finally(() => setLoading(false));
   }, [schoolId]);
 
   const resetForm = () => setForm({
     title: '', description: '', eventType: 'excursion', eventDate: '',
-    costPerChild: '', classIds: [], teacherIds: [], mediaUrls: [], status: 'draft',
+    costPerChild: '', classIds: [], audienceType: 'all', audienceIds: [],
+    teacherIds: [], mediaUrls: [], status: 'draft',
   });
 
   const openCreate = () => { resetForm(); setEditingEvent(null); setModal('create'); };
   const openEdit = (ev: any) => {
     setEditingEvent(ev);
+    const storedIds: string[] = (() => { try { return JSON.parse(ev.audienceIds ?? '[]'); } catch { return []; } })();
     setForm({
       title: ev.title,
       description: ev.description ?? '',
@@ -85,6 +91,8 @@ export default function EventsPage() {
       eventDate: ev.eventDate ? ev.eventDate.slice(0, 10) : '',
       costPerChild: ev.costPerChild ?? '',
       classIds: ev.classIds ?? [],
+      audienceType: ev.audienceType ?? 'all',
+      audienceIds: storedIds,
       teacherIds: (ev.teachers ?? []).map((t: any) => t.userId),
       mediaUrls: ev.mediaUrls ?? [],
       status: ev.status,
@@ -176,8 +184,6 @@ export default function EventsPage() {
     } finally { setUploadingMedia(false); }
   };
 
-  const toggleClass = (id: string) =>
-    setForm((p: any) => ({ ...p, classIds: p.classIds.includes(id) ? p.classIds.filter((c: string) => c !== id) : [...p.classIds, id] }));
   const toggleTeacher = (id: string) =>
     setForm((p: any) => ({ ...p, teacherIds: p.teacherIds.includes(id) ? p.teacherIds.filter((c: string) => c !== id) : [...p.teacherIds, id] }));
 
@@ -236,7 +242,7 @@ export default function EventsPage() {
                           </span>
                         )}
                         {ev.costPerChild && <span className="flex items-center gap-1"><Euro className="w-3 h-3" />{Number(ev.costPerChild).toFixed(2)} ανά παιδί</span>}
-                        {ev.classIds?.length > 0 && <span className="flex items-center gap-1"><BookOpen className="w-3 h-3" />{ev.classIds.length} τάξεις</span>}
+                        <span className="flex items-center gap-1"><Users className="w-3 h-3" />{audienceLabel(ev.audienceType ?? 'all', ev.audienceIds ?? '[]', classes, levels)}</span>
                         {totalEnroll > 0 && <span className="flex items-center gap-1"><Users className="w-3 h-3" />{totalEnroll} μαθητές</span>}
                         {postMediaCount > 0 && <span className="flex items-center gap-1"><Image className="w-3 h-3" />{postMediaCount} media</span>}
                       </div>
@@ -417,22 +423,19 @@ export default function EventsPage() {
                   className={`${inputCls} resize-none`} />
               </div>
 
-              {/* Classes */}
+              {/* Audience */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Τάξεις που αφορά</label>
-                {classes.length === 0 ? (
-                  <p className="text-sm text-gray-400">Δεν βρέθηκαν τάξεις</p>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {classes.map((c: any) => (
-                      <button key={c.id} onClick={() => toggleClass(c.id)}
-                        className={`px-3 py-1.5 rounded-xl border text-xs font-medium transition-colors ${
-                          form.classIds.includes(c.id) ? 'border-violet-500 bg-violet-50 text-violet-700' : 'border-gray-200 text-gray-600 hover:border-violet-200'
-                        }`}>
-                        {form.classIds.includes(c.id) && <Check className="w-3 h-3 inline mr-1" />}{c.name}
-                      </button>
-                    ))}
-                  </div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Απευθύνεται σε</label>
+                <AudienceSelector
+                  value={{ audienceType: form.audienceType ?? 'all', audienceIds: form.audienceIds ?? [] }}
+                  onChange={(v: AudienceValue) => setForm((p: any) => ({ ...p, audienceType: v.audienceType, audienceIds: v.audienceIds }))}
+                  classes={classes}
+                  levels={levels}
+                />
+                {form.status === 'published' && (
+                  <p className="text-xs text-blue-600 mt-2 flex items-center gap-1">
+                    <Users className="w-3 h-3" />Η δημοσίευση ανατάσσει αυτόματα τους μαθητές της επιλεγμένης ομάδας
+                  </p>
                 )}
               </div>
 
@@ -489,11 +492,6 @@ export default function EventsPage() {
                     </button>
                   ))}
                 </div>
-                {form.status === 'published' && (
-                  <p className="text-xs text-blue-600 mt-1.5 flex items-center gap-1">
-                    <Users className="w-3 h-3" />Η δημοσίευση ανατάσσει αυτόματα τους μαθητές των επιλεγμένων τάξεων
-                  </p>
-                )}
               </div>
             </div>
 

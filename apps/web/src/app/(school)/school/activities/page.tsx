@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { activitiesApi, studentsApi } from '@/lib/api';
+import { activitiesApi, studentsApi, classesApi, levelsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
 import {
   Plus, X, ChevronDown, ChevronUp, CheckCircle, XCircle, Clock, Users, Euro,
   Calendar, Trash2, BookOpen, UserCheck, CalendarDays, Zap, Upload,
 } from 'lucide-react';
+import { AudienceSelector, AudienceValue, audienceLabel } from '@/components/AudienceSelector';
 import { format } from 'date-fns';
 import { el } from 'date-fns/locale';
 
@@ -16,6 +17,7 @@ type Activity = {
   id: string; title: string; description?: string; activityType: string;
   monthlyCost?: number; oneTimeCost?: number; maxCapacity?: number;
   startsOn?: string; endsOn?: string; deadline?: string; isActive: boolean;
+  audienceType?: string; audienceIds?: string;
   _count?: { registrations: number };
 };
 type Registration = {
@@ -80,6 +82,8 @@ export default function ActivitiesPage() {
   const [showActivityModal, setShowActivityModal] = useState(false);
   const [editActivity, setEditActivity] = useState<Partial<Activity>>(emptyActivity());
   const [saving, setSaving] = useState(false);
+  const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
+  const [levels, setLevels] = useState<{ id: string; name: string }[]>([]);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
   const [inlineEnroll, setInlineEnroll] = useState<Record<string, { studentId: string; notes: string }>>({});
@@ -126,6 +130,11 @@ export default function ActivitiesPage() {
 
   useEffect(() => { loadActivities(); }, [loadActivities]);
   useEffect(() => { if (!schoolId || !isAdmin) return; studentsApi.list(schoolId).then((r: any) => setStudents(r || [])); }, [schoolId, isAdmin]);
+  useEffect(() => {
+    if (!schoolId) return;
+    Promise.all([classesApi.list(schoolId) as Promise<any>, levelsApi.list(schoolId) as Promise<any>])
+      .then(([c, l]) => { setClasses(Array.isArray(c) ? c : []); setLevels(Array.isArray(l) ? l : []); });
+  }, [schoolId]);
 
   useEffect(() => {
     if (activeTab === 'schedule' && schedule.length === 0) loadSchedule();
@@ -155,6 +164,7 @@ export default function ActivitiesPage() {
     if (!editActivity.title?.trim()) return;
     setSaving(true);
     try {
+      const audienceIds: string[] = (() => { try { return JSON.parse(editActivity.audienceIds ?? '[]'); } catch { return []; } })();
       const payload = {
         title: editActivity.title, description: editActivity.description,
         activityType: editActivity.activityType,
@@ -163,6 +173,8 @@ export default function ActivitiesPage() {
         maxCapacity: editActivity.maxCapacity ? Number(editActivity.maxCapacity) : undefined,
         startsOn: editActivity.startsOn || undefined, endsOn: editActivity.endsOn || undefined,
         deadline: editActivity.deadline || undefined, isActive: editActivity.isActive ?? true,
+        audienceType: editActivity.audienceType ?? 'all',
+        audienceIds,
       };
       if (editActivity.id) await activitiesApi.update(schoolId, editActivity.id, payload);
       else await activitiesApi.create(schoolId, payload);
@@ -558,6 +570,18 @@ export default function ActivitiesPage() {
                 <label className="block text-xs font-medium text-gray-600 mb-1">Περιγραφή</label>
                 <textarea rows={3} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
                   value={editActivity.description ?? ''} onChange={e => setEditActivity(p => ({ ...p, description: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-2">Απευθύνεται σε</label>
+                <AudienceSelector
+                  value={{
+                    audienceType: (editActivity.audienceType ?? 'all') as any,
+                    audienceIds: (() => { try { return JSON.parse(editActivity.audienceIds ?? '[]'); } catch { return []; } })(),
+                  }}
+                  onChange={(v: AudienceValue) => setEditActivity(p => ({ ...p, audienceType: v.audienceType, audienceIds: JSON.stringify(v.audienceIds) }))}
+                  classes={classes}
+                  levels={levels}
+                />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

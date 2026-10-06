@@ -37,6 +37,8 @@ export class SchoolPostsService {
     postType?: string;
     mediaUrls?: string[];
     publishedAt?: string;
+    audienceType?: string;
+    audienceIds?: string[];
   }) {
     return this.prisma.schoolPost.create({
       data: {
@@ -47,6 +49,8 @@ export class SchoolPostsService {
         postType: data.postType ?? 'general',
         mediaUrls: data.mediaUrls ?? [],
         publishedAt: data.publishedAt ? new Date(data.publishedAt) : new Date(),
+        audienceType: data.audienceType ?? 'all',
+        audienceIds: JSON.stringify(data.audienceIds ?? []),
       },
       include: {
         author: { select: { id: true, fullName: true, avatarUrl: true } },
@@ -60,6 +64,8 @@ export class SchoolPostsService {
     postType?: string;
     mediaUrls?: string[];
     publishedAt?: string | null;
+    audienceType?: string;
+    audienceIds?: string[];
   }) {
     const post = await this.prisma.schoolPost.findFirst({ where: { id, schoolId } });
     if (!post) throw new NotFoundException('Post not found');
@@ -74,6 +80,8 @@ export class SchoolPostsService {
         ...(data.publishedAt !== undefined && {
           publishedAt: data.publishedAt ? new Date(data.publishedAt) : null,
         }),
+        ...(data.audienceType !== undefined && { audienceType: data.audienceType }),
+        ...(data.audienceIds !== undefined && { audienceIds: JSON.stringify(data.audienceIds) }),
       },
       include: {
         author: { select: { id: true, fullName: true, avatarUrl: true } },
