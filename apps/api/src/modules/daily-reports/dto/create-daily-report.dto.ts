@@ -2,7 +2,10 @@ import { IsString, IsOptional, IsInt, IsDateString, IsIn, Min, Max, IsArray } fr
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 const MEAL_OPTIONS = ['all', 'most', 'half', 'little', 'none'];
-const MOOD_OPTIONS = ['great', 'good', 'okay', 'tired', 'upset'];
+const MOOD_OPTIONS = [
+  'great', 'good', 'okay', 'tired', 'upset',
+  'χαρούμενος', 'ήρεμος', 'κουρασμένος', 'λυπημένος', 'αγχωμένος', 'ενθουσιασμένος',
+];
 
 export class CreateDailyReportDto {
   @ApiProperty()
