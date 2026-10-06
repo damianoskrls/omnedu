@@ -167,6 +167,8 @@ export const billingApi = {
     api.get(`/schools/${schoolId}/billing/charges`, { params: { month, year } }),
   getStudentCharges: (schoolId: string, studentId: string) =>
     api.get(`/schools/${schoolId}/billing/charges/student/${studentId}`),
+  getStudentStatement: (schoolId: string, studentId: string) =>
+    api.get(`/schools/${schoolId}/billing/students/${studentId}/statement`),
   generateCharges: (schoolId: string, month: number, year: number) =>
     api.post(`/schools/${schoolId}/billing/charges/generate`, { month, year }),
   generateStudentCharge: (schoolId: string, studentId: string, month: number, year: number) =>
