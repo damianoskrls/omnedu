@@ -3,10 +3,9 @@
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { extraServicesApi, studentsApi } from '@/lib/api';
-import { Map } from 'lucide-react';
 import { useStoredUser } from '@/lib/auth';
 import {
-  Bus, Plus, X, ChevronDown, ChevronUp, Pencil, Trash2,
+  Bus, Plus, X, Pencil, Trash2,
   MapPin, Clock, User, Users, Settings, Home, Phone,
 } from 'lucide-react';
 
@@ -60,7 +59,7 @@ type StudentEntry = {
   route?: { id: string; name: string };
   stop?: { id: string; name: string; pickupTime?: string; dropoffTime?: string };
 };
-type Student = { id: string; fullName: string };
+type Student = { id: string; fullName: string; avatarUrl?: string; parents?: { user: { id: string } }[] };
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -71,9 +70,6 @@ export default function RoutesPage() {
 
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expandedService, setExpandedService] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<Record<string, 'settings' | 'students' | 'schedule'>>({});
-  const [settingsForms, setSettingsForms] = useState<Record<string, Partial<Service>>>({});
 
   const [allStudents, setAllStudents] = useState<Student[]>([]);
   const [studentServiceData, setStudentServiceData] = useState<Record<string, StudentEntry[]>>({});
@@ -94,7 +90,20 @@ export default function RoutesPage() {
     setLoading(true);
     try {
       const all = (await extraServicesApi.list(schoolId)) as unknown as Service[];
-      setServices(all.filter(s => s.serviceType === 'bus'));
+      const bus = all.filter(s => s.serviceType === 'bus');
+      setServices(bus);
+      // Load student data for all services immediately
+      const entries = await Promise.all(
+        bus.map(async svc => {
+          try {
+            const data = await extraServicesApi.getStudents(schoolId, svc.id) as unknown as StudentEntry[];
+            return [svc.id, data] as const;
+          } catch {
+            return [svc.id, [] as StudentEntry[]] as const;
+          }
+        }),
+      );
+      setStudentServiceData(Object.fromEntries(entries));
     } finally {
       setLoading(false);
     }
@@ -102,8 +111,7 @@ export default function RoutesPage() {
 
   useEffect(() => { load(); }, [schoolId]);
 
-  const loadStudents = async (serviceId: string) => {
-    if (studentServiceData[serviceId] !== undefined) return;
+  const refreshStudents = async (serviceId: string) => {
     try {
       const data = await extraServicesApi.getStudents(schoolId, serviceId) as unknown as StudentEntry[];
       setStudentServiceData(prev => ({ ...prev, [serviceId]: data }));
@@ -117,26 +125,6 @@ export default function RoutesPage() {
       const data = await studentsApi.list(schoolId) as unknown as Student[];
       setAllStudents(data);
     }
-  };
-
-  const toggleExpand = async (id: string) => {
-    if (expandedService === id) { setExpandedService(null); return; }
-    setExpandedService(id);
-    const tab = activeTab[id] ?? 'settings';
-    if (tab === 'students' || tab === 'schedule') await loadStudents(id);
-    if (tab === 'settings' || !activeTab[id]) {
-      const svc = services.find(s => s.id === id);
-      if (svc) setSettingsForms(prev => ({ ...prev, [id]: { ...svc } }));
-    }
-  };
-
-  const switchTab = async (serviceId: string, tab: 'settings' | 'students' | 'schedule') => {
-    setActiveTab(prev => ({ ...prev, [serviceId]: tab }));
-    if (tab === 'settings') {
-      const svc = services.find(s => s.id === serviceId);
-      if (svc) setSettingsForms(prev => ({ ...prev, [serviceId]: { ...svc } }));
-    }
-    if (tab === 'students' || tab === 'schedule') await loadStudents(serviceId);
   };
 
   const deleteService = async (serviceId: string) => {
@@ -173,26 +161,6 @@ export default function RoutesPage() {
     }
   };
 
-  const saveSettings = async (serviceId: string) => {
-    const f = settingsForms[serviceId];
-    if (!f?.name?.trim()) return;
-    setSaving(true);
-    try {
-      const oneWay = f.pickupCost ? Number(f.pickupCost) : undefined;
-      await extraServicesApi.update(schoolId, serviceId, {
-        name: f.name,
-        description: f.description || undefined,
-        driverName: (f as any).driverName || undefined,
-        busNumber: (f as any).busNumber || undefined,
-        monthlyCost: f.monthlyCost ? Number(f.monthlyCost) : undefined,
-        pickupCost: oneWay,
-        dropoffCost: oneWay,
-      });
-      await load();
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const saveRoute = async () => {
     if (!routeModal?.route?.name?.trim()) return;
@@ -258,17 +226,16 @@ export default function RoutesPage() {
 
   const openAssign = async (serviceId: string) => {
     await loadAllStudents();
-    setAssignForm({ studentId: '', routeId: '', stopId: '', serviceMode: 'both', pickupTime: '', dropoffTime: '', dailyTimes: {} as DailyTimes, pickupContact: '', dropoffContact: '', pickupPersons: [], homeAddress: '', homeLat: undefined, homeLng: undefined, discountAmount: '', notes: '' });
+    setAssignForm({ studentIds: [] as string[], routeId: '', stopId: '', serviceMode: 'both', pickupTime: '', dropoffTime: '', dailyTimes: {} as DailyTimes, pickupContact: '', dropoffContact: '', pickupPersons: [], homeAddress: '', homeLat: undefined, homeLng: undefined, discountAmount: '', notes: '' });
     setAssignModal({ serviceId });
   };
 
   const saveAssign = async () => {
-    if (!assignModal || !assignForm.studentId) return;
+    if (!assignModal || !assignForm.studentIds?.length) return;
     setSaving(true);
     try {
       const hasDailyTimes = Object.keys(assignForm.dailyTimes ?? {}).length > 0;
-      await extraServicesApi.assignStudent(schoolId, assignModal.serviceId, {
-        studentId: assignForm.studentId,
+      const basePayload = {
         routeId: assignForm.routeId || undefined,
         stopId: assignForm.stopId || undefined,
         serviceMode: assignForm.serviceMode ?? 'both',
@@ -283,9 +250,13 @@ export default function RoutesPage() {
         homeLng: assignForm.homeLng ?? undefined,
         discountAmount: assignForm.discountAmount ? Number(assignForm.discountAmount) : undefined,
         notes: assignForm.notes || undefined,
-      });
+      };
+      for (const studentId of assignForm.studentIds) {
+        await extraServicesApi.assignStudent(schoolId, assignModal.serviceId, { ...basePayload, studentId });
+      }
+      const sid = assignModal.serviceId;
       setAssignModal(null);
-      setStudentServiceData(prev => { const n = { ...prev }; delete n[assignModal.serviceId]; return n; });
+      await refreshStudents(sid);
     } finally {
       setSaving(false);
     }
@@ -337,9 +308,9 @@ export default function RoutesPage() {
       ) as unknown as StudentEntry;
       setStudentServiceData(prev => ({
         ...prev,
-        [editStudentModal.serviceId]: prev[editStudentModal.serviceId]?.map(s =>
+        [editStudentModal.serviceId]: (prev[editStudentModal.serviceId] ?? []).map(s =>
           s.id === editStudentModal.ssId ? { ...s, ...updated } : s
-        ) ?? [],
+        ),
       }));
       setEditStudentModal(null);
     } finally {
@@ -406,259 +377,106 @@ export default function RoutesPage() {
       ) : (
         <div className="space-y-4">
           {services.map(service => {
-            const tab = activeTab[service.id] ?? 'routes';
+            const students = studentServiceData[service.id];
             return (
               <div key={service.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                {/* Header */}
                 <div className="p-4 flex items-start gap-4">
                   <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0">
                     <Bus className="w-5 h-5 text-indigo-600" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-gray-900">{service.name}</span>
-                    </div>
-                    {service.description && <p className="text-sm text-gray-500 mt-0.5">{service.description}</p>}
-                    <div className="flex gap-4 mt-1 text-xs text-gray-500 flex-wrap">
-                      <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{service.routes.length} δρομολόγια</span>
-                      <span className="flex items-center gap-1"><Users className="w-3 h-3" />{service._count?.studentServices ?? 0} μαθητές</span>
-                      {service.pickupCost != null && <span>Μία κατεύθυνση: {service.pickupCost}€</span>}
-                      {service.monthlyCost != null && <span>Αμφίδρομο: {service.monthlyCost}€/μήνα</span>}
+                    <span className="font-semibold text-gray-900">{service.name}</span>
+                    <div className="flex gap-3 mt-1 text-xs text-gray-500 flex-wrap">
+                      {(service as any).driverName && <span className="flex items-center gap-1"><User className="w-3 h-3" />{(service as any).driverName}</span>}
+                      {(service as any).busNumber && <span>{(service as any).busNumber}</span>}
+                      {service.pickupCost != null && <span className="bg-gray-100 px-2 py-0.5 rounded-full">↑ {service.pickupCost}€/μήνα</span>}
+                      {service.monthlyCost != null && <span className="bg-gray-100 px-2 py-0.5 rounded-full">↑↓ {service.monthlyCost}€/μήνα</span>}
+                      <span className="flex items-center gap-1"><Users className="w-3 h-3" />{students?.length ?? service._count?.studentServices ?? 0} μαθητές</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {isAdmin && (
-                      <button
-                        onClick={() => setServiceModal({ ...service })}
-                        className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"
-                        title="Ρυθμίσεις"
-                      >
-                        <Settings className="w-4 h-4" />
-                      </button>
-                    )}
+                  {isAdmin && (
                     <button
-                      onClick={() => toggleExpand(service.id)}
-                      className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"
+                      onClick={() => setServiceModal({ ...service })}
+                      className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 shrink-0"
+                      title="Ρυθμίσεις"
                     >
-                      {expandedService === service.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      <Settings className="w-4 h-4" />
                     </button>
-                  </div>
+                  )}
                 </div>
 
-                {expandedService === service.id && (
-                  <div className="border-t border-gray-100">
-                    <div className="flex border-b border-gray-100 bg-gray-50">
-                      {(['settings', 'students', 'schedule'] as const).map(t => (
-                        <button
-                          key={t}
-                          onClick={() => switchTab(service.id, t)}
-                          className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                            (tab ?? 'settings') === t
-                              ? 'border-indigo-600 text-indigo-600'
-                              : 'border-transparent text-gray-500 hover:text-gray-700'
-                          }`}
-                        >
-                          {t === 'settings' ? 'Ρυθμίσεις' : t === 'students' ? 'Μαθητές' : 'Πρόγραμμα'}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Settings tab */}
-                    {(!tab || tab === 'settings') && (() => {
-                      const sf = settingsForms[service.id] ?? service;
-                      const setF = (upd: Partial<Service>) => setSettingsForms(prev => ({ ...prev, [service.id]: { ...sf, ...upd } }));
-                      return (
-                        <div className="p-4 space-y-4">
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="col-span-2">
-                              <label className="block text-xs font-medium text-gray-600 mb-1">Όνομα λεωφορείου</label>
-                              <input className={inputCls} value={(sf as any).name ?? ''} onChange={e => setF({ name: e.target.value } as any)} disabled={!isAdmin} />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1">Οδηγός</label>
-                              <input className={inputCls} value={(sf as any).driverName ?? ''} onChange={e => setF({ driverName: e.target.value } as any)} placeholder="π.χ. Νίκος Παπαδόπουλος" disabled={!isAdmin} />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1">Αριθμός λεωφορείου</label>
-                              <input className={inputCls} value={(sf as any).busNumber ?? ''} onChange={e => setF({ busNumber: e.target.value } as any)} placeholder="π.χ. ΑΒΓ-1234" disabled={!isAdmin} />
-                            </div>
-                          </div>
-                          <div className="border-t border-gray-100 pt-3">
-                            <p className="text-xs font-semibold text-gray-500 mb-2">Κόστος</p>
-                            <div className="grid grid-cols-2 gap-3">
-                              <div>
-                                <label className="block text-xs font-medium text-gray-600 mb-1">Μία κατεύθυνση (€/μήνα)</label>
-                                <input type="number" className={inputCls} value={(sf as any).pickupCost ?? ''} onChange={e => setF({ pickupCost: Number(e.target.value) || undefined } as any)} placeholder="π.χ. 35" disabled={!isAdmin} />
-                              </div>
-                              <div>
-                                <label className="block text-xs font-medium text-gray-600 mb-1">Αμφίδρομο (€/μήνα)</label>
-                                <input type="number" className={inputCls} value={(sf as any).monthlyCost ?? ''} onChange={e => setF({ monthlyCost: Number(e.target.value) || undefined } as any)} placeholder="π.χ. 70" disabled={!isAdmin} />
-                              </div>
-                            </div>
-                          </div>
-                          {isAdmin && (
-                            <div className="flex justify-between items-center pt-1">
-                              <button
-                                onClick={() => deleteService(service.id)}
-                                className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" /> Διαγραφή λεωφορείου
-                              </button>
-                              <button
-                                onClick={() => saveSettings(service.id)}
-                                disabled={saving}
-                                className="px-4 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-50"
-                              >
-                                {saving ? 'Αποθήκευση...' : 'Αποθήκευση'}
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
-
-                    {/* Schedule tab */}
-                    {tab === 'schedule' && (
-                      <div className="p-4">
-                        {!studentServiceData[service.id] ? (
-                          <p className="text-sm text-gray-400">Φόρτωση...</p>
-                        ) : studentServiceData[service.id].length === 0 ? (
-                          <p className="text-sm text-gray-400 text-center py-8">Κανένας μαθητής δεν έχει ανατεθεί ακόμα.</p>
-                        ) : (() => {
-                          const students = studentServiceData[service.id];
-                          const pickupGroup = students
-                            .filter(ss => ss.serviceMode === 'pickup' || ss.serviceMode === 'both')
-                            .map(ss => ({ ...ss, effectiveTime: ss.pickupTime ?? ss.stop?.pickupTime ?? '' }))
-                            .sort((a, b) => a.effectiveTime.localeCompare(b.effectiveTime));
-                          const dropoffGroup = students
-                            .filter(ss => ss.serviceMode === 'dropoff' || ss.serviceMode === 'both')
-                            .map(ss => ({ ...ss, effectiveTime: ss.dropoffTime ?? ss.stop?.dropoffTime ?? '' }))
-                            .sort((a, b) => a.effectiveTime.localeCompare(b.effectiveTime));
-                          return (
-                            <div className="space-y-6">
-                              {pickupGroup.length > 0 && (
-                                <div>
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <span className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center text-green-700 text-xs font-bold">↑</span>
-                                    <span className="text-sm font-semibold text-green-800">Παραλαβή — {pickupGroup.length} μαθητές</span>
-                                  </div>
-                                  <div className="divide-y divide-gray-100 border border-gray-200 rounded-xl overflow-hidden">
-                                    {pickupGroup.map(ss => (
-                                      <ScheduleRow key={ss.id + '-p'} ss={ss} direction="pickup" />
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                              {dropoffGroup.length > 0 && (
-                                <div>
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <span className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-xs font-bold">↓</span>
-                                    <span className="text-sm font-semibold text-blue-800">Αποστολή — {dropoffGroup.length} μαθητές</span>
-                                  </div>
-                                  <div className="divide-y divide-gray-100 border border-gray-200 rounded-xl overflow-hidden">
-                                    {dropoffGroup.map(ss => (
-                                      <ScheduleRow key={ss.id + '-d'} ss={ss} direction="dropoff" />
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()}
-                      </div>
+                {/* Students — always visible */}
+                <div className="border-t border-gray-100">
+                  <div className="px-4 pt-3 pb-1 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Μαθητές</span>
+                    {isAdmin && (
+                      <button
+                        onClick={() => openAssign(service.id)}
+                        className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Ανάθεση
+                      </button>
                     )}
-
-                    {/* Students tab */}
-                    {tab === 'students' && (
-                      <div className="p-4 space-y-3">
-                        {isAdmin && (
-                          <button
-                            onClick={() => openAssign(service.id)}
-                            className="flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-800"
-                          >
-                            <Plus className="w-4 h-4" /> Ανάθεση μαθητή
-                          </button>
-                        )}
-                        {!studentServiceData[service.id] ? (
-                          <p className="text-sm text-gray-400">Φόρτωση...</p>
-                        ) : studentServiceData[service.id].length === 0 ? (
-                          <p className="text-sm text-gray-400">Κανένας μαθητής δεν έχει ανατεθεί.</p>
-                        ) : (
-                          <div className="divide-y divide-gray-100">
-                            {studentServiceData[service.id].map(ss => (
-                              <div key={ss.id} className="flex items-center gap-3 py-2.5">
-                                <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 text-xs font-bold shrink-0">
-                                  {ss.student.fullName.charAt(0)}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <p className="text-sm font-medium text-gray-900">{ss.student.fullName}</p>
-                                    {ss.serviceMode && ss.serviceMode !== 'both' && (
-                                      <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${ss.serviceMode === 'pickup' ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-700'}`}>
-                                        {ss.serviceMode === 'pickup' ? '↑ Παραλαβή' : '↓ Αποστολή'}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="flex gap-3 text-xs text-gray-500 flex-wrap mt-0.5">
-                                    {ss.route && <span className="flex items-center gap-0.5"><Bus className="w-3 h-3" />{ss.route.name}</span>}
-                                    {ss.stop && <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3" />{ss.stop.name}</span>}
-                                    {ss.homeAddress && <span className="flex items-center gap-0.5"><Home className="w-3 h-3" />{ss.homeAddress}</span>}
-                                    {ss.pickupContact && <span className="flex items-center gap-0.5"><User className="w-3 h-3" />{ss.pickupContact}</span>}
-                                    {ss.pickupPersons && ss.pickupPersons.length > 0 && (
-                                      <span className="flex items-center gap-0.5"><Phone className="w-3 h-3" />{ss.pickupPersons.map(p => p.name).join(', ')}</span>
-                                    )}
-                                  </div>
-                                  {ss.dailyTimes && Object.keys(ss.dailyTimes).length > 0 ? (
-                                    <div className="flex gap-2 mt-1 flex-wrap">
-                                      {DAYS.filter(d => (ss.dailyTimes as DailyTimes)[d.key]).map(({ key, label }) => {
-                                        const dt = (ss.dailyTimes as DailyTimes)[key]!;
-                                        return (
-                                          <span key={key} className="text-xs text-gray-500">
-                                            <span className="font-medium">{label}</span>
-                                            {dt.pickup && <span className="text-green-700 ml-1">↑{dt.pickup}</span>}
-                                            {dt.dropoff && <span className="text-blue-700 ml-1">↓{dt.dropoff}</span>}
-                                          </span>
-                                        );
-                                      })}
-                                    </div>
-                                  ) : (
-                                    <div className="flex gap-2 mt-0.5 text-xs">
-                                      {(ss.pickupTime ?? ss.stop?.pickupTime) && (
-                                        <span className="text-green-700">↑ {ss.pickupTime ?? ss.stop?.pickupTime}</span>
-                                      )}
-                                      {(ss.dropoffTime ?? ss.stop?.dropoffTime) && (
-                                        <span className="text-blue-700">↓ {ss.dropoffTime ?? ss.stop?.dropoffTime}</span>
-                                      )}
-                                    </div>
-                                  )}
-                                  {ss.discountAmount != null && Number(ss.discountAmount) > 0 && (
-                                    <span className="text-xs text-orange-600 mt-0.5 inline-block">Έκπτωση: -{Number(ss.discountAmount).toFixed(0)}€</span>
-                                  )}
-                                  {ss.notes && <p className="text-xs text-gray-400 mt-0.5">{ss.notes}</p>}
-                                </div>
-                                {isAdmin && (
-                                  <div className="flex gap-1 shrink-0">
-                                    <button
-                                      onClick={() => openEditStudent(service.id, ss)}
-                                      className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"
-                                    >
-                                      <Pencil className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button
-                                      onClick={() => removeStudentService(service.id, ss.id)}
-                                      className="p-1.5 rounded-lg hover:bg-red-50 text-red-400"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
+                  </div>
+                  <div className="px-4 pb-4">
+                    {!students ? (
+                      <p className="text-sm text-gray-400 py-2">Φόρτωση...</p>
+                    ) : students.length === 0 ? (
+                      <p className="text-sm text-gray-400 py-2">Κανένας μαθητής δεν έχει ανατεθεί ακόμα.</p>
+                    ) : (
+                      <div className="divide-y divide-gray-100">
+                        {students.map(ss => (
+                          <div key={ss.id} className="flex items-center gap-3 py-2.5">
+                            <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 text-xs font-bold shrink-0 overflow-hidden">
+                              {ss.student.avatarUrl
+                                ? <img src={ss.student.avatarUrl} alt="" className="w-full h-full object-cover" />
+                                : ss.student.fullName.charAt(0)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="text-sm font-medium text-gray-900">{ss.student.fullName}</p>
+                                {ss.serviceMode && ss.serviceMode !== 'both' && (
+                                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${ss.serviceMode === 'pickup' ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-700'}`}>
+                                    {ss.serviceMode === 'pickup' ? '↑ Παραλαβή' : '↓ Αποστολή'}
+                                  </span>
+                                )}
+                                {ss.discountAmount != null && Number(ss.discountAmount) > 0 && (
+                                  <span className="text-xs px-1.5 py-0.5 bg-orange-50 text-orange-600 rounded-full">-{Number(ss.discountAmount).toFixed(0)}€</span>
                                 )}
                               </div>
-                            ))}
+                              <div className="flex gap-3 text-xs text-gray-500 flex-wrap mt-0.5">
+                                {ss.route && <span className="flex items-center gap-0.5"><Bus className="w-3 h-3" />{ss.route.name}</span>}
+                                {ss.stop && <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3" />{ss.stop.name}</span>}
+                                {ss.homeAddress && <span className="flex items-center gap-0.5"><Home className="w-3 h-3" />{ss.homeAddress}</span>}
+                                {ss.pickupContact && <span className="flex items-center gap-0.5"><User className="w-3 h-3" />{ss.pickupContact}</span>}
+                              </div>
+                              <div className="flex gap-2 mt-0.5 text-xs">
+                                {(ss.pickupTime ?? ss.stop?.pickupTime) && (
+                                  <span className="text-green-700">↑ {ss.pickupTime ?? ss.stop?.pickupTime}</span>
+                                )}
+                                {(ss.dropoffTime ?? ss.stop?.dropoffTime) && (
+                                  <span className="text-blue-700">↓ {ss.dropoffTime ?? ss.stop?.dropoffTime}</span>
+                                )}
+                              </div>
+                              {ss.notes && <p className="text-xs text-gray-400 mt-0.5">{ss.notes}</p>}
+                            </div>
+                            {isAdmin && (
+                              <div className="flex gap-1 shrink-0">
+                                <button onClick={() => openEditStudent(service.id, ss)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button onClick={() => removeStudentService(service.id, ss.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400">
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            )}
                           </div>
-                        )}
+                        ))}
                       </div>
                     )}
                   </div>
-                )}
+                </div>
               </div>
             );
           })}
@@ -672,14 +490,19 @@ export default function RoutesPage() {
             <Field label="Όνομα *">
               <input className={inputCls} value={serviceModal.name ?? ''} onChange={e => setServiceModal(p => ({ ...p!, name: e.target.value }))} placeholder="π.χ. Λεωφορείο Α" />
             </Field>
-            <Field label="Περιγραφή">
-              <textarea rows={2} className={inputCls + ' resize-none'} value={serviceModal.description ?? ''} onChange={e => setServiceModal(p => ({ ...p!, description: e.target.value }))} />
-            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Οδηγός">
+                <input className={inputCls} value={(serviceModal as any).driverName ?? ''} onChange={e => setServiceModal(p => ({ ...p!, driverName: e.target.value } as any))} placeholder="π.χ. Νίκος Παπαδόπουλος" />
+              </Field>
+              <Field label="Αριθμός λεωφορείου">
+                <input className={inputCls} value={(serviceModal as any).busNumber ?? ''} onChange={e => setServiceModal(p => ({ ...p!, busNumber: e.target.value } as any))} placeholder="π.χ. ΑΒΓ-1234" />
+              </Field>
+            </div>
             <div className="bg-gray-50 rounded-xl p-3 space-y-3">
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Τιμολόγηση</p>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Μία κατεύθυνση (€/μήνα)">
-                  <input type="number" min="0" step="0.01" className={inputCls} value={(serviceModal as any).pickupCost ?? ''} onChange={e => setServiceModal(p => ({ ...p!, pickupCost: e.target.value ? Number(e.target.value) : undefined } as any))} placeholder="40.00" />
+                  <input type="number" min="0" step="0.01" className={inputCls} value={(serviceModal as any).pickupCost ?? ''} onChange={e => setServiceModal(p => ({ ...p!, pickupCost: e.target.value ? Number(e.target.value) : undefined } as any))} placeholder="35.00" />
                 </Field>
                 <Field label="Παραλαβή + Αποστολή (€/μήνα)">
                   <input type="number" min="0" step="0.01" className={inputCls} value={serviceModal.monthlyCost ?? ''} onChange={e => setServiceModal(p => ({ ...p!, monthlyCost: e.target.value ? Number(e.target.value) : undefined }))} placeholder="70.00" />
@@ -849,28 +672,31 @@ export default function RoutesPage() {
 
       {/* ─── Assign student modal ─────────────────────────────────────────── */}
       {assignModal && (
-        <Modal title="Ανάθεση Μαθητή στο Σχολικό" onClose={() => setAssignModal(null)} wide>
+        <Modal title="Ανάθεση Μαθητών στο Σχολικό" onClose={() => setAssignModal(null)} wide>
           {(() => {
             const svc = services.find(s => s.id === assignModal.serviceId);
             const selectedRoute = svc?.routes.find(r => r.id === assignForm.routeId);
+            const assignedIds = new Set((studentServiceData[assignModal.serviceId] ?? []).map(ss => ss.student.id));
             return (
               <div className="space-y-4">
-                <Field label="Μαθητής *">
-                  <select className={inputCls} value={assignForm.studentId} onChange={e => setAssignForm((p: any) => ({ ...p, studentId: e.target.value }))}>
-                    <option value="">Επιλέξτε μαθητή...</option>
-                    {allStudents.map(s => <option key={s.id} value={s.id}>{s.fullName}</option>)}
-                  </select>
-                </Field>
-                <StudentAssignForm
-                  form={assignForm}
-                  onChange={setAssignForm}
-                  svc={svc}
-                  selectedRoute={selectedRoute}
+                <StudentMultiPicker
+                  allStudents={allStudents}
+                  selectedIds={assignForm.studentIds ?? []}
+                  assignedIds={assignedIds}
+                  onChange={ids => setAssignForm((p: any) => ({ ...p, studentIds: ids }))}
                 />
+                {(assignForm.studentIds?.length ?? 0) > 0 && (
+                  <StudentAssignForm
+                    form={assignForm}
+                    onChange={setAssignForm}
+                    svc={svc}
+                    selectedRoute={selectedRoute}
+                  />
+                )}
               </div>
             );
           })()}
-          <ModalFooter onCancel={() => setAssignModal(null)} onSave={saveAssign} saving={saving} disabled={!assignForm.studentId} />
+          <ModalFooter onCancel={() => setAssignModal(null)} onSave={saveAssign} saving={saving} disabled={!assignForm.studentIds?.length} />
         </Modal>
       )}
       {/* ─── Route map modal ──────────────────────────────────────────────── */}
@@ -1270,6 +1096,142 @@ function StudentAssignForm({ form, onChange, svc, selectedRoute }: {
       <Field label="Σημειώσεις">
         <input className={inputCls} value={form.notes ?? ''} onChange={e => onChange({ ...form, notes: e.target.value })} placeholder="π.χ. κατεβαίνει μόνο Δευτέρα-Τετάρτη" />
       </Field>
+    </div>
+  );
+}
+
+function StudentAvatar({ student, size = 8 }: { student: Pick<Student, 'fullName' | 'avatarUrl'>; size?: number }) {
+  const sz = `w-${size} h-${size}`;
+  return (
+    <div className={`${sz} rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 text-xs font-bold shrink-0 overflow-hidden`}>
+      {student.avatarUrl
+        ? <img src={student.avatarUrl} alt="" className="w-full h-full object-cover" />
+        : student.fullName.charAt(0)}
+    </div>
+  );
+}
+
+function StudentMultiPicker({
+  allStudents,
+  selectedIds,
+  assignedIds,
+  onChange,
+}: {
+  allStudents: Student[];
+  selectedIds: string[];
+  assignedIds: Set<string>;
+  onChange: (ids: string[]) => void;
+}) {
+  const [search, setSearch] = useState('');
+
+  const toggle = (id: string) => {
+    if (assignedIds.has(id)) return;
+    onChange(selectedIds.includes(id) ? selectedIds.filter(x => x !== id) : [...selectedIds, id]);
+  };
+
+  // Compute siblings: students sharing a parent user ID with any selected student
+  const selectedParentIds = new Set<string>();
+  for (const sid of selectedIds) {
+    const s = allStudents.find(x => x.id === sid);
+    s?.parents?.forEach(p => selectedParentIds.add(p.user.id));
+  }
+  const siblingIds = allStudents
+    .filter(s => !selectedIds.includes(s.id) && !assignedIds.has(s.id) && s.parents?.some(p => selectedParentIds.has(p.user.id)))
+    .map(s => s.id);
+
+  const filtered = allStudents.filter(s =>
+    s.fullName.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="space-y-3">
+      {/* Selected chips */}
+      {selectedIds.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {selectedIds.map(id => {
+            const s = allStudents.find(x => x.id === id);
+            if (!s) return null;
+            return (
+              <div key={id} className="flex items-center gap-1.5 pl-1 pr-2 py-1 bg-indigo-50 border border-indigo-200 rounded-full text-xs font-medium text-indigo-700">
+                <StudentAvatar student={s} size={6} />
+                {s.fullName}
+                <button type="button" onClick={() => toggle(id)} className="ml-0.5 rounded-full hover:bg-indigo-200 p-0.5">
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Sibling suggestions */}
+      {siblingIds.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 space-y-1.5">
+          <p className="text-xs font-semibold text-amber-700">Αδέρφια που δεν έχουν επιλεγεί:</p>
+          <div className="flex flex-wrap gap-2">
+            {siblingIds.map(id => {
+              const s = allStudents.find(x => x.id === id);
+              if (!s) return null;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => toggle(id)}
+                  className="flex items-center gap-1.5 pl-1 pr-2.5 py-1 bg-white border border-amber-300 rounded-full text-xs font-medium text-amber-800 hover:bg-amber-100 transition-colors"
+                >
+                  <StudentAvatar student={s} size={6} />
+                  {s.fullName}
+                  <span className="text-amber-500 ml-0.5">+</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Search + list */}
+      <div>
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Αναζήτηση μαθητή..."
+          className={inputCls}
+        />
+        <div className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-gray-200 divide-y divide-gray-100">
+          {filtered.length === 0 && (
+            <p className="py-6 text-center text-sm text-gray-400">Δεν βρέθηκε μαθητής</p>
+          )}
+          {filtered.map(s => {
+            const isAssigned = assignedIds.has(s.id);
+            const isSelected = selectedIds.includes(s.id);
+            return (
+              <button
+                key={s.id}
+                type="button"
+                disabled={isAssigned}
+                onClick={() => toggle(s.id)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${
+                  isAssigned
+                    ? 'opacity-40 cursor-not-allowed bg-gray-50'
+                    : isSelected
+                    ? 'bg-indigo-50'
+                    : 'hover:bg-gray-50'
+                }`}
+              >
+                <StudentAvatar student={s} size={8} />
+                <span className="flex-1 text-sm font-medium text-gray-900">{s.fullName}</span>
+                {isAssigned && <span className="text-xs text-gray-400">Ήδη ανατεθεί</span>}
+                {isSelected && !isAssigned && (
+                  <span className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center">
+                    <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
