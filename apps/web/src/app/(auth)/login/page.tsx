@@ -8,6 +8,17 @@ import { storeTokens } from '@/lib/auth';
 const ORANGE = '#E95926';
 const PURPLE = '#77328D';
 
+function loginErrorMessage(err: { message?: string } | undefined) {
+  const message = err?.message ?? '';
+  if (!message || message === 'Network Error') {
+    return 'Δεν ήταν δυνατή η σύνδεση. Δοκιμάστε ξανά.';
+  }
+  if (/invalid credentials/i.test(message)) {
+    return 'Λάθος στοιχεία σύνδεσης';
+  }
+  return message;
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -29,7 +40,7 @@ export default function LoginPage() {
         router.push('/school/dashboard');
       }
     } catch (err: any) {
-      setError(err?.message ?? 'Λάθος στοιχεία σύνδεσης');
+      setError(loginErrorMessage(err));
     } finally {
       setLoading(false);
     }
