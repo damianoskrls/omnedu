@@ -6,7 +6,13 @@ import { CreateDailyReportDto } from './dto/create-daily-report.dto';
 export class DailyReportsService {
   constructor(private prisma: PrismaService) {}
 
-  async findByStudent(studentId: string, schoolId: string, limit = 30) {
+  async findByStudent(studentId: string, schoolId: string, limit = 30, parentUserId?: string) {
+    if (parentUserId) {
+      const link = await this.prisma.studentParent.findFirst({
+        where: { studentId, userId: parentUserId, student: { schoolId } },
+      });
+      if (!link) throw new ForbiddenException('Μπορείτε να δείτε μόνο τα δικά σας παιδιά.');
+    }
     return this.prisma.dailyReport.findMany({
       where: { studentId, schoolId },
       include: { media: true, teacher: { select: { id: true, fullName: true, avatarUrl: true } } },

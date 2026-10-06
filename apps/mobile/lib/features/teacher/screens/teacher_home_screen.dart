@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/providers/auth_provider.dart';
 import 'teacher_student_screen.dart';
+import 'teacher_thematic_screen.dart';
+import 'teacher_notify_screen.dart';
 
 final _myClassesProvider = FutureProvider.family<List<dynamic>, String>(
   (ref, schoolId) async {
@@ -191,6 +193,49 @@ class _TeacherHomeScreenState extends ConsumerState<TeacherHomeScreen> {
                   ),
                 ),
               ],
+
+              if (_selectedClassId != null)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF77328D)),
+                            onPressed: () {
+                              final cls = classes.cast<Map>().firstWhere((c) => c['id'] == _selectedClassId);
+                              Navigator.of(context).push(MaterialPageRoute(
+                                builder: (_) => TeacherThematicScreen(
+                                  schoolId: widget.schoolId,
+                                  classId: _selectedClassId!,
+                                  className: cls['name'] as String? ?? '',
+                                ),
+                              ));
+                            },
+                            icon: const Icon(Icons.auto_stories_rounded),
+                            label: const Text('Διαθεματικό'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: FilledButton.icon(
+                            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFE95926)),
+                            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                              builder: (_) => TeacherNotifyScreen(
+                                schoolId: widget.schoolId,
+                                classId: _selectedClassId!,
+                                teacherId: user.id,
+                              ),
+                            )),
+                            icon: const Icon(Icons.campaign_rounded),
+                            label: const Text('Ενημέρωση'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
 
               // Students label
               const SliverToBoxAdapter(

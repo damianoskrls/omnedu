@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateStudentDto } from './dto/create-student.dto';
@@ -28,7 +28,7 @@ export class StudentsService {
     });
   }
 
-  async findOne(id: string, schoolId: string) {
+  async findOne(id: string, schoolId: string, parentUserId?: string) {
     const student = await this.prisma.student.findFirst({
       where: { id, schoolId },
       include: {
@@ -84,6 +84,9 @@ export class StudentsService {
       },
     });
     if (!student) throw new NotFoundException('Student not found');
+    if (parentUserId && !student.parents.some((p) => p.userId === parentUserId)) {
+      throw new ForbiddenException('Μπορείτε να δείτε μόνο τα δικά σας παιδιά.');
+    }
 
     // Find siblings: shared parents + explicit links
     const parentUserIds = student.parents.map((p) => p.userId);
@@ -123,6 +126,9 @@ export class StudentsService {
                 id: true,
                 name: true,
                 instructions: { orderBy: { sortOrder: 'asc' } },
+                teachers: {
+                  include: { user: { select: { id: true, fullName: true, avatarUrl: true, phone: true } } },
+                },
               },
             },
           },
@@ -139,6 +145,23 @@ export class StudentsService {
             },
           },
           orderBy: { createdAt: 'desc' },
+        },
+        studentServices: {
+          where: { isActive: true },
+          include: {
+            service: { select: { id: true, name: true, serviceType: true, monthlyCost: true, pickupCost: true, dropoffCost: true } },
+            route: { select: { id: true, name: true } },
+            stop: { select: { id: true, name: true, address: true, pickupTime: true, dropoffTime: true } },
+          },
+        },
+        activityRegistrations: {
+          where: { status: { not: 'cancelled' } },
+          include: {
+            activity: {
+              select: { id: true, title: true, activityType: true, monthlyCost: true, oneTimeCost: true, startsOn: true, endsOn: true, imageUrl: true },
+            },
+          },
+          orderBy: { registeredAt: 'desc' },
         },
       },
     });
