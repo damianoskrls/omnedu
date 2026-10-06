@@ -18,7 +18,8 @@ export function getStoredUser(): AuthUser | null {
   try {
     const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
     const padded = b64 + '=='.slice(0, (4 - b64.length % 4) % 4);
-    const payload = JSON.parse(atob(padded));
+    const bytes = Uint8Array.from(atob(padded), c => c.charCodeAt(0));
+    const payload = JSON.parse(new TextDecoder().decode(bytes));
     if (payload.exp && Date.now() / 1000 > payload.exp) return null;
     return {
       id: payload.sub,
