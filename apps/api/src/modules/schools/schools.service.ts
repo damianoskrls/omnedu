@@ -20,7 +20,20 @@ export class SchoolsService {
       include: { _count: { select: { members: true, students: true, classes: true } } },
     });
     if (!school) throw new NotFoundException('School not found');
-    return school;
+    try {
+      const year = await this.currentYearLabel(id);
+      const row = await this.prisma.schoolRegulation.findUnique({
+        where: { schoolId_academicYear: { schoolId: id, academicYear: year } },
+      });
+      if (!row) return school;
+      return {
+        ...school,
+        operatingRegulation: row.operatingText ?? school.operatingRegulation,
+        financialRegulation: row.financialText ?? school.financialRegulation,
+      };
+    } catch {
+      return school;
+    }
   }
 
   async findBySlug(slug: string) {
@@ -107,6 +120,83 @@ export class SchoolsService {
   }
 
   // ── Holidays ─────────────────────────────────────────────
+
+  currentYearLabelFrom(now = new Date()) {
+    const start = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+    return `${start}-${start + 1}`;
+  }
+
+  async currentYearLabel(schoolId: string) {
+    const current = await this.prisma.academicYear.findFirst({
+      where: { schoolId, isCurrent: true },
+      orderBy: { startsOn: 'desc' },
+    });
+    return current?.label || this.currentYearLabelFrom();
+  }
+
+  private async copyLegacyRegulations(schoolId: string) {
+    const existing = await this.prisma.schoolRegulation.count({ where: { schoolId } });
+    if (existing > 0) return;
+    const school = await this.prisma.school.findUnique({
+      where: { id: schoolId },
+      select: { operatingRegulation: true, financialRegulation: true },
+    });
+    if (!school?.operatingRegulation && !school?.financialRegulation) return;
+    await this.prisma.schoolRegulation.create({
+      data: {
+        schoolId,
+        academicYear: await this.currentYearLabel(schoolId),
+        operatingText: school.operatingRegulation,
+        financialText: school.financialRegulation,
+      },
+    });
+  }
+
+  async getRegulations(schoolId: string, academicYear?: string) {
+    const school = await this.prisma.school.findUnique({ where: { id: schoolId }, select: { id: true } });
+    if (!school) throw new NotFoundException('School not found');
+    await this.copyLegacyRegulations(schoolId);
+    const year = academicYear || await this.currentYearLabel(schoolId);
+    const row = await this.prisma.schoolRegulation.findUnique({
+      where: { schoolId_academicYear: { schoolId, academicYear: year } },
+    });
+    return {
+      academicYear: year,
+      operatingRegulation: row?.operatingText ?? null,
+      financialRegulation: row?.financialText ?? null,
+    };
+  }
+
+  async saveRegulations(schoolId: string, data: {
+    academicYear: string;
+    operatingRegulation?: string | null;
+    financialRegulation?: string | null;
+  }) {
+    const school = await this.prisma.school.findUnique({ where: { id: schoolId }, select: { id: true } });
+    if (!school) throw new NotFoundException('School not found');
+    await this.copyLegacyRegulations(schoolId);
+    const existing = await this.prisma.schoolRegulation.findUnique({
+      where: { schoolId_academicYear: { schoolId, academicYear: data.academicYear } },
+    });
+    const operatingText = data.operatingRegulation !== undefined ? data.operatingRegulation : existing?.operatingText ?? null;
+    const financialText = data.financialRegulation !== undefined ? data.financialRegulation : existing?.financialText ?? null;
+    const row = await this.prisma.schoolRegulation.upsert({
+      where: { schoolId_academicYear: { schoolId, academicYear: data.academicYear } },
+      create: { schoolId, academicYear: data.academicYear, operatingText, financialText },
+      update: { operatingText, financialText },
+    });
+    if (data.academicYear === await this.currentYearLabel(schoolId)) {
+      await this.prisma.school.update({
+        where: { id: schoolId },
+        data: { operatingRegulation: operatingText, financialRegulation: financialText },
+      });
+    }
+    return {
+      academicYear: row.academicYear,
+      operatingRegulation: row.operatingText,
+      financialRegulation: row.financialText,
+    };
+  }
 
   async getHolidays(schoolId: string, academicYear?: string) {
     return this.prisma.schoolHoliday.findMany({

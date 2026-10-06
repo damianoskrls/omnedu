@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Put, Delete, Body, Param, Query, UseGuards, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -57,6 +57,20 @@ export class SchoolsController {
     @Body() body: { userId: string; role: 'school_admin' | 'teacher' | 'parent' },
   ) {
     return this.schools.addMember(schoolId, body.userId, body.role);
+  }
+
+  @Get(':id/regulations')
+  getRegulations(@Param('id') id: string, @Query('academicYear') academicYear?: string) {
+    return this.schools.getRegulations(id, academicYear);
+  }
+
+  @Put(':id/regulations')
+  @Roles('super_admin', 'school_admin')
+  saveRegulations(
+    @Param('id') id: string,
+    @Body() body: { academicYear: string; operatingRegulation?: string | null; financialRegulation?: string | null },
+  ) {
+    return this.schools.saveRegulations(id, body);
   }
 
   @Get(':id/holidays')

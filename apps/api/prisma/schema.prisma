@@ -59,8 +59,24 @@ model School {
   schoolEvents         SchoolEvent[]
   questionnaires       Questionnaire[]
   thematicPlans        ThematicPlan[]
+  regulations          SchoolRegulation[]
 
   @@map("schools")
+}
+
+model SchoolRegulation {
+  id            String   @id @default(uuid())
+  schoolId      String   @map("school_id")
+  academicYear  String   @map("academic_year")
+  operatingText String?  @map("operating_text") @db.Text
+  financialText String?  @map("financial_text") @db.Text
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, academicYear])
+  @@index([schoolId])
+  @@map("school_regulations")
 }
 
 model User {

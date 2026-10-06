@@ -53,6 +53,10 @@ export const schoolsApi = {
     api.get(`/schools/${id}/members`, { params: { role } }),
   updateBranding: (id: string, data: { name?: string; logoUrl?: string; primaryColor?: string }) =>
     api.patch(`/schools/${id}`, data),
+  getRegulations: (id: string, academicYear?: string) =>
+    api.get(`/schools/${id}/regulations`, { params: academicYear ? { academicYear } : {} }),
+  saveRegulations: (id: string, data: { academicYear: string; operatingRegulation?: string | null; financialRegulation?: string | null }) =>
+    api.put(`/schools/${id}/regulations`, data),
   getHolidays: (id: string, academicYear?: string) =>
     api.get(`/schools/${id}/holidays`, { params: academicYear ? { academicYear } : {} }),
   createHoliday: (id: string, data: { date: string; name: string; academicYear?: string }) =>
