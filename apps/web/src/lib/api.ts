@@ -290,6 +290,13 @@ export const activitiesApi = {
   create: (schoolId: string, data: any) => api.post(`/schools/${schoolId}/activities`, data),
   update: (schoolId: string, id: string, data: any) =>
     api.patch(`/schools/${schoolId}/activities/${id}`, data),
+  uploadImage: (schoolId: string, id: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.post(`/schools/${schoolId}/activities/${id}/image`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
   remove: (schoolId: string, id: string) => api.delete(`/schools/${schoolId}/activities/${id}`),
   getRegistrations: (schoolId: string, id: string) =>
     api.get(`/schools/${schoolId}/activities/${id}/registrations`),

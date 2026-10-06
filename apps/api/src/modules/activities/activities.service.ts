@@ -43,7 +43,7 @@ export class ActivitiesService {
   }
 
   async create(schoolId: string, data: any) {
-    return this.prisma.activity.create({ data: { schoolId, ...data } });
+    return this.prisma.activity.create({ data: { schoolId, ...this.activityWriteData(data) } });
   }
 
   async register(activityId: string, studentId: string, parentId: string) {
@@ -141,7 +141,30 @@ export class ActivitiesService {
   async update(id: string, schoolId: string, data: any) {
     const activity = await this.prisma.activity.findFirst({ where: { id, schoolId } });
     if (!activity) throw new NotFoundException('Activity not found');
-    return this.prisma.activity.update({ where: { id }, data });
+    return this.prisma.activity.update({ where: { id }, data: this.activityWriteData(data) });
+  }
+
+  private activityWriteData(data: any) {
+    const audienceIds = data.audienceIds === undefined
+      ? undefined
+      : typeof data.audienceIds === 'string'
+        ? data.audienceIds
+        : JSON.stringify(data.audienceIds ?? []);
+    const dateOrNull = (value: unknown) => (value ? new Date(String(value)) : null);
+    return {
+      ...(data.title !== undefined && { title: data.title }),
+      ...(data.description !== undefined && { description: data.description || null }),
+      ...(data.imageUrl !== undefined && { imageUrl: data.imageUrl || null }),
+      ...(data.activityType !== undefined && { activityType: data.activityType }),
+      ...(data.monthlyCost !== undefined && { monthlyCost: data.monthlyCost === '' || data.monthlyCost == null ? null : data.monthlyCost }),
+      ...(data.oneTimeCost !== undefined && { oneTimeCost: data.oneTimeCost === '' || data.oneTimeCost == null ? null : data.oneTimeCost }),
+      ...(data.startsOn !== undefined && { startsOn: dateOrNull(data.startsOn) }),
+      ...(data.endsOn !== undefined && { endsOn: dateOrNull(data.endsOn) }),
+      ...(data.deadline !== undefined && { deadline: dateOrNull(data.deadline) }),
+      ...(data.audienceType !== undefined && { audienceType: data.audienceType }),
+      ...(audienceIds !== undefined && { audienceIds }),
+      ...(data.isActive !== undefined && { isActive: data.isActive }),
+    };
   }
 
   async remove(id: string, schoolId: string) {

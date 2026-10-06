@@ -430,6 +430,7 @@ model Activity {
   schoolId     String    @map("school_id")
   title        String
   description  String?
+  imageUrl     String?   @map("image_url")
   activityType String    @map("activity_type")
   monthlyCost  Decimal?  @map("monthly_cost") @db.Decimal(10, 2)
   oneTimeCost  Decimal?  @map("one_time_cost") @db.Decimal(10, 2)
