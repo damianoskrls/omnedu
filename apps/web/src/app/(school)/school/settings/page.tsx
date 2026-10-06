@@ -14,6 +14,8 @@ function currentAcademicYear() {
 }
 
 const PRESET_COLORS = [
+  { hex: '#77328D', label: 'Ονειροχώρα' },
+  { hex: '#E95926', label: 'Πορτοκαλί' },
   { hex: '#4F46E5', label: 'Indigo' },
   { hex: '#7C3AED', label: 'Violet' },
   { hex: '#0891B2', label: 'Cyan' },
@@ -32,7 +34,7 @@ export default function SchoolSettingsPage() {
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
   const [school, setSchool] = useState<any>(null);
-  const [branding, setBranding] = useState({ name: '', logoUrl: '', primaryColor: '#4F46E5' });
+  const [branding, setBranding] = useState({ name: '', logoUrl: '', primaryColor: '#77328D' });
   const [savingBranding, setSavingBranding] = useState(false);
   const [brandingSaved, setBrandingSaved] = useState(false);
 
@@ -48,7 +50,7 @@ export default function SchoolSettingsPage() {
       const b = {
         name: s.name ?? '',
         logoUrl: s.logoUrl ?? '',
-        primaryColor: s.primaryColor ?? '#4F46E5',
+        primaryColor: s.primaryColor ?? '#77328D',
       };
       setBranding(b);
       // Keep localStorage in sync so sidebar shows current branding immediately
