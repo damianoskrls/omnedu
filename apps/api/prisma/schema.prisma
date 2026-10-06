@@ -933,6 +933,8 @@ model ExtraService {
   name        String   // e.g. Σχολικό Λεωφορείο
   description String?
   serviceType  String   @map("service_type") // bus | aftercare | other
+  driverName   String?  @map("driver_name")
+  busNumber    String?  @map("bus_number")
   monthlyCost  Decimal? @map("monthly_cost") @db.Decimal(10, 2)  // cost for both pickup+dropoff
   pickupCost   Decimal? @map("pickup_cost") @db.Decimal(10, 2)   // cost for pickup only
   dropoffCost  Decimal? @map("dropoff_cost") @db.Decimal(10, 2)  // cost for dropoff only
@@ -999,6 +1001,7 @@ model StudentService {
   pickupContact  String?   @map("pickup_contact") // who gives the student to the bus (morning)
   dropoffContact String?   @map("dropoff_contact") // who receives the student from the bus (afternoon)
   pickupPersons  Json?     @map("pickup_persons") // [{name, phone, relation}] authorized persons
+  discountAmount Decimal?  @map("discount_amount") @db.Decimal(10, 2)
   notes          String?
   isActive       Boolean   @default(true) @map("is_active")
   enrolledAt     DateTime  @default(now()) @map("enrolled_at")

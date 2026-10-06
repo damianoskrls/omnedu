@@ -154,7 +154,9 @@ export default function StudentProfilePage() {
   const [assignHomeLng, setAssignHomeLng] = useState<number|undefined>();
   const [assignPickupPersons, setAssignPickupPersons] = useState<{name:string;phone?:string;relation?:string}[]>([]);
   const [assignNotes, setAssignNotes] = useState('');
+  const [assignDiscount, setAssignDiscount] = useState('');
   const [geocodingAddr, setGeocodingAddr] = useState(false);
+  const [editingSs, setEditingSs] = useState<{ ssId: string; serviceId: string } | null>(null);
 
   const [markingEventPayment, setMarkingEventPayment] = useState<string | null>(null);
   const [updatingEnrollment, setUpdatingEnrollment] = useState<string | null>(null);
@@ -1129,6 +1131,11 @@ export default function StudentProfilePage() {
                             {ss.service.monthlyCost != null && (
                               <span className="ml-auto text-sm font-semibold text-gray-700">{ss.service.monthlyCost}€/μήνα</span>
                             )}
+                            {ss.discountAmount != null && Number(ss.discountAmount) > 0 && (
+                              <span className="text-xs px-2 py-0.5 bg-orange-50 text-orange-700 rounded-full font-medium">
+                                Έκπτωση -{ Number(ss.discountAmount) }€
+                              </span>
+                            )}
                           </div>
 
                           {/* Route & Stop */}
@@ -1237,17 +1244,47 @@ export default function StudentProfilePage() {
                           {ss.notes && <p className="text-xs text-gray-400 italic">{ss.notes}</p>}
                         </div>
                         {isAdmin && (
-                          <button
-                            onClick={async () => {
-                              const svc = allServices.find((s: any) => s.id === ss.service.id) ?? { id: ss.service.id };
-                              await extraServicesApi.removeStudentService(schoolId, svc.id, ss.id);
-                              const fresh: any = await studentsApi.get(schoolId, id);
-                              setStudent(fresh);
-                            }}
-                            className="p-1.5 text-gray-300 hover:text-red-500 rounded self-start mt-0.5 flex-shrink-0"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          <div className="flex flex-col gap-1 self-start mt-0.5 shrink-0">
+                            <button
+                              onClick={async () => {
+                                const svcFull: any = await extraServicesApi.get(schoolId, ss.service.id).catch(() => null);
+                                setSelectedServiceId(ss.service.id);
+                                setSelectedServiceFull(svcFull);
+                                setSelectedRouteId(ss.route?.id ?? '');
+                                setSelectedStopId(ss.stop?.id ?? '');
+                                setAssignServiceMode(ss.serviceMode ?? 'both');
+                                setPickupContact(ss.pickupContact ?? '');
+                                setAssignDropoffContact(ss.dropoffContact ?? '');
+                                setAssignPickupTime(ss.pickupTime ?? '');
+                                setAssignDropoffTime(ss.dropoffTime ?? '');
+                                setAssignHomeAddress(ss.homeAddress ?? '');
+                                setAssignHomeLat(ss.homeLat ? Number(ss.homeLat) : undefined);
+                                setAssignHomeLng(ss.homeLng ? Number(ss.homeLng) : undefined);
+                                setAssignPickupPersons(ss.pickupPersons ?? []);
+                                setAssignDiscount(ss.discountAmount != null ? String(ss.discountAmount) : '');
+                                setAssignNotes(ss.notes ?? '');
+                                setEditingSs({ ssId: ss.id, serviceId: ss.service.id });
+                                setShowAssignService(true);
+                              }}
+                              className="p-1.5 text-gray-300 hover:text-indigo-500 rounded"
+                              title="Επεξεργασία"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={async () => {
+                                if (!confirm('Να αφαιρεθεί αυτή η παροχή;')) return;
+                                const svc = allServices.find((s: any) => s.id === ss.service.id) ?? { id: ss.service.id };
+                                await extraServicesApi.removeStudentService(schoolId, svc.id, ss.id);
+                                const fresh: any = await studentsApi.get(schoolId, id);
+                                setStudent(fresh);
+                              }}
+                              className="p-1.5 text-gray-300 hover:text-red-500 rounded"
+                              title="Διαγραφή"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -2190,13 +2227,13 @@ export default function StudentProfilePage() {
           <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
               <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100">
-                <h3 className="text-lg font-bold text-gray-900">Ανάθεση Παροχής</h3>
+                <h3 className="text-lg font-bold text-gray-900">{editingSs ? 'Επεξεργασία Παροχής' : 'Ανάθεση Παροχής'}</h3>
                 <button onClick={() => setShowAssignService(false)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"><X className="h-5 w-5" /></button>
               </div>
               <div className="overflow-y-auto flex-1 px-6 py-4 space-y-5">
 
-                {/* Service selector */}
-                <div>
+                {/* Service selector — hide when editing */}
+                {!editingSs && <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Παροχή</label>
                   <div className="grid grid-cols-2 gap-2">
                     {allServices.map((s: any) => (
@@ -2216,9 +2253,9 @@ export default function StudentProfilePage() {
                       </button>
                     ))}
                   </div>
-                </div>
+                </div>}
 
-                {svc && (<>
+                {(svc || editingSs) && (<>
                   {/* Route & Stop */}
                   {routes.length > 0 && (
                     <div className="grid grid-cols-2 gap-3">
@@ -2356,6 +2393,13 @@ export default function StudentProfilePage() {
                     </div>
                   )}
 
+                  {/* Discount */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Έκπτωση (€/μήνα)</label>
+                    <input type="number" value={assignDiscount} onChange={e => setAssignDiscount(e.target.value)}
+                      placeholder="π.χ. 10 (αφήστε κενό για καμία έκπτωση)" className={inputCls} />
+                  </div>
+
                   {/* Notes */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Σημειώσεις</label>
@@ -2368,12 +2412,12 @@ export default function StudentProfilePage() {
               <div className="flex gap-3 px-6 py-4 border-t border-gray-100">
                 <button onClick={() => setShowAssignService(false)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">Ακύρωση</button>
                 <button
-                  disabled={!selectedServiceId || assigningService}
+                  disabled={(!selectedServiceId && !editingSs) || assigningService}
                   onClick={async () => {
-                    if (!selectedServiceId) return;
+                    if (!selectedServiceId && !editingSs) return;
                     setAssigningService(true);
                     try {
-                      await extraServicesApi.assignStudent(schoolId, selectedServiceId, {
+                      const payload = {
                         studentId: id,
                         routeId: selectedRouteId || undefined,
                         stopId: selectedStopId || undefined,
@@ -2386,21 +2430,28 @@ export default function StudentProfilePage() {
                         homeLat: assignHomeLat,
                         homeLng: assignHomeLng,
                         pickupPersons: assignPickupPersons.filter(p => p.name),
+                        discountAmount: assignDiscount ? Number(assignDiscount) : undefined,
                         notes: assignNotes || undefined,
-                      });
+                      };
+                      if (editingSs) {
+                        await extraServicesApi.updateStudentService(schoolId, editingSs.serviceId, editingSs.ssId, payload);
+                      } else {
+                        await extraServicesApi.assignStudent(schoolId, selectedServiceId, payload);
+                      }
                       const fresh: any = await studentsApi.get(schoolId, id);
                       setStudent(fresh);
                       setShowAssignService(false);
+                      setEditingSs(null);
                       // reset
                       setAssignServiceMode('both'); setPickupContact(''); setAssignDropoffContact('');
                       setAssignPickupTime(''); setAssignDropoffTime('');
                       setAssignHomeAddress(''); setAssignHomeLat(undefined); setAssignHomeLng(undefined);
-                      setAssignPickupPersons([]); setAssignNotes('');
+                      setAssignPickupPersons([]); setAssignDiscount(''); setAssignNotes('');
                     } finally { setAssigningService(false); }
                   }}
                   className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
                 >
-                  {assigningService ? 'Ανάθεση...' : 'Ανάθεση'}
+                  {assigningService ? 'Αποθήκευση...' : editingSs ? 'Αποθήκευση' : 'Ανάθεση'}
                 </button>
               </div>
             </div>
