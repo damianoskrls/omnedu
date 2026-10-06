@@ -58,6 +58,7 @@ model School {
   schoolPosts          SchoolPost[]
   schoolEvents         SchoolEvent[]
   questionnaires       Questionnaire[]
+  thematicPlans        ThematicPlan[]
 
   @@map("schools")
 }
@@ -258,6 +259,7 @@ model Class {
   parentMeetings ParentMeeting[]
   notifBroadcasts NotificationBroadcast[]
   instructions   ClassInstruction[]
+  thematicPlans  ThematicPlan[]
 
   @@map("classes")
 }
@@ -765,6 +767,34 @@ model ParentMeeting {
 
   @@index([schoolId, meetingDate])
   @@map("parent_meetings")
+}
+
+// ─────────────────────────────────────────────────────────
+// THEMATIC PLAN (ΔΙΑΘΕΜΑΤΙΚΟ ΑΝΑ ΤΑΞΗ / ΜΗΝΑ)
+// ─────────────────────────────────────────────────────────
+
+model ThematicPlan {
+  id           String   @id @default(uuid())
+  schoolId     String   @map("school_id")
+  classId      String   @map("class_id")
+  month        String   // yyyy-MM
+  throughMonth String?  @map("through_month") // yyyy-MM when the plan covers more than one month
+  title        String
+  greeting     String   @default("Αγαπημένοι μας γονείς,")
+  introduction String   @db.Text
+  goals        String   @db.Text
+  extras       String   @db.Text
+  closing      String   @db.Text
+  signature    String   @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  class  Class  @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, classId, month])
+  @@index([schoolId, month])
+  @@map("thematic_plans")
 }
 
 // ─────────────────────────────────────────────────────────

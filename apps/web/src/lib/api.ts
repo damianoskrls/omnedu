@@ -197,6 +197,13 @@ export const levelsApi = {
   remove: (schoolId: string, id: string) => api.delete(`/schools/${schoolId}/levels/${id}`),
 };
 
+export const thematicPlansApi = {
+  list: (schoolId: string, params?: { month?: string; classId?: string }) =>
+    api.get(`/schools/${schoolId}/thematic-plans`, { params }),
+  save: (schoolId: string, data: any) => api.post(`/schools/${schoolId}/thematic-plans`, data),
+  remove: (schoolId: string, id: string) => api.delete(`/schools/${schoolId}/thematic-plans/${id}`),
+};
+
 export const parentMeetingsApi = {
   list: (schoolId: string, params?: { classId?: string; levelId?: string }) =>
     api.get(`/schools/${schoolId}/parent-meetings`, { params }),
