@@ -6,14 +6,14 @@ import Link from 'next/link';
 import { Plus, Palette, X, Save, Check } from 'lucide-react';
 
 const PRESET_COLORS = [
-  '#4F46E5', '#7C3AED', '#0891B2', '#059669', '#D97706', '#DC2626', '#DB2777', '#1D4ED8',
+  '#77328D', '#E95926', '#4F46E5', '#7C3AED', '#0891B2', '#059669', '#D97706', '#DC2626', '#DB2777', '#1D4ED8',
 ];
 
 export default function SchoolsPage() {
   const [schools, setSchools] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingSchool, setEditingSchool] = useState<any>(null);
-  const [branding, setBranding] = useState({ name: '', logoUrl: '', primaryColor: '#4F46E5' });
+  const [branding, setBranding] = useState({ name: '', logoUrl: '', primaryColor: '#77328D' });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -31,7 +31,7 @@ export default function SchoolsPage() {
     setBranding({
       name: school.name,
       logoUrl: school.logoUrl ?? '',
-      primaryColor: school.primaryColor ?? '#4F46E5',
+      primaryColor: school.primaryColor ?? '#77328D',
     });
     setSaved(false);
   };
@@ -95,7 +95,7 @@ export default function SchoolsPage() {
                     ) : (
                       <div
                         className="h-8 w-8 rounded-lg flex items-center justify-center text-white text-xs font-bold"
-                        style={{ backgroundColor: school.primaryColor ?? '#4F46E5' }}
+                        style={{ backgroundColor: school.primaryColor ?? '#77328D' }}
                       >
                         {school.name.slice(0, 2).toUpperCase()}
                       </div>
@@ -122,7 +122,7 @@ export default function SchoolsPage() {
                     <Palette size={14} />
                     <span
                       className="h-3 w-3 rounded-full inline-block border border-gray-200"
-                      style={{ backgroundColor: school.primaryColor ?? '#4F46E5' }}
+                      style={{ backgroundColor: school.primaryColor ?? '#77328D' }}
                     />
                     Edit
                   </button>

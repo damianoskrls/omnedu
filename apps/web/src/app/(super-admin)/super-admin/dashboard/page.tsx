@@ -12,19 +12,20 @@ export default function SuperAdminDashboard() {
 
   useEffect(() => {
     schoolsApi.list().then((data: any) => {
-      setSchools(data);
+      setSchools(Array.isArray(data) ? data : []);
       setLoading(false);
-    });
+    }).catch(() => setLoading(false));
   }, []);
 
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Platform Overview</h1>
-        <p className="text-gray-500 text-sm mt-1">All schools across the omnedu platform</p>
+        <p className="text-sm font-extrabold tracking-wide text-[#E95926]">Ονειροχώρα</p>
+        <h1 className="text-3xl font-extrabold tracking-tight text-[#2c2422]">Επισκόπηση πλατφόρμας</h1>
+        <p className="text-gray-500 text-sm mt-1">Όλα τα σχολεία στο σύστημα</p>
       </div>
 
-      <div className="grid grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <StatCard label="Total Schools" value={schools.length} icon={SchoolIcon} color="indigo" />
         <StatCard
           label="Total Students"
@@ -45,7 +46,7 @@ export default function SuperAdminDashboard() {
           <h2 className="font-semibold text-gray-800">Schools</h2>
           <Link
             href="/super-admin/schools/new"
-            className="text-sm bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700"
+            className="text-sm bg-indigo-600 text-white px-4 py-2 rounded-xl font-semibold hover:bg-indigo-700"
           >
             + New School
           </Link>

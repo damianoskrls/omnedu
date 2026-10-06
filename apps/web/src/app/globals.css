@@ -4,24 +4,27 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 36 38% 97%;
+    --foreground: 18 14% 16%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --card-foreground: 18 14% 16%;
+    --primary: 286 48% 37%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 84 42% 92%;
+    --secondary-foreground: 286 35% 28%;
+    --muted: 30 20% 94%;
+    --muted-foreground: 20 8% 40%;
+    --accent: 18 82% 56%;
+    --accent-foreground: 0 0% 100%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
+    --border: 286 18% 90%;
+    --input: 286 18% 90%;
+    --ring: 286 48% 37%;
+    --radius: 0.85rem;
+    --brand-purple: #77328d;
+    --brand-orange: #e95926;
+    --brand-green: #cce3ac;
   }
 
   .dark {
@@ -47,5 +50,26 @@
 
 @layer base {
   * { @apply border-border; }
-  body { @apply bg-background text-foreground; }
+  html { scroll-behavior: smooth; }
+  body {
+    @apply bg-background text-foreground antialiased;
+    background:
+      radial-gradient(980px 460px at -8% -10%, rgba(204, 227, 172, 0.55), transparent 62%),
+      radial-gradient(760px 420px at 110% -12%, rgba(119, 50, 141, 0.1), transparent 58%),
+      radial-gradient(640px 360px at 100% 100%, rgba(233, 89, 38, 0.08), transparent 55%),
+      hsl(var(--background));
+  }
+}
+
+@layer components {
+  .app-main :where(.rounded-xl.bg-white, .rounded-2xl.bg-white) {
+    border-color: rgba(119, 50, 141, 0.1);
+    box-shadow:
+      0 1px 2px rgba(61, 40, 32, 0.04),
+      0 16px 36px -24px rgba(119, 50, 141, 0.45);
+  }
+
+  .app-main :where(table thead tr) {
+    background: rgba(250, 245, 252, 0.8);
+  }
 }

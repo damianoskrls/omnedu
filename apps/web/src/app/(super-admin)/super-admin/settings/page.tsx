@@ -19,7 +19,7 @@ export default function SuperAdminSettingsPage() {
             <Settings className="h-4 w-4 text-indigo-600" />
             <h2 className="font-semibold text-gray-800">Account</h2>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">Full Name</label>
               <div className="px-3 py-2 bg-gray-50 rounded-lg text-sm text-gray-700">{user?.fullName}</div>
@@ -39,7 +39,7 @@ export default function SuperAdminSettingsPage() {
           <div className="space-y-3 text-sm text-gray-600">
             <div className="flex items-center justify-between py-2 border-b border-gray-50">
               <span>Platform Name</span>
-              <span className="font-medium text-gray-900">omnedu</span>
+              <span className="font-medium text-gray-900">Ονειροχώρα</span>
             </div>
             <div className="flex items-center justify-between py-2 border-b border-gray-50">
               <span>API Version</span>

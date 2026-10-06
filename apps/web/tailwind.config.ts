@@ -10,6 +10,19 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        indigo: {
+          50: '#faf5fc',
+          100: '#f3e8f7',
+          200: '#e6d0ee',
+          300: '#d0a8dc',
+          400: '#b478c4',
+          500: '#9550a8',
+          600: '#77328D',
+          700: '#642678',
+          800: '#511f62',
+          900: '#3d1849',
+          950: '#2a0f33',
+        },
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',
