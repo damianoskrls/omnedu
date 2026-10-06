@@ -48,4 +48,20 @@ export class QuestionnairesController {
   remove(@Param('schoolId') schoolId: string, @Param('id') id: string) {
     return this.svc.remove(id, schoolId);
   }
+
+  // ── Responses ──────────────────────────────────────────────────────────────
+
+  @Get(':id/responses')
+  getResponses(@Param('schoolId') schoolId: string, @Param('id') id: string) {
+    return this.svc.getResponses(id, schoolId);
+  }
+
+  @Post(':id/responses')
+  upsertResponse(
+    @Param('schoolId') schoolId: string,
+    @Param('id') id: string,
+    @Body() body: { studentId: string; answers: Record<string, any> },
+  ) {
+    return this.svc.upsertResponse(id, schoolId, body.studentId, body.answers);
+  }
 }

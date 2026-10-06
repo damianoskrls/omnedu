@@ -219,12 +219,18 @@ export const dailyMenusApi = {
 export const questionnairesApi = {
   list: (schoolId: string, academicYear?: number) =>
     api.get(`/schools/${schoolId}/questionnaires`, { params: academicYear ? { academicYear } : {} }),
+  get: (schoolId: string, id: string) =>
+    api.get(`/schools/${schoolId}/questionnaires/${id}`),
   create: (schoolId: string, data: any) =>
     api.post(`/schools/${schoolId}/questionnaires`, data),
   update: (schoolId: string, id: string, data: any) =>
     api.patch(`/schools/${schoolId}/questionnaires/${id}`, data),
   remove: (schoolId: string, id: string) =>
     api.delete(`/schools/${schoolId}/questionnaires/${id}`),
+  getResponses: (schoolId: string, id: string) =>
+    api.get(`/schools/${schoolId}/questionnaires/${id}/responses`),
+  upsertResponse: (schoolId: string, id: string, studentId: string, answers: Record<string, any>) =>
+    api.post(`/schools/${schoolId}/questionnaires/${id}/responses`, { studentId, answers }),
 };
 
 export const studentFormsApi = {

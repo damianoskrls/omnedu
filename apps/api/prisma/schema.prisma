@@ -311,8 +311,9 @@ model Student {
   studentForms          StudentForm[]
   medicationRequests    MedicationRequest[]
   studentServices          StudentService[]
-  eventEnrollments         SchoolEventEnrollment[]
-  notifBroadcastsAsTarget  NotificationBroadcast[] @relation("BroadcastTargetStudent")
+  eventEnrollments             SchoolEventEnrollment[]
+  questionnaireResponses       QuestionnaireResponse[]
+  notifBroadcastsAsTarget      NotificationBroadcast[] @relation("BroadcastTargetStudent")
   feeOverride           StudentFeeOverride?
   subsidies             StudentSubsidy[]
   monthlyCharges        MonthlyCharge[]
@@ -900,20 +901,41 @@ model StudentForm {
 // ─────────────────────────────────────────────────────────
 
 model Questionnaire {
-  id           String   @id @default(uuid())
-  schoolId     String   @map("school_id")
+  id           String    @id @default(uuid())
+  schoolId     String    @map("school_id")
   title        String
   description  String?
-  academicYear Int      @map("academic_year")
-  scopeType    String   @default("all") @map("scope_type") // "all" | "class" | "level"
-  scopeIds     String   @default("[]") @map("scope_ids") // JSON array of class/level UUIDs
-  isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at")
+  academicYear Int       @map("academic_year")
+  questions    String    @default("[]") @map("questions")  // JSON: [{id,text,type,options?}]
+  scopeType    String    @default("all") @map("scope_type") // "all" | "class" | "level" | "teachers"
+  scopeIds     String    @default("[]") @map("scope_ids")   // JSON array of class/level UUIDs
+  deadline     DateTime? @map("deadline")
+  status       String    @default("draft") @map("status")  // "draft" | "sent"
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at")
 
-  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  school    School                   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  responses QuestionnaireResponse[]
 
   @@index([schoolId])
   @@map("questionnaires")
+}
+
+model QuestionnaireResponse {
+  id              String    @id @default(uuid())
+  questionnaireId String    @map("questionnaire_id")
+  studentId       String    @map("student_id")
+  answers         String    @default("{}") @map("answers") // JSON: {questionId: answer}
+  submittedAt     DateTime  @default(now()) @map("submitted_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  questionnaire Questionnaire @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
+  student       Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([questionnaireId, studentId])
+  @@index([questionnaireId])
+  @@index([studentId])
+  @@map("questionnaire_responses")
 }
 
 // ─────────────────────────────────────────────────────────
