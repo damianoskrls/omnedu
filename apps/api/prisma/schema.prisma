@@ -952,6 +952,7 @@ model ServiceRoute {
   serviceId   String  @map("service_id")
   name        String  // e.g. Γραμμή Α - Κέντρο
   description String?
+  direction   String  @default("both") @map("direction") // pickup | dropoff | both
   driverName  String? @map("driver_name")
   busNumber   String? @map("bus_number")
   isActive    Boolean @default(true) @map("is_active")

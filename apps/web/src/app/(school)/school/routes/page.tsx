@@ -33,6 +33,7 @@ type Stop = {
 };
 type Route = {
   id: string; name: string; description?: string;
+  direction?: string; // pickup | dropoff | both
   driverName?: string; busNumber?: string;
   isActive: boolean;
   stops: Stop[];
@@ -164,6 +165,7 @@ export default function RoutesPage() {
       const payload = {
         name: r.name,
         description: r.description || undefined,
+        direction: r.direction || 'both',
         driverName: r.driverName || undefined,
         busNumber: r.busNumber || undefined,
       };
@@ -415,7 +417,7 @@ export default function RoutesPage() {
                               : 'border-transparent text-gray-500 hover:text-gray-700'
                           }`}
                         >
-                          {t === 'routes' ? 'Δρομολόγια & Στάσεις' : t === 'students' ? 'Μαθητές' : 'Πρόγραμμα'}
+                          {t === 'routes' ? 'Δρομολόγια' : t === 'students' ? 'Μαθητές' : 'Πρόγραμμα'}
                         </button>
                       ))}
                     </div>
@@ -437,7 +439,17 @@ export default function RoutesPage() {
                           <div key={route.id} className="border border-gray-200 rounded-lg overflow-hidden">
                             <div className="flex items-center gap-3 p-3 bg-gray-50">
                               <div className="flex-1 min-w-0">
-                                <span className="font-medium text-sm text-gray-800">{route.name}</span>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-medium text-sm text-gray-800">{route.name}</span>
+                                  {route.direction && route.direction !== 'both' && (
+                                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${route.direction === 'pickup' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                                      {route.direction === 'pickup' ? '↑ Παραλαβή' : '↓ Αποστολή'}
+                                    </span>
+                                  )}
+                                  {(!route.direction || route.direction === 'both') && (
+                                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700">↑↓ Αμφίδρομο</span>
+                                  )}
+                                </div>
                                 <div className="flex gap-3 mt-0.5 flex-wrap">
                                   {route.description && <span className="text-xs text-gray-500">{route.description}</span>}
                                   {route.driverName && <span className="text-xs text-gray-500 flex items-center gap-1"><User className="w-3 h-3" />{route.driverName}</span>}
@@ -713,10 +725,33 @@ export default function RoutesPage() {
         <Modal title={(routeModal.route as any)?.id ? 'Επεξεργασία Δρομολογίου' : 'Νέο Δρομολόγιο'} onClose={() => setRouteModal(null)}>
           <div className="space-y-4">
             <Field label="Όνομα *">
-              <input className={inputCls} value={routeModal.route?.name ?? ''} onChange={e => setRouteModal(p => ({ ...p!, route: { ...p!.route!, name: e.target.value } }))} placeholder="π.χ. Γραμμή Α - Κέντρο" />
+              <input className={inputCls} value={routeModal.route?.name ?? ''} onChange={e => setRouteModal(p => ({ ...p!, route: { ...p!.route!, name: e.target.value } }))} placeholder="π.χ. Πρωινό Α - 07:00" />
+            </Field>
+            <Field label="Τύπος Δρομολογίου *">
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { value: 'pickup', label: '↑ Παραλαβή', desc: 'Πρωί προς σχολείο' },
+                  { value: 'dropoff', label: '↓ Αποστολή', desc: 'Απόγευμα από σχολείο' },
+                  { value: 'both', label: '↑↓ Αμφίδρομο', desc: 'Και τις δύο κατευθύνσεις' },
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setRouteModal(p => ({ ...p!, route: { ...p!.route!, direction: opt.value } as any }))}
+                    className={`py-2 px-2 text-xs rounded-lg border-2 font-medium transition-colors text-left ${
+                      ((routeModal.route as any)?.direction ?? 'both') === opt.value
+                        ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                        : 'border-gray-200 text-gray-600 hover:border-indigo-200'
+                    }`}
+                  >
+                    <div className="font-semibold">{opt.label}</div>
+                    <div className="text-[10px] font-normal text-gray-500 mt-0.5">{opt.desc}</div>
+                  </button>
+                ))}
+              </div>
             </Field>
             <Field label="Περιγραφή">
-              <input className={inputCls} value={routeModal.route?.description ?? ''} onChange={e => setRouteModal(p => ({ ...p!, route: { ...p!.route!, description: e.target.value } }))} />
+              <input className={inputCls} value={routeModal.route?.description ?? ''} onChange={e => setRouteModal(p => ({ ...p!, route: { ...p!.route!, description: e.target.value } }))} placeholder="π.χ. Εκκίνηση 07:00 από σχολείο" />
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Οδηγός">
@@ -958,6 +993,55 @@ function DailyTimesGrid({ value, onChange }: { value: DailyTimes; onChange: (v: 
   );
 }
 
+function TimePickerEl({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const h24 = value ? parseInt(value.split(':')[0] ?? '0', 10) : NaN;
+  const min = value ? (value.split(':')[1] ?? '00') : '00';
+  const isPM = !isNaN(h24) && h24 >= 12;
+  const h12 = isNaN(h24) ? '' : String(h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24);
+
+  const emit = (newH12: string, newMin: string, newIsPM: boolean) => {
+    const h = parseInt(newH12 || '12', 10) % 12;
+    const h24out = newIsPM ? h + 12 : h;
+    const m = parseInt(newMin || '0', 10);
+    onChange(`${String(h24out).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+  };
+
+  return (
+    <div className="flex items-center gap-1">
+      <select
+        className="border border-gray-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        value={h12}
+        onChange={e => emit(e.target.value, min, isPM)}
+      >
+        <option value="">–</option>
+        {Array.from({ length: 12 }, (_, i) => i + 1).map(n => (
+          <option key={n} value={String(n)}>{String(n).padStart(2, '0')}</option>
+        ))}
+      </select>
+      <span className="text-gray-400 font-bold text-sm">:</span>
+      <select
+        className="border border-gray-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        value={min}
+        onChange={e => emit(h12, e.target.value, isPM)}
+      >
+        {['00','05','10','15','20','25','30','35','40','45','50','55'].map(n => (
+          <option key={n} value={n}>{n}</option>
+        ))}
+      </select>
+      <button
+        type="button"
+        onClick={() => emit(h12 || '12', min, false)}
+        className={`px-2.5 py-2 text-xs font-bold rounded-lg border transition-colors ${!isPM && h12 ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}
+      >ΠΜ</button>
+      <button
+        type="button"
+        onClick={() => emit(h12 || '12', min, true)}
+        className={`px-2.5 py-2 text-xs font-bold rounded-lg border transition-colors ${isPM && h12 ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}
+      >ΜΜ</button>
+    </div>
+  );
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
@@ -968,9 +1052,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 const SERVICE_MODES = [
-  { value: 'both', label: 'Παραλαβή + Αποστολή' },
-  { value: 'pickup', label: 'Μόνο Παραλαβή ↑' },
-  { value: 'dropoff', label: 'Μόνο Αποστολή ↓' },
+  { value: 'both', label: '↑↓ Παραλαβή + Αποστολή' },
+  { value: 'pickup', label: '↑ Μόνο Παραλαβή' },
+  { value: 'dropoff', label: '↓ Μόνο Αποστολή' },
 ];
 
 function StudentAssignForm({ form, onChange, svc, selectedRoute }: {
@@ -994,34 +1078,35 @@ function StudentAssignForm({ form, onChange, svc, selectedRoute }: {
     onChange({ ...form, pickupPersons: persons });
   };
 
+  const routeDirection = selectedRoute?.direction ?? 'both';
+  const availableModes = routeDirection === 'pickup'
+    ? SERVICE_MODES.filter(m => m.value === 'pickup')
+    : routeDirection === 'dropoff'
+    ? SERVICE_MODES.filter(m => m.value === 'dropoff')
+    : SERVICE_MODES;
+
   return (
     <div className="space-y-4">
-      {/* Service mode */}
-      <Field label="Τύπος Υπηρεσίας">
-        <div className="grid grid-cols-3 gap-2">
-          {SERVICE_MODES.map(m => (
-            <button
-              key={m.value}
-              type="button"
-              onClick={() => onChange({ ...form, serviceMode: m.value })}
-              className={`py-2 px-3 text-xs rounded-lg border-2 font-medium transition-colors ${
-                form.serviceMode === m.value
-                  ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                  : 'border-gray-200 text-gray-600 hover:border-indigo-200'
-              }`}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
-      </Field>
-
-      {/* Route + Stop */}
+      {/* Route + Stop — first so direction filtering works */}
       {svc && svc.routes.length > 0 && (
         <Field label="Δρομολόγιο">
-          <select className={inputCls} value={form.routeId ?? ''} onChange={e => onChange({ ...form, routeId: e.target.value, stopId: '' })}>
+          <select
+            className={inputCls}
+            value={form.routeId ?? ''}
+            onChange={e => {
+              const routeId = e.target.value;
+              const route = svc.routes.find(r => r.id === routeId);
+              const dir = route?.direction ?? 'both';
+              const newMode = dir !== 'both' ? dir : form.serviceMode ?? 'both';
+              onChange({ ...form, routeId, stopId: '', serviceMode: newMode });
+            }}
+          >
             <option value="">— χωρίς δρομολόγιο —</option>
-            {svc.routes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+            {svc.routes.map(r => (
+              <option key={r.id} value={r.id}>
+                {r.name}{r.direction === 'pickup' ? ' ↑' : r.direction === 'dropoff' ? ' ↓' : ' ↑↓'}
+              </option>
+            ))}
           </select>
         </Field>
       )}
@@ -1035,6 +1120,33 @@ function StudentAssignForm({ form, onChange, svc, selectedRoute }: {
           </select>
         </Field>
       )}
+
+      {/* Service mode — filtered based on selected route direction */}
+      <Field label="Τύπος Υπηρεσίας">
+        {availableModes.length === 1 ? (
+          <div className={`py-2 px-3 text-xs rounded-lg border-2 font-medium border-indigo-500 bg-indigo-50 text-indigo-700 inline-block`}>
+            {availableModes[0]!.label}
+            <span className="ml-1 text-indigo-400 font-normal">(καθορίστηκε από το δρομολόγιο)</span>
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            {availableModes.map(m => (
+              <button
+                key={m.value}
+                type="button"
+                onClick={() => onChange({ ...form, serviceMode: m.value })}
+                className={`py-2 px-3 text-xs rounded-lg border-2 font-medium transition-colors ${
+                  form.serviceMode === m.value
+                    ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                    : 'border-gray-200 text-gray-600 hover:border-indigo-200'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </Field>
 
       {/* Home address with map */}
       {(form.serviceMode === 'both' || form.serviceMode === 'pickup') && (
@@ -1086,19 +1198,19 @@ function StudentAssignForm({ form, onChange, svc, selectedRoute }: {
         </Field>
       )}
 
-      {/* Pickup times */}
+      {/* Pickup times with ΠΜ/ΜΜ */}
       <Field label="Προεπιλεγμένες ώρες">
         <div className="grid grid-cols-2 gap-3">
           {(form.serviceMode === 'both' || form.serviceMode === 'pickup') && (
             <div>
-              <span className="text-xs text-gray-500 mb-1 block">Παραλαβή ↑</span>
-              <input type="time" className={inputCls} value={form.pickupTime ?? ''} onChange={e => onChange({ ...form, pickupTime: e.target.value })} />
+              <span className="text-xs text-gray-500 mb-1.5 block">Παραλαβή ↑</span>
+              <TimePickerEl value={form.pickupTime ?? ''} onChange={v => onChange({ ...form, pickupTime: v })} />
             </div>
           )}
           {(form.serviceMode === 'both' || form.serviceMode === 'dropoff') && (
             <div>
-              <span className="text-xs text-gray-500 mb-1 block">Αποστολή ↓</span>
-              <input type="time" className={inputCls} value={form.dropoffTime ?? ''} onChange={e => onChange({ ...form, dropoffTime: e.target.value })} />
+              <span className="text-xs text-gray-500 mb-1.5 block">Αποστολή ↓</span>
+              <TimePickerEl value={form.dropoffTime ?? ''} onChange={v => onChange({ ...form, dropoffTime: v })} />
             </div>
           )}
         </div>
