@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { studentsApi, billingApi, classesApi, activitiesApi, extraServicesApi, medicationRequestsApi, studentFormsApi, broadcastsApi, schoolEventsApi } from '@/lib/api';
+import { StudentStatement } from './student-statement';
 import { useStoredUser } from '@/lib/auth';
 import {
   ArrowLeft, Phone, Mail, MapPin, Droplets,
@@ -111,6 +112,7 @@ export default function StudentProfilePage() {
   const [questionnaireForm, setQuestionnaireForm] = useState<any>(null);
   const [savingQuestionnaire, setSavingQuestionnaire] = useState(false);
   const [charges, setCharges] = useState<any[]>([]);
+  const [statement, setStatement] = useState<any>(null);
   const [oneTimeCharges, setOneTimeCharges] = useState<any[]>([]);
   const [chargesLoading, setChargesLoading] = useState(false);
   const [subsidies, setSubsidies] = useState<any[]>([]);
@@ -213,12 +215,13 @@ export default function StudentProfilePage() {
     if (!schoolId) return;
     setChargesLoading(true);
     try {
-      const [ch, subs, otc, lf, fee] = await Promise.all([
+      const [ch, subs, otc, lf, fee, card] = await Promise.all([
         billingApi.getStudentCharges(schoolId, id).catch(() => []),
         billingApi.getSubsidies(schoolId, id).catch(() => []),
         billingApi.getOneTimeCharges(schoolId, { studentId: id }).catch(() => []),
         billingApi.getLevelFees(schoolId).catch(() => []),
         billingApi.getStudentFee(schoolId, id).catch(() => null),
+        billingApi.getStudentStatement(schoolId, id).catch(() => null),
       ]);
       const monthly = Array.isArray(ch) ? ch : [];
       const oneTime = Array.isArray(otc) ? otc : [];
@@ -229,6 +232,7 @@ export default function StudentProfilePage() {
       setOverviewOneTime(oneTime);
       setLevelFees(Array.isArray(lf) ? lf : []);
       setFeeOverride(fee && !fee.message ? fee : null);
+      setStatement(card && Array.isArray(card.months) ? card : null);
     } finally {
       setChargesLoading(false);
     }
@@ -1666,6 +1670,51 @@ export default function StudentProfilePage() {
 
         return (
           <div className="space-y-5">
+            {statement && (
+              <StudentStatement
+                statement={statement}
+                isAdmin={isAdmin}
+                saving={savingPay || markingEventPayment !== null}
+                onPayMonth={(chargeId, amount) => {
+                  billingApi.updateCharge(schoolId, chargeId, { paidAmount: amount, status: 'paid' }).then(loadBillingData);
+                }}
+                onUndoMonth={(chargeId) => {
+                  billingApi.updateCharge(schoolId, chargeId, { paidAmount: 0, status: 'unpaid' }).then(loadBillingData);
+                }}
+                onPayExtra={(extra) => {
+                  if (extra.kind === 'event') {
+                    const enrollment = (student.eventEnrollments ?? []).find((row: any) => row.id === extra.id);
+                    if (enrollment) handleMarkEventPaid(enrollment, true);
+                    return;
+                  }
+                  handlePayOneTime({ id: extra.id }, Number(extra.amount));
+                }}
+              />
+            )}
+            {statement && isAdmin && (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+                {oneTimeForm ? (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-3 gap-2">
+                      <input value={oneTimeForm.description} onChange={e => setOneTimeForm({ ...oneTimeForm, description: e.target.value })} placeholder="Περιγραφή (π.χ. Εκδρομή)" className="col-span-2 border border-gray-200 rounded-lg px-3 py-1.5 text-sm" />
+                      <input type="number" min="0" step="0.01" value={oneTimeForm.amount} onChange={e => setOneTimeForm({ ...oneTimeForm, amount: e.target.value })} placeholder="Ποσό (€)" className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input type="date" value={oneTimeForm.chargeDate} onChange={e => setOneTimeForm({ ...oneTimeForm, chargeDate: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm" />
+                      <button onClick={() => setOneTimeForm(null)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg">Ακύρωση</button>
+                      <button onClick={handleSaveOneTime} disabled={savingOneTime || !oneTimeForm.description || !oneTimeForm.amount} className="px-3 py-1.5 text-sm bg-[#77328D] text-white rounded-lg disabled:opacity-50">{savingOneTime ? '...' : 'Αποθήκευση'}</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setOneTimeForm({ description: '', amount: '', chargeDate: new Date().toISOString().slice(0, 10), notes: '' })}
+                    className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-[#77328D]"
+                  >
+                    <Plus className="h-4 w-4" /> Έκτακτη χρέωση μέσα στον μήνα (εκδρομή κ.λπ.)
+                  </button>
+                )}
+              </div>
+            )}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <div className="flex items-start justify-between gap-4 mb-4">
                 <div>
@@ -1789,7 +1838,8 @@ export default function StudentProfilePage() {
               )}
             </div>
 
-            {/* Financial summary card */}
+            {!statement && (
+            <>
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <h3 className="font-semibold text-gray-900 mb-4">Οικονομική Επισκόπηση</h3>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -1901,6 +1951,8 @@ export default function StudentProfilePage() {
                 </div>
               </div>
             )}
+            </>
+            )}
 
             {/* Subsidies section */}
             {isAdmin && (
@@ -1908,7 +1960,7 @@ export default function StudentProfilePage() {
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <h3 className="font-semibold text-gray-900">Επιδοτήσεις / Voucher</h3>
-                    <p className="text-xs text-gray-500 mt-0.5">Αφαιρούνται αυτόματα από κάθε μηνιαία χρέωση</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Αφαιρείται από κάθε ανοιχτό μήνα. Αν βάλεις voucher 300€, ο Οκτώβριος από 515€ γίνεται 215€.</p>
                   </div>
                   {subsidyForm === null && (
                     <button
@@ -1970,7 +2022,7 @@ export default function StudentProfilePage() {
             )}
 
             {/* School year timelines */}
-            {chargesLoading ? (
+            {!statement && (chargesLoading ? (
               <div className="text-center py-10 text-gray-400">Φόρτωση...</div>
             ) : schoolYears.map(sy => {
               const stats = yearStats(sy);
@@ -2180,7 +2232,7 @@ export default function StudentProfilePage() {
                   )}
                 </div>
               );
-            })}
+            }))}
           </div>
         );
       })()}

@@ -116,6 +116,12 @@ export class BillingController {
     return this.billing.getStudentCharges(schoolId, studentId);
   }
 
+  @Get('students/:studentId/statement')
+  @Roles('school_admin')
+  getStudentStatement(@Param('schoolId') schoolId: string, @Param('studentId') studentId: string) {
+    return this.billing.getStudentStatement(schoolId, studentId);
+  }
+
   @Post('students/:studentId/charges/generate')
   @Roles('school_admin')
   generateStudentCharge(

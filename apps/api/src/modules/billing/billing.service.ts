@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { isOpenMonth, quoteStudentMonth, schoolYearBounds } from './billing-quote';
 
 @Injectable()
 export class BillingService {
@@ -103,7 +104,7 @@ export class BillingService {
     name: string; subsidyType: string; monthlyAmount: number;
     startsFrom?: string; endsAt?: string; notes?: string;
   }) {
-    return this.prisma.studentSubsidy.create({
+    const created = await this.prisma.studentSubsidy.create({
       data: {
         schoolId, studentId,
         name: data.name,
@@ -114,6 +115,8 @@ export class BillingService {
         notes: data.notes,
       },
     });
+    await this.ensureStudentLedger(schoolId, studentId);
+    return created;
   }
 
   async updateSubsidy(schoolId: string, subsidyId: string, data: {
@@ -122,7 +125,7 @@ export class BillingService {
   }) {
     const sub = await this.prisma.studentSubsidy.findFirst({ where: { id: subsidyId, schoolId } });
     if (!sub) throw new NotFoundException('Subsidy not found');
-    return this.prisma.studentSubsidy.update({
+    const updated = await this.prisma.studentSubsidy.update({
       where: { id: subsidyId },
       data: {
         ...data,
@@ -130,12 +133,16 @@ export class BillingService {
         endsAt: data.endsAt ? new Date(data.endsAt) : undefined,
       },
     });
+    await this.ensureStudentLedger(schoolId, sub.studentId);
+    return updated;
   }
 
   async deleteSubsidy(schoolId: string, subsidyId: string) {
     const sub = await this.prisma.studentSubsidy.findFirst({ where: { id: subsidyId, schoolId } });
     if (!sub) throw new NotFoundException('Subsidy not found');
-    return this.prisma.studentSubsidy.delete({ where: { id: subsidyId } });
+    const deleted = await this.prisma.studentSubsidy.delete({ where: { id: subsidyId } });
+    await this.ensureStudentLedger(schoolId, sub.studentId);
+    return deleted;
   }
 
   // ── Monthly charges ──────────────────────────────────────
@@ -160,6 +167,7 @@ export class BillingService {
   }
 
   async getStudentCharges(schoolId: string, studentId: string) {
+    await this.ensureStudentLedger(schoolId, studentId);
     return this.prisma.monthlyCharge.findMany({
       where: { schoolId, studentId },
       orderBy: [{ year: 'desc' }, { month: 'desc' }],
@@ -173,6 +181,7 @@ export class BillingService {
     });
     const results = await Promise.all(
       children.map(async (child) => {
+        await this.ensureStudentLedger(schoolId, child.id);
         const [monthly, oneTime, events] = await Promise.all([
           this.prisma.monthlyCharge.findMany({
             where: { schoolId, studentId: child.id },
@@ -226,11 +235,11 @@ export class BillingService {
         activityRegistrations: {
           where: { status: { in: ['approved', 'pending'] } },
           include: {
-            activity: { select: { monthlyCost: true, oneTimeCost: true } },
+            activity: { select: { title: true, monthlyCost: true, oneTimeCost: true, startsOn: true, endsOn: true } },
           },
         },
         feeOverride: true,
-        subsidies: { where: { isActive: true } },
+        subsidies: true,
       },
     });
 
@@ -245,33 +254,8 @@ export class BillingService {
         continue;
       }
 
-      // School fee from level
-      let schoolFee = 0;
-      const enrollment = student.enrollments[0];
-      if (enrollment) {
-        const levelFees = enrollment.class.level.levelFees;
-        const fee = levelFees[0]; // most recent
-        if (fee) schoolFee = Number(fee.monthlyFee);
-      }
-
-      // Apply override
-      if (student.feeOverride) {
-        if (student.feeOverride.fixedAmount !== null) {
-          schoolFee = Number(student.feeOverride.fixedAmount);
-        } else if (student.feeOverride.discountPct !== null) {
-          schoolFee = Math.round(schoolFee * (1 - Number(student.feeOverride.discountPct) / 100) * 100) / 100;
-        }
-      }
-
-      const busFee = student.studentServices.reduce((sum, ss) => sum + this.busNet(ss), 0);
-      const activityFees = student.activityRegistrations
-        .reduce((sum, r) => sum + Number(r.activity.monthlyCost ?? 0), 0);
-
-      // Subsidies
-      const subsidyTotal = student.subsidies
-        .reduce((sum, s) => sum + Number(s.monthlyAmount), 0);
-
-      const totalDue = Math.max(0, schoolFee + busFee + activityFees - subsidyTotal);
+      const quote = this.quoteLoadedStudent(student, month, year);
+      const { schoolFee, busFee, activityFees, subsidyTotal, totalDue } = quote;
 
       const charge = await this.prisma.monthlyCharge.upsert({
         where: { studentId_month_year: { studentId: student.id, month, year } },
@@ -378,7 +362,238 @@ export class BillingService {
   }
 
   async generateStudentCharge(schoolId: string, studentId: string, month: number, year: number) {
-    const student = await this.prisma.student.findFirst({
+    const student = await this.loadBillingStudent(schoolId, studentId);
+    if (!student) throw new NotFoundException('Student not found');
+
+    const existing = await this.prisma.monthlyCharge.findFirst({ where: { studentId, month, year } });
+    if (existing && existing.status === 'paid') return existing;
+
+    const quote = this.quoteLoadedStudent(student, month, year);
+    if (!existing && quote.totalDue <= 0 && quote.lines.length === 0) return null;
+    const paidAmount = Number(existing?.paidAmount ?? 0);
+    const status = quote.totalDue <= paidAmount ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
+
+    return this.prisma.monthlyCharge.upsert({
+      where: { studentId_month_year: { studentId, month, year } },
+      create: {
+        schoolId, studentId, month, year,
+        schoolFee: quote.schoolFee,
+        busFee: quote.busFee,
+        activityFees: quote.activityFees,
+        subsidyTotal: quote.subsidyTotal,
+        totalDue: quote.totalDue,
+        paidAmount: 0,
+        status: quote.totalDue <= 0 ? 'paid' : 'unpaid',
+      },
+      update: {
+        schoolFee: quote.schoolFee,
+        busFee: quote.busFee,
+        activityFees: quote.activityFees,
+        subsidyTotal: quote.subsidyTotal,
+        totalDue: quote.totalDue,
+        status,
+        paidAt: status === 'paid' ? existing?.paidAt ?? new Date() : null,
+      },
+    });
+  }
+
+  async ensureStudentLedger(schoolId: string, studentId: string, now = new Date()) {
+    const year = schoolYearBounds(now);
+    for (const slot of year.months) {
+      if (!isOpenMonth(slot.month, slot.year, now)) continue;
+      await this.generateStudentCharge(schoolId, studentId, slot.month, slot.year);
+    }
+    await this.ensureStationeryCharge(schoolId, studentId, year.startYear);
+  }
+
+  async getStudentStatement(schoolId: string, studentId: string, now = new Date()) {
+    await this.ensureStudentLedger(schoolId, studentId, now);
+    const student = await this.loadBillingStudent(schoolId, studentId);
+    if (!student) throw new NotFoundException('Student not found');
+
+    const year = schoolYearBounds(now);
+    const [charges, oneTime] = await Promise.all([
+      this.prisma.monthlyCharge.findMany({ where: { schoolId, studentId } }),
+      this.prisma.oneTimeCharge.findMany({ where: { schoolId, studentId }, orderBy: { chargeDate: 'asc' } }),
+    ]);
+
+    const stationery = oneTime.find((charge) => this.isStationery(charge.description, charge.chargeDate, year.startYear)) ?? null;
+
+    const months = year.months.map(({ month, year: chargeYear }) => {
+      const charge = charges.find((row) => row.month === month && row.year === chargeYear);
+      const open = isOpenMonth(month, chargeYear, now);
+      const quote = this.quoteLoadedStudent(student, month, chargeYear);
+      const useStored = charge && charge.status === 'paid';
+      const lines = useStored
+        ? [
+            ...(Number(charge.schoolFee) > 0 ? [{ label: 'Φοίτηση', amount: Number(charge.schoolFee) }] : []),
+            ...(Number(charge.busFee) > 0 ? [{ label: 'Σχολικό', amount: Number(charge.busFee) }] : []),
+            ...(Number(charge.activityFees) > 0 ? [{ label: 'Δραστηριότητες', amount: Number(charge.activityFees) }] : []),
+            ...(Number(charge.subsidyTotal) > 0 ? [{ label: 'Voucher / επιδότηση', amount: -Number(charge.subsidyTotal) }] : []),
+          ]
+        : quote.lines;
+      const extras = [
+        ...oneTime
+          .filter((item) => this.chargeInMonth(item.chargeDate, month, chargeYear) && item.id !== stationery?.id)
+          .map((item) => ({
+            id: item.id,
+            kind: 'once' as const,
+            title: item.description,
+            amount: Number(item.amount),
+            status: item.status,
+          })),
+        ...student.eventEnrollments
+          .filter((enrollment) => enrollment.event?.eventDate && this.chargeInMonth(enrollment.event.eventDate, month, chargeYear) && Number(enrollment.event.costPerChild ?? 0) > 0)
+          .map((enrollment) => ({
+            id: enrollment.id,
+            kind: 'event' as const,
+            title: enrollment.event.title,
+            amount: Number(enrollment.event.costPerChild),
+            status: enrollment.status === 'paid' ? 'paid' : enrollment.status === 'pending_payment' ? 'unpaid' : enrollment.status,
+            eventId: enrollment.eventId,
+          })),
+      ];
+      if (stationery && this.chargeInMonth(stationery.chargeDate, month, chargeYear)) {
+        extras.unshift({
+          id: stationery.id,
+          kind: 'once' as const,
+          title: stationery.description,
+          amount: Number(stationery.amount),
+          status: stationery.status,
+        });
+      }
+      return {
+        month,
+        year: chargeYear,
+        chargeId: charge?.id ?? null,
+        status: charge ? charge.status : open ? 'unpaid' : 'upcoming',
+        totalDue: useStored ? Number(charge.totalDue) : quote.totalDue,
+        paidAmount: charge ? Number(charge.paidAmount) : 0,
+        lines,
+        extras,
+      };
+    });
+
+    const pendingMonths = months
+      .filter((month) => month.status === 'unpaid' || month.status === 'partial')
+      .reduce((sum, month) => sum + Math.max(0, month.totalDue - month.paidAmount), 0);
+    const pendingExtras = months
+      .flatMap((month) => month.extras)
+      .filter((extra) => extra.status === 'unpaid' || extra.status === 'partial' || extra.status === 'pending_payment')
+      .reduce((sum, extra) => sum + Number(extra.amount), 0);
+
+    const current = months.find((month) => month.month === now.getUTCMonth() + 1 && month.year === now.getUTCFullYear()) ?? null;
+
+    return {
+      schoolYear: year.label,
+      pendingNow: Math.round((pendingMonths + pendingExtras) * 100) / 100,
+      current,
+      stationery: stationery
+        ? {
+            id: stationery.id,
+            description: stationery.description,
+            amount: Number(stationery.amount),
+            status: stationery.status,
+            paidAmount: Number(stationery.paidAmount),
+          }
+        : null,
+      months,
+    };
+  }
+
+  private async ensureStationeryCharge(schoolId: string, studentId: string, startYear: number) {
+    const student = await this.loadBillingStudent(schoolId, studentId);
+    const fee = student?.enrollments[0]?.class?.level?.levelFees?.[0];
+    const annual = fee?.annualFee != null ? Number(fee.annualFee) : 0;
+    if (!annual || annual <= 0) return null;
+
+    const from = new Date(Date.UTC(startYear, 8, 1));
+    const to = new Date(Date.UTC(startYear + 1, 7, 31));
+    const existing = await this.prisma.oneTimeCharge.findFirst({
+      where: { schoolId, studentId, chargeDate: { gte: from, lte: to } },
+    });
+    const match = existing && this.isStationery(existing.description, existing.chargeDate, startYear)
+      ? existing
+      : await this.prisma.oneTimeCharge.findFirst({
+          where: {
+            schoolId,
+            studentId,
+            chargeDate: { gte: from, lte: to },
+            OR: [
+              { description: { contains: 'γραφικ', mode: 'insensitive' } },
+              { description: 'Ετήσια Εγγραφή' },
+            ],
+          },
+        });
+    if (match) return match;
+
+    return this.prisma.oneTimeCharge.create({
+      data: {
+        schoolId,
+        studentId,
+        description: 'Γραφική ύλη',
+        amount: annual,
+        chargeDate: from,
+        notes: `Έναρξη σχολικής χρονιάς ${startYear}-${startYear + 1}`,
+      },
+    });
+  }
+
+  private isStationery(description: string, chargeDate: Date, startYear: number) {
+    const text = description.toLowerCase();
+    const inYear = this.chargeInMonth(chargeDate, 9, startYear) || (chargeDate >= new Date(Date.UTC(startYear, 8, 1)) && chargeDate <= new Date(Date.UTC(startYear + 1, 7, 31)));
+    return inYear && (text.includes('γραφικ') || description === 'Ετήσια Εγγραφή');
+  }
+
+  private chargeInMonth(value: Date, month: number, year: number) {
+    const date = new Date(value);
+    return date.getUTCMonth() + 1 === month && date.getUTCFullYear() === year;
+  }
+
+  private quoteLoadedStudent(student: {
+    enrollments: { class: { level: { name: string; levelFees: { monthlyFee: unknown; annualFee?: unknown }[] } | null } }[];
+    studentServices: { isActive: boolean; enrolledAt: Date; serviceMode?: string | null; discountAmount?: unknown; service: { name?: string; serviceType: string; monthlyCost?: unknown; pickupCost?: unknown; dropoffCost?: unknown } }[];
+    activityRegistrations: { activity: { title?: string; monthlyCost?: unknown; startsOn?: Date | null; endsOn?: Date | null } }[];
+    feeOverride: { fixedAmount?: unknown; discountPct?: unknown } | null;
+    subsidies: { name: string; monthlyAmount: unknown; isActive: boolean; startsFrom?: Date | null; endsAt?: Date | null }[];
+  }, month: number, year: number) {
+    const level = student.enrollments[0]?.class?.level;
+    const fee = level?.levelFees?.[0];
+    return quoteStudentMonth({
+      month,
+      year,
+      levelName: level?.name,
+      levelMonthly: fee ? Number(fee.monthlyFee) : 0,
+      fixedAmount: student.feeOverride?.fixedAmount != null ? Number(student.feeOverride.fixedAmount) : null,
+      discountPct: student.feeOverride?.fixedAmount == null && student.feeOverride?.discountPct != null
+        ? Number(student.feeOverride.discountPct)
+        : null,
+      buses: student.studentServices
+        .filter((service) => service.service.serviceType === 'bus')
+        .map((service) => ({
+          name: service.service.name || 'Σχολικό',
+          net: this.busNet(service),
+          enrolledAt: service.enrolledAt,
+          isActive: service.isActive,
+        })),
+      activities: student.activityRegistrations.map((registration) => ({
+        title: registration.activity.title || 'Δραστηριότητα',
+        monthlyCost: Number(registration.activity.monthlyCost ?? 0),
+        startsOn: registration.activity.startsOn,
+        endsOn: registration.activity.endsOn,
+      })),
+      subsidies: student.subsidies.map((subsidy) => ({
+        name: subsidy.name,
+        monthlyAmount: Number(subsidy.monthlyAmount),
+        isActive: subsidy.isActive,
+        startsFrom: subsidy.startsFrom,
+        endsAt: subsidy.endsAt,
+      })),
+    });
+  }
+
+  private loadBillingStudent(schoolId: string, studentId: string) {
+    return this.prisma.student.findFirst({
       where: { id: studentId, schoolId, isActive: true },
       include: {
         enrollments: {
@@ -387,43 +602,18 @@ export class BillingService {
           take: 1,
         },
         studentServices: {
-          where: { isActive: true },
-          include: { service: { select: { serviceType: true, monthlyCost: true, pickupCost: true, dropoffCost: true } } },
+          include: { service: { select: { name: true, serviceType: true, monthlyCost: true, pickupCost: true, dropoffCost: true } } },
         },
         activityRegistrations: {
           where: { status: { in: ['approved', 'pending'] } },
-          include: { activity: { select: { monthlyCost: true } } },
+          include: { activity: { select: { title: true, monthlyCost: true, startsOn: true, endsOn: true } } },
         },
         feeOverride: true,
-        subsidies: { where: { isActive: true } },
+        subsidies: true,
+        eventEnrollments: {
+          include: { event: { select: { id: true, title: true, eventType: true, eventDate: true, costPerChild: true, status: true } } },
+        },
       },
-    });
-    if (!student) throw new NotFoundException('Student not found');
-
-    const existing = await this.prisma.monthlyCharge.findFirst({ where: { studentId, month, year } });
-    if (existing && existing.status !== 'unpaid') return existing;
-
-    let schoolFee = 0;
-    const enrollment = student.enrollments[0];
-    if (enrollment) {
-      const fee = enrollment.class.level.levelFees[0];
-      if (fee) schoolFee = Number(fee.monthlyFee);
-    }
-    if (student.feeOverride) {
-      if (student.feeOverride.fixedAmount !== null) schoolFee = Number(student.feeOverride.fixedAmount);
-      else if (student.feeOverride.discountPct !== null) {
-        schoolFee = Math.round(schoolFee * (1 - Number(student.feeOverride.discountPct) / 100) * 100) / 100;
-      }
-    }
-    const busFee = student.studentServices.reduce((sum, ss) => sum + this.busNet(ss), 0);
-    const activityFees = student.activityRegistrations.reduce((sum, r) => sum + Number(r.activity.monthlyCost ?? 0), 0);
-    const subsidyTotal = student.subsidies.reduce((sum, s) => sum + Number(s.monthlyAmount), 0);
-    const totalDue = Math.max(0, schoolFee + busFee + activityFees - subsidyTotal);
-
-    return this.prisma.monthlyCharge.upsert({
-      where: { studentId_month_year: { studentId, month, year } },
-      create: { schoolId, studentId, month, year, schoolFee, busFee, activityFees, subsidyTotal, totalDue, paidAmount: 0, status: 'unpaid' },
-      update: { schoolFee, busFee, activityFees, subsidyTotal, totalDue },
     });
   }
 
