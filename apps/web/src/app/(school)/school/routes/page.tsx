@@ -100,9 +100,12 @@ export default function RoutesPage() {
   useEffect(() => { load(); }, [schoolId]);
 
   const loadStudents = async (serviceId: string) => {
-    if (!studentServiceData[serviceId]) {
+    if (studentServiceData[serviceId] !== undefined) return;
+    try {
       const data = await extraServicesApi.getStudents(schoolId, serviceId) as unknown as StudentEntry[];
       setStudentServiceData(prev => ({ ...prev, [serviceId]: data }));
+    } catch {
+      setStudentServiceData(prev => ({ ...prev, [serviceId]: [] }));
     }
   };
 
