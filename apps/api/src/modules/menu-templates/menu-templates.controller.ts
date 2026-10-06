@@ -21,6 +21,18 @@ export class MenuTemplatesController {
     return this.svc.findOne(id, schoolId);
   }
 
+  @Post('from-month')
+  @Roles('school_admin')
+  fromMonth(@Param('schoolId') schoolId: string, @Body() body: any) {
+    return this.svc.createFromMonth(schoolId, body);
+  }
+
+  @Post('presets/september-2026')
+  @Roles('school_admin')
+  september(@Param('schoolId') schoolId: string, @Body() body: any) {
+    return this.svc.ensureSeptember(schoolId, body?.audienceType, body?.audienceIds);
+  }
+
   @Post()
   @Roles('school_admin')
   create(@Param('schoolId') schoolId: string, @Body() body: any) {
@@ -41,7 +53,13 @@ export class MenuTemplatesController {
 
   @Post(':id/apply')
   @Roles('school_admin')
-  apply(@Param('schoolId') schoolId: string, @Param('id') id: string, @Body('month') month: string) {
-    return this.svc.applyToMonth(id, schoolId, month);
+  apply(
+    @Param('schoolId') schoolId: string,
+    @Param('id') id: string,
+    @Body('month') month: string,
+    @Body('audienceType') audienceType?: string,
+    @Body('audienceIds') audienceIds?: unknown,
+  ) {
+    return this.svc.applyToMonth(id, schoolId, month, audienceType, audienceIds);
   }
 }

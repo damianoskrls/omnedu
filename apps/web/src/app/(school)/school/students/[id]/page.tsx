@@ -18,7 +18,8 @@ const TABS = [
   { key: 'general', label: 'Γενικά' },
   { key: 'health', label: 'Υγεία' },
   { key: 'parents', label: 'Γονείς' },
-  { key: 'services', label: 'Δραστηριότητες & Παροχές' },
+  { key: 'bus', label: 'Σχολικό' },
+  { key: 'activities', label: 'Δραστηριότητες' },
   { key: 'events', label: 'Εκδηλώσεις' },
   { key: 'classes', label: 'Ιστορικό Τάξεων' },
   { key: 'diary', label: 'Ημερολόγιο' },
@@ -98,7 +99,8 @@ export default function StudentProfilePage() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const isAdmin = user?.role === 'school_admin';
-  const [billingSummary, setBillingSummary] = useState<{ totalDue: number; totalPaid: number } | null>(null);
+  const [overviewCharges, setOverviewCharges] = useState<any[] | null>(null);
+  const [overviewOneTime, setOverviewOneTime] = useState<any[] | null>(null);
   const [medications, setMedications] = useState<any[]>([]);
   const [questionnaire, setQuestionnaire] = useState<any>(null);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -117,6 +119,9 @@ export default function StudentProfilePage() {
   const [oneTimeForm, setOneTimeForm] = useState<any>(null);
   const [savingOneTime, setSavingOneTime] = useState(false);
   const [levelFees, setLevelFees] = useState<any[]>([]);
+  const [feeOverride, setFeeOverride] = useState<any>(null);
+  const [feeForm, setFeeForm] = useState<any>(null);
+  const [savingFee, setSavingFee] = useState(false);
   const [payingChargeId, setPayingChargeId] = useState<string | null>(null);
   const [payAmount, setPayAmount] = useState('');
   const [savingPay, setSavingPay] = useState(false);
@@ -197,10 +202,8 @@ export default function StudentProfilePage() {
     ]).then(([ch, otc, meds, qForm]: any) => {
       const monthly = Array.isArray(ch) ? ch : [];
       const oneTime = Array.isArray(otc) ? otc : [];
-      const totalDue = monthly.reduce((s: number, c: any) => s + Number(c.totalDue ?? 0), 0)
-        + oneTime.reduce((s: number, c: any) => s + Number(c.amount ?? 0), 0);
-      const totalPaid = [...monthly, ...oneTime].reduce((s: number, c: any) => s + Number(c.paidAmount ?? 0), 0);
-      setBillingSummary({ totalDue, totalPaid });
+      setOverviewCharges(monthly);
+      setOverviewOneTime(oneTime);
       setMedications(Array.isArray(meds) ? meds.filter((m: any) => m.status !== 'completed') : []);
       setQuestionnaire(qForm ?? null);
     });
@@ -210,16 +213,22 @@ export default function StudentProfilePage() {
     if (!schoolId) return;
     setChargesLoading(true);
     try {
-      const [ch, subs, otc, lf] = await Promise.all([
+      const [ch, subs, otc, lf, fee] = await Promise.all([
         billingApi.getStudentCharges(schoolId, id).catch(() => []),
         billingApi.getSubsidies(schoolId, id).catch(() => []),
         billingApi.getOneTimeCharges(schoolId, { studentId: id }).catch(() => []),
         billingApi.getLevelFees(schoolId).catch(() => []),
+        billingApi.getStudentFee(schoolId, id).catch(() => null),
       ]);
-      setCharges(Array.isArray(ch) ? ch : []);
+      const monthly = Array.isArray(ch) ? ch : [];
+      const oneTime = Array.isArray(otc) ? otc : [];
+      setCharges(monthly);
+      setOverviewCharges(monthly);
       setSubsidies(Array.isArray(subs) ? subs : []);
-      setOneTimeCharges(Array.isArray(otc) ? otc : []);
+      setOneTimeCharges(oneTime);
+      setOverviewOneTime(oneTime);
       setLevelFees(Array.isArray(lf) ? lf : []);
+      setFeeOverride(fee && !fee.message ? fee : null);
     } finally {
       setChargesLoading(false);
     }
@@ -246,7 +255,7 @@ export default function StudentProfilePage() {
   }, [tab, schoolId, id, docYear]);
 
   useEffect(() => {
-    if (tab !== 'services' || !schoolId) return;
+    if ((tab !== 'bus' && tab !== 'activities') || !schoolId) return;
     Promise.all([
       activitiesApi.list(schoolId),
       extraServicesApi.list(schoolId),
@@ -268,6 +277,32 @@ export default function StudentProfilePage() {
     const q = siblingSearch.toLowerCase();
     setSiblingResults(allStudents.filter(s => s.fullName.toLowerCase().includes(q)).slice(0, 8));
   }, [siblingSearch, allStudents]);
+
+  async function handleSaveFee() {
+    if (!feeForm) return;
+    setSavingFee(true);
+    try {
+      if (feeForm.mode === 'level') {
+        await billingApi.deleteStudentFee(schoolId, id).catch(() => null);
+      } else if (feeForm.mode === 'percent') {
+        await billingApi.upsertStudentFee(schoolId, id, {
+          discountPct: parseFloat(feeForm.percent) || 0,
+          fixedAmount: null,
+          reason: feeForm.reason || undefined,
+        });
+      } else {
+        await billingApi.upsertStudentFee(schoolId, id, {
+          fixedAmount: parseFloat(feeForm.fixed) || 0,
+          discountPct: null,
+          reason: feeForm.reason || undefined,
+        });
+      }
+      setFeeForm(null);
+      await loadBillingData();
+    } finally {
+      setSavingFee(false);
+    }
+  }
 
   async function handleSaveSubsidy() {
     if (!subsidyForm) return;
@@ -378,13 +413,6 @@ export default function StudentProfilePage() {
     }
   };
 
-  const eventEnrOwed = (student?.eventEnrollments ?? [])
-    .filter((e: any) => e.status === 'pending_payment')
-    .reduce((s: number, e: any) => s + Number(e.event?.costPerChild ?? 0), 0);
-  const owed = billingSummary
-    ? Math.max(0, billingSummary.totalDue - billingSummary.totalPaid + eventEnrOwed)
-    : null;
-
   const handleSendNotif = async () => {
     if (!notifForm.title.trim() || !notifForm.body.trim()) return;
     setSendingNotif(true);
@@ -483,26 +511,6 @@ export default function StudentProfilePage() {
             )}
           </div>
           <div className="flex flex-col items-end gap-2 shrink-0">
-            {owed !== null && owed > 0.005 && (
-              <button
-                onClick={() => setTab('billing')}
-                className="flex items-center gap-1.5 bg-red-50 border border-red-100 rounded-xl px-4 py-2.5 text-center hover:bg-red-100 transition-colors"
-              >
-                <div>
-                  <div className="text-xs text-red-500 font-medium">Οφείλει</div>
-                  <div className="text-lg font-bold text-red-600">€{owed.toFixed(2)}</div>
-                </div>
-              </button>
-            )}
-            {owed !== null && owed <= 0.005 && (billingSummary!.totalDue > 0 || eventEnrOwed > 0) && (
-              <div className="flex items-center gap-1.5 bg-green-50 border border-green-100 rounded-xl px-4 py-2.5">
-                <Check className="w-4 h-4 text-green-600" />
-                <div>
-                  <div className="text-xs text-green-600 font-medium">Εξοφλημένος</div>
-                  <div className="text-sm font-semibold text-green-700">€{billingSummary!.totalDue.toFixed(2)}</div>
-                </div>
-              </div>
-            )}
             <button
               onClick={() => { setNotifOpen(o => !o); setNotifSent(false); }}
               className="flex items-center gap-1.5 px-3 py-1.5 border border-indigo-200 bg-indigo-50 rounded-lg text-sm text-indigo-600 hover:bg-indigo-100 transition-colors"
@@ -519,6 +527,13 @@ export default function StudentProfilePage() {
             )}
           </div>
         </div>
+
+        <StudentSnapshot
+          student={student}
+          charges={overviewCharges}
+          oneTimeCharges={overviewOneTime}
+          onOpen={setTab}
+        />
 
         {/* Notification send panel */}
         {notifOpen && (
@@ -576,7 +591,7 @@ export default function StudentProfilePage() {
         {/* Bus service */}
         {busService ? (
           <button
-            onClick={() => setTab('services')}
+            onClick={() => setTab('bus')}
             className="flex items-center gap-2 px-3 py-2 bg-white rounded-xl border border-emerald-200 shadow-sm hover:bg-emerald-50 transition-colors text-sm"
           >
             <svg className="w-5 h-5 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -594,7 +609,7 @@ export default function StudentProfilePage() {
         ) : (
           <button
             onClick={() => {
-              setTab('services');
+              setTab('bus');
               setSelectedServiceId('');
               setSelectedRouteId('');
               setSelectedStopId('');
@@ -618,7 +633,7 @@ export default function StudentProfilePage() {
         {/* Activities */}
         {activeActivities.length > 0 && (
           <button
-            onClick={() => setTab('services')}
+            onClick={() => setTab('activities')}
             className="flex items-center gap-2 px-3 py-2 bg-white rounded-xl border border-violet-200 shadow-sm hover:bg-violet-50 transition-colors text-sm"
           >
             <Activity className="w-4 h-4 text-violet-500" />
@@ -1021,10 +1036,9 @@ export default function StudentProfilePage() {
         </div>
       )}
 
-      {/* Tab: Δραστηριότητες & Παροχές */}
-      {tab === 'services' && (
+      {/* Tab: Δραστηριότητες */}
+      {tab === 'activities' && (
         <div className="space-y-6">
-          {/* Activities */}
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
             <div className="flex items-center gap-2 px-6 py-4 border-b border-gray-100">
               <Zap className="w-4 h-4 text-indigo-500" />
@@ -1078,13 +1092,17 @@ export default function StudentProfilePage() {
               </div>
             )}
           </div>
+        </div>
+      )}
 
-          {/* Extra Services */}
+      {/* Tab: Σχολικό */}
+      {tab === 'bus' && (
+        <div className="space-y-6">
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
             <div className="flex items-center gap-2 px-6 py-4 border-b border-gray-100">
-              <Bus className="w-4 h-4 text-indigo-500" />
-              <h3 className="font-semibold text-gray-800">Παροχές</h3>
-              <span className="text-xs text-gray-400">{student.studentServices?.length ?? 0} παροχές</span>
+              <Bus className="w-4 h-4 text-emerald-600" />
+              <h3 className="font-semibold text-gray-800">Σχολικό</h3>
+              <span className="text-xs text-gray-400">{(student.studentServices ?? []).filter((ss: any) => ss.service?.serviceType === 'bus').length} εγγραφές</span>
               {isAdmin && (
                 <button
                   onClick={() => { setSelectedServiceId(''); setSelectedRouteId(''); setSelectedStopId(''); setPickupContact(''); setSelectedServiceFull(null); setShowAssignService(true); }}
@@ -1094,11 +1112,11 @@ export default function StudentProfilePage() {
                 </button>
               )}
             </div>
-            {!student.studentServices?.length ? (
-              <p className="px-6 py-8 text-center text-gray-400 text-sm">Δεν υπάρχουν ενεργές παροχές.</p>
+            {!(student.studentServices ?? []).some((ss: any) => ss.service?.serviceType === 'bus') ? (
+              <p className="px-6 py-8 text-center text-gray-400 text-sm">Το παιδί δεν είναι γραμμένο σε σχολικό.</p>
             ) : (
               <div className="divide-y divide-gray-50">
-                {student.studentServices.map((ss: any) => {
+                {student.studentServices.filter((ss: any) => ss.service?.serviceType === 'bus').map((ss: any) => {
                   const dailyTimes = ss.dailyTimes as Record<string, { pickup?: string; dropoff?: string }> | null;
                   const hasDailyTimes = dailyTimes && Object.values(dailyTimes).some((d: any) => d?.pickup || d?.dropoff);
                   const pickupPersons: { name: string; phone?: string; relation?: string }[] = ss.pickupPersons ?? [];
@@ -1128,14 +1146,25 @@ export default function StudentProfilePage() {
                                 {serviceModeLabel}
                               </span>
                             )}
-                            {ss.service.monthlyCost != null && (
-                              <span className="ml-auto text-sm font-semibold text-gray-700">{ss.service.monthlyCost}€/μήνα</span>
-                            )}
-                            {ss.discountAmount != null && Number(ss.discountAmount) > 0 && (
-                              <span className="text-xs px-2 py-0.5 bg-orange-50 text-orange-700 rounded-full font-medium">
-                                Έκπτωση -{ Number(ss.discountAmount) }€
-                              </span>
-                            )}
+                            {(() => {
+                              const mode = ss.serviceMode ?? 'both';
+                              const base = mode === 'pickup'
+                                ? Number(ss.service.pickupCost ?? ss.service.monthlyCost ?? 0)
+                                : mode === 'dropoff'
+                                ? Number(ss.service.dropoffCost ?? ss.service.monthlyCost ?? 0)
+                                : Number(ss.service.monthlyCost ?? 0);
+                              const discount = Number(ss.discountAmount ?? 0);
+                              const net = Math.max(0, base - discount);
+                              if (!base && !discount) return null;
+                              return (
+                                <span className="ml-auto text-right">
+                                  <span className="text-sm font-semibold text-gray-800">{net.toFixed(0)}€/μήνα</span>
+                                  {discount > 0 && (
+                                    <span className="block text-xs text-orange-700">από {base.toFixed(0)}€ · έκπτωση −{discount.toFixed(0)}€</span>
+                                  )}
+                                </span>
+                              );
+                            })()}
                           </div>
 
                           {/* Route & Stop */}
@@ -1290,39 +1319,6 @@ export default function StudentProfilePage() {
                     </div>
                   );
                 })}
-              </div>
-            )}
-          </div>
-
-          {/* Events */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
-            <div className="flex items-center gap-2 px-6 py-4 border-b border-gray-100">
-              <CalendarDays className="w-4 h-4 text-violet-500" />
-              <h3 className="font-semibold text-gray-800">Εκδηλώσεις</h3>
-              <span className="text-xs text-gray-400">{student.eventEnrollments?.length ?? 0} εγγραφές</span>
-            </div>
-            {!student.eventEnrollments?.length ? (
-              <p className="px-6 py-8 text-center text-gray-400 text-sm">Δεν υπάρχουν εγγραφές σε εκδηλώσεις.</p>
-            ) : (
-              <div className="divide-y divide-gray-50">
-                {student.eventEnrollments.map((enr: any) => (
-                  <div key={enr.id} className="flex items-center gap-4 px-6 py-4">
-                    <div className="w-9 h-9 rounded-xl bg-violet-50 flex items-center justify-center shrink-0">
-                      <CalendarDays className="w-4 h-4 text-violet-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 text-sm">{enr.event.title}</p>
-                      <div className="flex flex-wrap gap-3 mt-0.5 text-xs text-gray-500">
-                        <span>{EVENT_TYPES_GR[enr.event.eventType] ?? enr.event.eventType}</span>
-                        {enr.event.eventDate && <span>{new Date(enr.event.eventDate).toLocaleDateString('el-GR')}</span>}
-                        {enr.event.costPerChild > 0 && <span className="font-medium text-gray-700">{enr.event.costPerChild}€</span>}
-                      </div>
-                    </div>
-                    <span className={`text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ${ENROLLMENT_STATUS_META[enr.status]?.color ?? 'bg-gray-100 text-gray-500'}`}>
-                      {ENROLLMENT_STATUS_META[enr.status]?.label ?? enr.status}
-                    </span>
-                  </div>
-                ))}
               </div>
             )}
           </div>
@@ -1562,10 +1558,39 @@ export default function StudentProfilePage() {
 
         // Expected monthly amount (before charge exists)
         const levelId = student?.enrollments?.[0]?.class?.level?.id;
+        const levelName = student?.enrollments?.[0]?.class?.level?.name;
         const levelFee = levelFees.find((f: any) => f.levelId === levelId);
-        const monthlyFee = levelFee ? Number(levelFee.monthlyFee) : 0;
+        const levelMonthly = levelFee ? Number(levelFee.monthlyFee) : 0;
+        const round2 = (n: number) => Math.round(n * 100) / 100;
+        let schoolNet = levelMonthly;
+        let schoolAdjust = 'τιμή βαθμίδας';
+        if (feeOverride?.fixedAmount != null) {
+          schoolNet = Number(feeOverride.fixedAmount);
+          schoolAdjust = `ειδική τιμή αντί για €${levelMonthly.toFixed(0)} της βαθμίδας`;
+        } else if (feeOverride?.discountPct != null) {
+          schoolNet = round2(levelMonthly * (1 - Number(feeOverride.discountPct) / 100));
+          schoolAdjust = `έκπτωση ${Number(feeOverride.discountPct)}% στην τιμή βαθμίδας €${levelMonthly.toFixed(0)}`;
+        }
+        const busLines = (student.studentServices ?? [])
+          .filter((ss: any) => ss.service?.serviceType === 'bus')
+          .map((ss: any) => {
+            const mode = ss.serviceMode ?? 'both';
+            const base = mode === 'pickup'
+              ? Number(ss.service.pickupCost ?? ss.service.monthlyCost ?? 0)
+              : mode === 'dropoff'
+              ? Number(ss.service.dropoffCost ?? ss.service.monthlyCost ?? 0)
+              : Number(ss.service.monthlyCost ?? 0);
+            const discount = Number(ss.discountAmount ?? 0);
+            return { id: ss.id, name: ss.service.name, base, discount, net: Math.max(0, round2(base - discount)) };
+          });
+        const activityLines = (student.activityRegistrations ?? [])
+          .filter((r: any) => (r.status === 'approved' || r.status === 'pending') && r.activity?.monthlyCost != null)
+          .map((r: any) => ({ id: r.id, name: r.activity.title, amount: Number(r.activity.monthlyCost) }));
+        const busTotal = busLines.reduce((s: number, l: any) => s + l.net, 0);
+        const activityTotal = activityLines.reduce((s: number, l: any) => s + l.amount, 0);
         const subsidyTotal = subsidies.filter((s: any) => s.isActive).reduce((sum: number, s: any) => sum + Number(s.monthlyAmount), 0);
-        const expectedNet = Math.max(0, monthlyFee - subsidyTotal);
+        const monthlyTotal = Math.max(0, round2(schoolNet + busTotal + activityTotal - subsidyTotal));
+        const expectedNet = monthlyTotal;
 
         const handleGenerateMonth = async (m: number, y: number) => {
           const key = `${m}-${y}`;
@@ -1641,6 +1666,129 @@ export default function StudentProfilePage() {
 
         return (
           <div className="space-y-5">
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <div>
+                  <h3 className="font-semibold text-gray-900">Μηνιαία χρέωση</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Ισχύει κάθε μήνα της σχολικής χρονιάς{levelName ? ` · βαθμίδα ${levelName}` : ''}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <div className="text-2xl font-extrabold text-[#77328D]">€{monthlyTotal.toFixed(2)}</div>
+                  <div className="text-xs text-gray-400">σύνολο / μήνα</div>
+                </div>
+              </div>
+              <div className="divide-y divide-gray-50 rounded-xl border border-gray-100">
+                <div className="flex items-center gap-3 px-4 py-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900">Σχολείο</p>
+                    <p className="text-xs text-gray-500">{schoolAdjust}{feeOverride?.reason ? ` · ${feeOverride.reason}` : ''}</p>
+                  </div>
+                  <span className="text-sm font-semibold text-gray-800">€{schoolNet.toFixed(2)}</span>
+                </div>
+                {busLines.map((line: any) => (
+                  <div key={line.id} className="flex items-center gap-3 px-4 py-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900">Σχολικό · {line.name}</p>
+                      {line.discount > 0 && (
+                        <p className="text-xs text-orange-700">€{line.base.toFixed(0)} − έκπτωση €{line.discount.toFixed(0)}</p>
+                      )}
+                    </div>
+                    <span className="text-sm font-semibold text-gray-800">€{line.net.toFixed(2)}</span>
+                  </div>
+                ))}
+                {activityLines.map((line: any) => (
+                  <div key={line.id} className="flex items-center gap-3 px-4 py-3">
+                    <p className="flex-1 text-sm font-medium text-gray-900">Δραστηριότητα · {line.name}</p>
+                    <span className="text-sm font-semibold text-gray-800">€{line.amount.toFixed(2)}</span>
+                  </div>
+                ))}
+                {subsidyTotal > 0 && (
+                  <div className="flex items-center gap-3 px-4 py-3">
+                    <p className="flex-1 text-sm font-medium text-emerald-800">Επιδοτήσεις</p>
+                    <span className="text-sm font-semibold text-emerald-700">−€{subsidyTotal.toFixed(2)}</span>
+                  </div>
+                )}
+              </div>
+
+              {isAdmin && (
+                <div className="mt-4">
+                  {feeForm === null ? (
+                    <button
+                      onClick={() => setFeeForm({
+                        mode: feeOverride?.fixedAmount != null ? 'fixed' : feeOverride?.discountPct != null ? 'percent' : 'level',
+                        percent: feeOverride?.discountPct != null ? String(feeOverride.discountPct) : '10',
+                        fixed: feeOverride?.fixedAmount != null ? String(feeOverride.fixedAmount) : '',
+                        reason: feeOverride?.reason ?? '',
+                      })}
+                      className="text-sm font-medium text-[#77328D] hover:underline"
+                    >
+                      {feeOverride ? 'Αλλαγή τιμής σχολείου για αυτό το παιδί' : 'Έκπτωση ή ειδική τιμή για αυτό το παιδί'}
+                    </button>
+                  ) : (
+                    <div className="rounded-xl border border-[#e6d0ee] bg-[#faf5fc] p-4 space-y-3">
+                      <p className="text-sm font-medium text-gray-800">Τιμή σχολείου για όλη τη σχολική χρονιά</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {([
+                          ['level', 'Τιμή βαθμίδας'],
+                          ['percent', 'Έκπτωση %'],
+                          ['fixed', 'Ειδική τιμή'],
+                        ] as const).map(([mode, label]) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => setFeeForm({ ...feeForm, mode })}
+                            className={`rounded-lg border px-3 py-2 text-sm font-medium ${feeForm.mode === mode ? 'border-[#77328D] bg-white text-[#642678]' : 'border-transparent bg-white/70 text-gray-600'}`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {feeForm.mode === 'percent' && (
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.5"
+                          value={feeForm.percent}
+                          onChange={e => setFeeForm({ ...feeForm, percent: e.target.value })}
+                          placeholder="π.χ. 10 για αδελφάκι"
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                        />
+                      )}
+                      {feeForm.mode === 'fixed' && (
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={feeForm.fixed}
+                          onChange={e => setFeeForm({ ...feeForm, fixed: e.target.value })}
+                          placeholder="π.χ. 380 αντί για την τιμή της τάξης"
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                        />
+                      )}
+                      {feeForm.mode !== 'level' && (
+                        <input
+                          value={feeForm.reason}
+                          onChange={e => setFeeForm({ ...feeForm, reason: e.target.value })}
+                          placeholder="Αιτιολογία, π.χ. αδελφάκι 10%"
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                        />
+                      )}
+                      <p className="text-xs text-gray-500">Η ρύθμιση ακολουθεί το παιδί σε κάθε μηνιαία χρέωση της χρονιάς. Για αδελφάκι, βάλε την ίδια έκπτωση και στα δύο προφίλ.</p>
+                      <div className="flex gap-2">
+                        <button onClick={() => setFeeForm(null)} className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-600">Ακύρωση</button>
+                        <button onClick={handleSaveFee} disabled={savingFee} className="flex-1 py-2 rounded-lg bg-[#77328D] text-white text-sm font-medium disabled:opacity-50">
+                          {savingFee ? 'Αποθήκευση...' : 'Αποθήκευση'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Financial summary card */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <h3 className="font-semibold text-gray-900 mb-4">Οικονομική Επισκόπηση</h3>
@@ -2236,7 +2384,7 @@ export default function StudentProfilePage() {
                 {!editingSs && <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Παροχή</label>
                   <div className="grid grid-cols-2 gap-2">
-                    {allServices.map((s: any) => (
+                    {allServices.filter((s: any) => s.serviceType === 'bus').map((s: any) => (
                       <button
                         key={s.id}
                         onClick={async () => {
@@ -2784,6 +2932,133 @@ export default function StudentProfilePage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+const SNAP_MONTHS = ['', 'Ιαν', 'Φεβ', 'Μαρ', 'Απρ', 'Μαΐ', 'Ιουν', 'Ιουλ', 'Αυγ', 'Σεπ', 'Οκτ', 'Νοε', 'Δεκ'];
+
+function StudentSnapshot({
+  student, charges, oneTimeCharges, onOpen,
+}: {
+  student: any;
+  charges: any[] | null;
+  oneTimeCharges: any[] | null;
+  onOpen: (tab: string) => void;
+}) {
+  const debts: { key: string; tab: string; label: string; detail: string; amount: number }[] = [];
+  for (const charge of charges ?? []) {
+    const remain = Number(charge.totalDue ?? 0) - Number(charge.paidAmount ?? 0);
+    if (charge.status === 'cancelled' || remain <= 0.005) continue;
+    debts.push({
+      key: charge.id,
+      tab: 'billing',
+      label: `Μηνιαία ${SNAP_MONTHS[charge.month] ?? charge.month} ${charge.year}`,
+      detail: charge.status === 'overdue' ? 'Ληξιπρόθεσμο' : 'Εκκρεμεί',
+      amount: remain,
+    });
+  }
+  for (const charge of oneTimeCharges ?? []) {
+    const remain = Number(charge.amount ?? 0) - Number(charge.paidAmount ?? 0);
+    if (charge.status === 'paid' || charge.status === 'cancelled' || remain <= 0.005) continue;
+    debts.push({
+      key: charge.id,
+      tab: 'billing',
+      label: charge.description || 'Έκτακτη χρέωση',
+      detail: 'Έκτακτη',
+      amount: remain,
+    });
+  }
+  for (const enrollment of student.eventEnrollments ?? []) {
+    if (enrollment.status !== 'pending_payment') continue;
+    debts.push({
+      key: enrollment.id,
+      tab: 'events',
+      label: enrollment.event?.title || 'Εκδήλωση',
+      detail: EVENT_TYPES_GR[enrollment.event?.eventType] ?? 'Εκδήλωση',
+      amount: Number(enrollment.event?.costPerChild ?? 0),
+    });
+  }
+  const debtTotal = debts.reduce((sum, item) => sum + item.amount, 0);
+  const chargesReady = charges !== null && oneTimeCharges !== null;
+
+  const buses = (student.studentServices ?? []).filter((ss: any) => ss.service?.serviceType === 'bus');
+  const otherServices = (student.studentServices ?? []).filter((ss: any) => ss.service?.serviceType !== 'bus');
+  const activities = (student.activityRegistrations ?? []).filter((reg: any) => reg.status !== 'cancelled');
+  const joinedEvents = (student.eventEnrollments ?? []).filter((enrollment: any) => enrollment.status !== 'pending_payment' && enrollment.status !== 'consent_declined');
+
+  return (
+    <div className="mt-5 grid gap-3 md:grid-cols-2">
+      <div className="rounded-xl border border-red-100 bg-red-50/60 p-4">
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <p className="text-sm font-semibold text-red-800">Χρωστάει</p>
+          <p className="text-lg font-bold text-red-700">{chargesReady ? `€${debtTotal.toFixed(2)}` : '...'}</p>
+        </div>
+        {!chargesReady ? (
+          <p className="text-xs text-red-600">Υπολογισμός οφειλών...</p>
+        ) : debts.length === 0 ? (
+          <p className="text-sm text-green-700">Δεν χρωστάει κάτι.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {debts.map((item) => (
+              <button
+                key={item.key}
+                onClick={() => onOpen(item.tab)}
+                className="w-full flex items-center gap-2 rounded-lg bg-white/80 px-3 py-2 text-left hover:bg-white"
+              >
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-medium text-gray-900 truncate">{item.label}</span>
+                  <span className="block text-xs text-gray-500">{item.detail}</span>
+                </span>
+                <span className="text-sm font-semibold text-red-700">€{item.amount.toFixed(2)}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+        <p className="text-sm font-semibold text-gray-800 mb-2">Έχει</p>
+        <div className="space-y-1.5">
+          {buses.length === 0 ? (
+            <button onClick={() => onOpen('bus')} className="w-full rounded-lg bg-white px-3 py-2 text-left text-sm text-gray-500 hover:bg-emerald-50">
+              Χωρίς σχολικό
+            </button>
+          ) : buses.map((ss: any) => (
+            <button key={ss.id} onClick={() => onOpen('bus')} className="w-full flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-left hover:bg-emerald-50">
+              <Bus className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-medium text-gray-900 truncate">Σχολικό · {ss.service?.name}</span>
+                <span className="block text-xs text-gray-500 truncate">
+                  {ss.route?.name || 'Χωρίς διαδρομή'}{ss.stop?.name ? ` · ${ss.stop.name}` : ''}
+                </span>
+              </span>
+            </button>
+          ))}
+          {otherServices.map((ss: any) => (
+            <button key={ss.id} onClick={() => onOpen('bus')} className="w-full rounded-lg bg-white px-3 py-2 text-left hover:bg-indigo-50">
+              <span className="block text-sm font-medium text-gray-900">{SERVICE_TYPES[ss.service?.serviceType] ?? ss.service?.name}</span>
+              <span className="block text-xs text-gray-500">{ss.service?.name}</span>
+            </button>
+          ))}
+          {activities.map((reg: any) => (
+            <button key={reg.id} onClick={() => onOpen('activities')} className="w-full flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-left hover:bg-violet-50">
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-medium text-gray-900 truncate">{reg.activity?.title}</span>
+                <span className="block text-xs text-gray-500">{ACTIVITY_TYPES[reg.activity?.activityType] ?? 'Δραστηριότητα'} · {ACT_STATUS[reg.status]?.label ?? reg.status}</span>
+              </span>
+            </button>
+          ))}
+          {joinedEvents.map((enrollment: any) => (
+            <button key={enrollment.id} onClick={() => onOpen('events')} className="w-full flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-left hover:bg-violet-50">
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-medium text-gray-900 truncate">{enrollment.event?.title}</span>
+                <span className="block text-xs text-gray-500">{EVENT_TYPES_GR[enrollment.event?.eventType] ?? 'Εκδήλωση'} · {ENROLLMENT_STATUS_META[enrollment.status]?.label ?? enrollment.status}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

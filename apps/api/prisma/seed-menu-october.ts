@@ -67,7 +67,14 @@ async function main() {
     const dayNum = dow === 0 ? 7 : dow;
 
     await prisma.dailyMenu.upsert({
-      where: { schoolId_date: { schoolId: school.id, date: new Date(entry.date) } },
+      where: {
+        schoolId_date_audienceType_audienceIds: {
+          schoolId: school.id,
+          date: new Date(entry.date),
+          audienceType: 'all',
+          audienceIds: '[]',
+        },
+      },
       create: {
         schoolId: school.id,
         date: new Date(entry.date),

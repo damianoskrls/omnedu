@@ -23,6 +23,8 @@ model School {
   subscriptionPlan      String    @default("trial") @map("subscription_plan")
   subscriptionExpiresAt DateTime? @map("subscription_expires_at")
   isActive              Boolean   @default(true) @map("is_active")
+  operatingRegulation   String?   @map("operating_regulation") @db.Text
+  financialRegulation   String?   @map("financial_regulation") @db.Text
   createdAt             DateTime  @default(now()) @map("created_at")
 
   members            SchoolMember[]
@@ -56,6 +58,7 @@ model School {
   schoolPosts          SchoolPost[]
   schoolEvents         SchoolEvent[]
   questionnaires       Questionnaire[]
+  thematicPlans        ThematicPlan[]
 
   @@map("schools")
 }
@@ -256,6 +259,7 @@ model Class {
   parentMeetings ParentMeeting[]
   notifBroadcasts NotificationBroadcast[]
   instructions   ClassInstruction[]
+  thematicPlans  ThematicPlan[]
 
   @@map("classes")
 }
@@ -430,6 +434,7 @@ model Activity {
   schoolId     String    @map("school_id")
   title        String
   description  String?
+  imageUrl     String?   @map("image_url")
   activityType String    @map("activity_type")
   monthlyCost  Decimal?  @map("monthly_cost") @db.Decimal(10, 2)
   oneTimeCost  Decimal?  @map("one_time_cost") @db.Decimal(10, 2)
@@ -765,22 +770,52 @@ model ParentMeeting {
 }
 
 // ─────────────────────────────────────────────────────────
+// THEMATIC PLAN (ΔΙΑΘΕΜΑΤΙΚΟ ΑΝΑ ΤΑΞΗ / ΜΗΝΑ)
+// ─────────────────────────────────────────────────────────
+
+model ThematicPlan {
+  id           String   @id @default(uuid())
+  schoolId     String   @map("school_id")
+  classId      String   @map("class_id")
+  month        String   // yyyy-MM
+  throughMonth String?  @map("through_month") // yyyy-MM when the plan covers more than one month
+  title        String
+  greeting     String   @default("Αγαπημένοι μας γονείς,")
+  introduction String   @db.Text
+  goals        String   @db.Text
+  extras       String   @db.Text
+  closing      String   @db.Text
+  signature    String   @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  class  Class  @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, classId, month])
+  @@index([schoolId, month])
+  @@map("thematic_plans")
+}
+
+// ─────────────────────────────────────────────────────────
 // DAILY MENU (ΔΙΑΤΡΟΦΟΛΟΓΙΟ)
 // ─────────────────────────────────────────────────────────
 
 model DailyMenu {
-  id          String   @id @default(uuid())
-  schoolId    String   @map("school_id")
-  date        DateTime @db.Date
-  breakfast   String?
-  midMorning  String?  @map("mid_morning")
-  lunch       String?
-  afternoon   String?
-  notes       String?
+  id           String   @id @default(uuid())
+  schoolId     String   @map("school_id")
+  date         DateTime @db.Date
+  breakfast    String?
+  midMorning   String?  @map("mid_morning")
+  lunch        String?
+  afternoon    String?
+  notes        String?
+  audienceType String   @default("all") @map("audience_type") // all | class | level | teachers
+  audienceIds  String   @default("[]") @map("audience_ids") // JSON array of class/level ids
 
   school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
-  @@unique([schoolId, date])
+  @@unique([schoolId, date, audienceType, audienceIds])
   @@index([schoolId, date])
   @@map("daily_menus")
 }
@@ -790,12 +825,16 @@ model DailyMenu {
 // ─────────────────────────────────────────────────────────
 
 model MenuTemplate {
-  id          String   @id @default(uuid())
-  schoolId    String   @map("school_id")
-  name        String
-  description String?
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id           String   @id @default(uuid())
+  schoolId     String   @map("school_id")
+  name         String
+  description  String?
+  kind         String   @default("week") // week = same meals each weekday, month = dated school days
+  sourceMonth  String?  @map("source_month") // yyyy-MM when kind = month
+  audienceType String   @default("all") @map("audience_type")
+  audienceIds  String   @default("[]") @map("audience_ids")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   school  School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   entries MenuTemplateEntry[]

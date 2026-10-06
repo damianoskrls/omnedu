@@ -64,8 +64,24 @@ export class SchoolsService {
     });
   }
 
-  async update(id: string, data: { name?: string; logoUrl?: string; primaryColor?: string; subscriptionPlan?: string; isActive?: boolean }) {
-    return this.prisma.school.update({ where: { id }, data });
+  async update(id: string, data: {
+    name?: string;
+    logoUrl?: string;
+    primaryColor?: string;
+    subscriptionPlan?: string;
+    isActive?: boolean;
+    operatingRegulation?: string | null;
+    financialRegulation?: string | null;
+  }) {
+    const allowed = [
+      'name', 'logoUrl', 'primaryColor', 'subscriptionPlan', 'isActive',
+      'operatingRegulation', 'financialRegulation',
+    ] as const;
+    const payload: Record<string, unknown> = {};
+    for (const key of allowed) {
+      if (data[key] !== undefined) payload[key] = data[key];
+    }
+    return this.prisma.school.update({ where: { id }, data: payload });
   }
 
   async addMember(schoolId: string, userId: string, role: 'school_admin' | 'teacher' | 'parent') {

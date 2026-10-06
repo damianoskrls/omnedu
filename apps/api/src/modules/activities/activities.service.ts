@@ -1,26 +1,71 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class ActivitiesService {
+  private readonly logger = new Logger(ActivitiesService.name);
+
   constructor(private prisma: PrismaService) {}
 
   async findAll(schoolId: string, type?: string) {
-    return this.prisma.activity.findMany({
-      where: { schoolId, isActive: true, ...(type ? { activityType: type } : {}) },
-      include: {
-        _count: { select: { registrations: true } },
-        instructorLinks: {
-          include: {
-            instructor: {
-              select: { id: true, name: true, title: true, bio: true, photoUrl: true },
+    const where = { schoolId, isActive: true, ...(type ? { activityType: type } : {}) };
+    try {
+      return await this.prisma.activity.findMany({
+        where,
+        include: {
+          _count: { select: { registrations: true } },
+          instructorLinks: {
+            include: {
+              instructor: {
+                select: { id: true, name: true, title: true, bio: true, photoUrl: true },
+              },
             },
           },
+          scheduleSlots: true,
         },
-        scheduleSlots: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+        orderBy: { createdAt: 'desc' },
+      });
+    } catch (error) {
+      this.logger.warn(`Activity list fell back to the base columns: ${error}`);
+      try {
+        return await this.prisma.activity.findMany({ where, orderBy: { createdAt: 'desc' } });
+      } catch (fallbackError) {
+        this.logger.error(fallbackError);
+        return this.listActivitiesRaw(schoolId, type);
+      }
+    }
+  }
+
+  /** Used when the database is behind the Prisma schema, so the page still opens. */
+  private async listActivitiesRaw(schoolId: string, type?: string) {
+    const rows = type
+      ? await this.prisma.$queryRaw<any[]>`
+          SELECT id, title, description, activity_type AS "activityType",
+                 monthly_cost AS "monthlyCost", one_time_cost AS "oneTimeCost",
+                 max_capacity AS "maxCapacity", starts_on AS "startsOn", ends_on AS "endsOn",
+                 deadline, is_active AS "isActive", created_at AS "createdAt"
+          FROM activities
+          WHERE school_id = ${schoolId} AND is_active = true AND activity_type = ${type}
+          ORDER BY created_at DESC`
+      : await this.prisma.$queryRaw<any[]>`
+          SELECT id, title, description, activity_type AS "activityType",
+                 monthly_cost AS "monthlyCost", one_time_cost AS "oneTimeCost",
+                 max_capacity AS "maxCapacity", starts_on AS "startsOn", ends_on AS "endsOn",
+                 deadline, is_active AS "isActive", created_at AS "createdAt"
+          FROM activities
+          WHERE school_id = ${schoolId} AND is_active = true
+          ORDER BY created_at DESC`;
+    return rows.map((row) => ({
+      ...row,
+      monthlyCost: row.monthlyCost == null ? null : Number(row.monthlyCost),
+      oneTimeCost: row.oneTimeCost == null ? null : Number(row.oneTimeCost),
+      audienceType: 'all',
+      audienceIds: '[]',
+      imageUrl: null,
+      scheduleSlots: [],
+      instructorLinks: [],
+      _count: { registrations: 0 },
+    }));
   }
 
   async findOne(id: string, schoolId: string) {
@@ -43,7 +88,7 @@ export class ActivitiesService {
   }
 
   async create(schoolId: string, data: any) {
-    return this.prisma.activity.create({ data: { schoolId, ...data } });
+    return this.prisma.activity.create({ data: { schoolId, ...this.activityWriteData(data) } });
   }
 
   async register(activityId: string, studentId: string, parentId: string) {
@@ -141,7 +186,30 @@ export class ActivitiesService {
   async update(id: string, schoolId: string, data: any) {
     const activity = await this.prisma.activity.findFirst({ where: { id, schoolId } });
     if (!activity) throw new NotFoundException('Activity not found');
-    return this.prisma.activity.update({ where: { id }, data });
+    return this.prisma.activity.update({ where: { id }, data: this.activityWriteData(data) });
+  }
+
+  private activityWriteData(data: any) {
+    const audienceIds = data.audienceIds === undefined
+      ? undefined
+      : typeof data.audienceIds === 'string'
+        ? data.audienceIds
+        : JSON.stringify(data.audienceIds ?? []);
+    const dateOrNull = (value: unknown) => (value ? new Date(String(value)) : null);
+    return {
+      ...(data.title !== undefined && { title: data.title }),
+      ...(data.description !== undefined && { description: data.description || null }),
+      ...(data.imageUrl !== undefined && { imageUrl: data.imageUrl || null }),
+      ...(data.activityType !== undefined && { activityType: data.activityType }),
+      ...(data.monthlyCost !== undefined && { monthlyCost: data.monthlyCost === '' || data.monthlyCost == null ? null : data.monthlyCost }),
+      ...(data.oneTimeCost !== undefined && { oneTimeCost: data.oneTimeCost === '' || data.oneTimeCost == null ? null : data.oneTimeCost }),
+      ...(data.startsOn !== undefined && { startsOn: dateOrNull(data.startsOn) }),
+      ...(data.endsOn !== undefined && { endsOn: dateOrNull(data.endsOn) }),
+      ...(data.deadline !== undefined && { deadline: dateOrNull(data.deadline) }),
+      ...(data.audienceType !== undefined && { audienceType: data.audienceType }),
+      ...(audienceIds !== undefined && { audienceIds }),
+      ...(data.isActive !== undefined && { isActive: data.isActive }),
+    };
   }
 
   async remove(id: string, schoolId: string) {

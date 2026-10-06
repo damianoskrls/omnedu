@@ -14,7 +14,7 @@ import { el } from 'date-fns/locale';
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type Activity = {
-  id: string; title: string; description?: string; activityType: string;
+  id: string; title: string; description?: string; imageUrl?: string; activityType: string;
   monthlyCost?: number; oneTimeCost?: number; maxCapacity?: number;
   startsOn?: string; endsOn?: string; deadline?: string; isActive: boolean;
   audienceType?: string; audienceIds?: string;
@@ -63,6 +63,27 @@ const DAY_COLORS = [
 ];
 
 const emptyActivity = (): Partial<Activity> => ({ title: '', activityType: 'other', isActive: true });
+
+function monthValue(iso?: string) {
+  if (!iso) return '';
+  return iso.slice(0, 7);
+}
+
+function monthStart(ym: string) {
+  return ym ? `${ym}-01` : undefined;
+}
+
+function monthEnd(ym: string) {
+  if (!ym) return undefined;
+  const [year, month] = ym.split('-').map(Number);
+  const last = new Date(year, month, 0).getDate();
+  return `${ym}-${String(last).padStart(2, '0')}`;
+}
+
+function formatMonth(iso?: string) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('el-GR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
 const emptyInstructor = () => ({ name: '', title: '', bio: '', photoUrl: '' });
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -77,11 +98,15 @@ export default function ActivitiesPage() {
   // ── Activities tab state ───────────────────────────────────────────────────
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [registrations, setRegistrations] = useState<Record<string, Registration[]>>({});
   const [showActivityModal, setShowActivityModal] = useState(false);
   const [editActivity, setEditActivity] = useState<Partial<Activity>>(emptyActivity());
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
   const [levels, setLevels] = useState<{ id: string; name: string }[]>([]);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -110,7 +135,13 @@ export default function ActivitiesPage() {
   const loadActivities = useCallback(async () => {
     if (!schoolId) return;
     setLoading(true);
+    setLoadError('');
     try { setActivities((await activitiesApi.list(schoolId)) as unknown as Activity[]); }
+    catch (err: any) {
+      const message = err?.message;
+      setLoadError(Array.isArray(message) ? message.join(' ') : message || 'Οι δραστηριότητες δεν φορτώθηκαν. Δοκίμασε ξανά.');
+      setActivities([]);
+    }
     finally { setLoading(false); }
   }, [schoolId]);
 
@@ -164,22 +195,35 @@ export default function ActivitiesPage() {
     if (!editActivity.title?.trim()) return;
     setSaving(true);
     try {
+      setSaveError('');
       const audienceIds: string[] = (() => { try { return JSON.parse(editActivity.audienceIds ?? '[]'); } catch { return []; } })();
+      const startMonth = monthValue(editActivity.startsOn);
+      const endMonth = monthValue(editActivity.endsOn);
       const payload = {
-        title: editActivity.title, description: editActivity.description,
+        title: editActivity.title,
+        description: editActivity.description ?? '',
         activityType: editActivity.activityType,
-        monthlyCost: editActivity.monthlyCost ? Number(editActivity.monthlyCost) : undefined,
-        oneTimeCost: editActivity.oneTimeCost ? Number(editActivity.oneTimeCost) : undefined,
-        maxCapacity: editActivity.maxCapacity ? Number(editActivity.maxCapacity) : undefined,
-        startsOn: editActivity.startsOn || undefined, endsOn: editActivity.endsOn || undefined,
-        deadline: editActivity.deadline || undefined, isActive: editActivity.isActive ?? true,
+        monthlyCost: editActivity.monthlyCost != null && editActivity.monthlyCost !== ('' as any) ? Number(editActivity.monthlyCost) : null,
+        oneTimeCost: editActivity.oneTimeCost != null && editActivity.oneTimeCost !== ('' as any) ? Number(editActivity.oneTimeCost) : null,
+        startsOn: monthStart(startMonth) ?? null,
+        endsOn: monthEnd(endMonth) ?? null,
+        deadline: editActivity.deadline || null,
+        isActive: editActivity.isActive ?? true,
         audienceType: editActivity.audienceType ?? 'all',
-        audienceIds,
+        audienceIds: JSON.stringify(audienceIds),
       };
-      if (editActivity.id) await activitiesApi.update(schoolId, editActivity.id, payload);
-      else await activitiesApi.create(schoolId, payload);
+      const saved = (editActivity.id
+        ? await activitiesApi.update(schoolId, editActivity.id, payload)
+        : await activitiesApi.create(schoolId, payload)) as unknown as Activity;
+      if (imageFile && saved?.id) {
+        await activitiesApi.uploadImage(schoolId, saved.id, imageFile);
+      }
       setShowActivityModal(false);
+      setImageFile(null);
+      setImagePreview(null);
       await loadActivities();
+    } catch (err: any) {
+      setSaveError(typeof err?.message === 'string' ? err.message : 'Η αποθήκευση απέτυχε. Δοκιμάστε ξανά.');
     } finally { setSaving(false); }
   };
 
@@ -284,7 +328,7 @@ export default function ActivitiesPage() {
           <p className="text-sm text-gray-500 mt-1">Εκδρομές, δραστηριότητες, πρόγραμμα και εκπαιδευτές</p>
         </div>
         {isAdmin && activeTab === 'activities' && (
-          <button onClick={() => { setEditActivity(emptyActivity()); setShowActivityModal(true); }}
+          <button onClick={() => { setEditActivity(emptyActivity()); setImageFile(null); setImagePreview(null); setSaveError(''); setShowActivityModal(true); }}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">
             <Plus className="w-4 h-4" /> Νέα Δραστηριότητα
           </button>
@@ -320,6 +364,7 @@ export default function ActivitiesPage() {
       {/* ── Tab: Activities ────────────────────────────────────────────────── */}
       {activeTab === 'activities' && (
         <>
+          {loadError && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{loadError}</div>}
           {loading ? (
             <div className="flex justify-center py-12 text-gray-400">Φόρτωση...</div>
           ) : activities.length === 0 ? (
@@ -332,6 +377,9 @@ export default function ActivitiesPage() {
               {activities.map(activity => (
                 <div key={activity.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                   <div className="p-4 flex items-start gap-4">
+                    {activity.imageUrl && (
+                      <img src={activity.imageUrl} alt="" className="h-16 w-16 rounded-xl object-cover shrink-0" />
+                    )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold text-gray-900">{activity.title}</span>
@@ -344,12 +392,11 @@ export default function ActivitiesPage() {
                       <div className="flex flex-wrap gap-4 mt-2 text-xs text-gray-500">
                         {activity.monthlyCost != null && <span className="flex items-center gap-1"><Euro className="w-3 h-3" />{activity.monthlyCost}/μήνα</span>}
                         {activity.oneTimeCost != null && <span className="flex items-center gap-1"><Euro className="w-3 h-3" />{activity.oneTimeCost} εφάπαξ</span>}
-                        {activity.maxCapacity != null && <span className="flex items-center gap-1"><Users className="w-3 h-3" />Χωρητικότητα: {activity.maxCapacity}</span>}
                         {activity.startsOn && (
-                          <span className="flex items-center gap-1">
+                          <span className="flex items-center gap-1 capitalize">
                             <Calendar className="w-3 h-3" />
-                            {format(new Date(activity.startsOn), 'dd/MM/yyyy', { locale: el })}
-                            {activity.endsOn && ` – ${format(new Date(activity.endsOn), 'dd/MM/yyyy', { locale: el })}`}
+                            {formatMonth(activity.startsOn)}
+                            {activity.endsOn && ` – ${formatMonth(activity.endsOn)}`}
                           </span>
                         )}
                         {activity.deadline && <span className="flex items-center gap-1 text-orange-600"><Clock className="w-3 h-3" />Λήξη εγγρ.: {format(new Date(activity.deadline), 'dd/MM/yyyy', { locale: el })}</span>}
@@ -359,7 +406,7 @@ export default function ActivitiesPage() {
                     <div className="flex items-center gap-2 shrink-0">
                       {isAdmin && (
                         <>
-                          <button onClick={() => { setEditActivity({ ...activity }); setShowActivityModal(true); }} className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50">Επεξεργασία</button>
+                          <button onClick={() => { setEditActivity({ ...activity }); setImageFile(null); setImagePreview(activity.imageUrl ?? null); setSaveError(''); setShowActivityModal(true); }} className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50">Επεξεργασία</button>
                           {activity.isActive && <button onClick={() => deactivate(activity.id)} className="text-xs px-3 py-1.5 border border-red-200 text-red-600 rounded-lg hover:bg-red-50">Αρχείο</button>}
                         </>
                       )}
@@ -555,6 +602,33 @@ export default function ActivitiesPage() {
             </div>
             <div className="p-5 space-y-4">
               <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Εικόνα</label>
+                <div className="flex items-center gap-3">
+                  {imagePreview ? (
+                    <img src={imagePreview} alt="" className="h-16 w-16 rounded-xl object-cover border border-gray-100" />
+                  ) : (
+                    <div className="h-16 w-16 rounded-xl border border-dashed border-gray-300 flex items-center justify-center text-gray-400">
+                      <Upload className="w-5 h-5" />
+                    </div>
+                  )}
+                  <label className="text-sm font-medium text-[#77328D] cursor-pointer">
+                    Ανέβασμα εικόνας
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setImageFile(file);
+                        setImagePreview(URL.createObjectURL(file));
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
+              <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Τίτλος *</label>
                 <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   value={editActivity.title ?? ''} onChange={e => setEditActivity(p => ({ ...p, title: e.target.value }))} placeholder="π.χ. Εκδρομή Αθήνα" />
@@ -595,27 +669,23 @@ export default function ActivitiesPage() {
                     value={editActivity.oneTimeCost ?? ''} onChange={e => setEditActivity(p => ({ ...p, oneTimeCost: e.target.value ? Number(e.target.value) : undefined }))} />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Μέγ. χωρητικότητα</label>
-                  <input type="number" min="1" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    value={editActivity.maxCapacity ?? ''} onChange={e => setEditActivity(p => ({ ...p, maxCapacity: e.target.value ? Number(e.target.value) : undefined }))} />
-                </div>
-                <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Λήξη εγγραφών</label>
-                  <input type="datetime-local" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    value={editActivity.deadline ? editActivity.deadline.slice(0, 16) : ''} onChange={e => setEditActivity(p => ({ ...p, deadline: e.target.value || undefined }))} />
+                  <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={editActivity.deadline ? editActivity.deadline.slice(0, 10) : ''} onChange={e => setEditActivity(p => ({ ...p, deadline: e.target.value || undefined }))} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Έναρξη</label>
-                  <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    value={editActivity.startsOn ? editActivity.startsOn.slice(0, 10) : ''} onChange={e => setEditActivity(p => ({ ...p, startsOn: e.target.value || undefined }))} />
+                  <input type="month" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={monthValue(editActivity.startsOn)} onChange={e => setEditActivity(p => ({ ...p, startsOn: monthStart(e.target.value) }))} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Λήξη</label>
-                  <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    value={editActivity.endsOn ? editActivity.endsOn.slice(0, 10) : ''} onChange={e => setEditActivity(p => ({ ...p, endsOn: e.target.value || undefined }))} />
+                  <input type="month" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={monthValue(editActivity.endsOn)} onChange={e => setEditActivity(p => ({ ...p, endsOn: monthEnd(e.target.value) }))} />
                 </div>
               </div>
             </div>
+            {saveError && <p className="px-5 text-sm text-red-600">{saveError}</p>}
             <div className="p-5 border-t border-gray-100 flex justify-end gap-3">
               <button onClick={() => setShowActivityModal(false)} className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50">Ακύρωση</button>
               <button onClick={saveActivity} disabled={saving || !editActivity.title?.trim()}

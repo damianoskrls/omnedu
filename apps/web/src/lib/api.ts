@@ -197,6 +197,13 @@ export const levelsApi = {
   remove: (schoolId: string, id: string) => api.delete(`/schools/${schoolId}/levels/${id}`),
 };
 
+export const thematicPlansApi = {
+  list: (schoolId: string, params?: { month?: string; classId?: string }) =>
+    api.get(`/schools/${schoolId}/thematic-plans`, { params }),
+  save: (schoolId: string, data: any) => api.post(`/schools/${schoolId}/thematic-plans`, data),
+  remove: (schoolId: string, id: string) => api.delete(`/schools/${schoolId}/thematic-plans/${id}`),
+};
+
 export const parentMeetingsApi = {
   list: (schoolId: string, params?: { classId?: string; levelId?: string }) =>
     api.get(`/schools/${schoolId}/parent-meetings`, { params }),
@@ -209,9 +216,20 @@ export const parentMeetingsApi = {
 };
 
 export const dailyMenusApi = {
-  list: (schoolId: string, params?: { from?: string; to?: string }) =>
+  list: (schoolId: string, params?: { from?: string; to?: string; audienceType?: string; audienceIds?: string }) =>
     api.get(`/schools/${schoolId}/daily-menus`, { params }),
   upsert: (schoolId: string, data: any) => api.post(`/schools/${schoolId}/daily-menus`, data),
+  bulk: (schoolId: string, data: any) => api.post(`/schools/${schoolId}/daily-menus/bulk`, data),
+  copyMonth: (schoolId: string, data: { from: string; to: string; audienceType?: string; audienceIds?: string[] }) =>
+    api.post(`/schools/${schoolId}/daily-menus/copy-month`, data),
+  importFile: (schoolId: string, file: File, month?: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    if (month) form.append('month', month);
+    return api.post(`/schools/${schoolId}/daily-menus/import`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
   remove: (schoolId: string, id: string) =>
     api.delete(`/schools/${schoolId}/daily-menus/${id}`),
 };
@@ -263,8 +281,12 @@ export const menuTemplatesApi = {
   create: (schoolId: string, data: any) => api.post(`/schools/${schoolId}/menu-templates`, data),
   update: (schoolId: string, id: string, data: any) => api.patch(`/schools/${schoolId}/menu-templates/${id}`, data),
   remove: (schoolId: string, id: string) => api.delete(`/schools/${schoolId}/menu-templates/${id}`),
-  apply: (schoolId: string, id: string, month: string) =>
-    api.post(`/schools/${schoolId}/menu-templates/${id}/apply`, { month }),
+  apply: (schoolId: string, id: string, month: string, audience?: { audienceType: string; audienceIds: string[] }) =>
+    api.post(`/schools/${schoolId}/menu-templates/${id}/apply`, { month, ...audience }),
+  fromMonth: (schoolId: string, data: { month: string; name?: string; audienceType?: string; audienceIds?: string[] }) =>
+    api.post(`/schools/${schoolId}/menu-templates/from-month`, data),
+  ensureSeptember: (schoolId: string, audience?: { audienceType: string; audienceIds: string[] }) =>
+    api.post(`/schools/${schoolId}/menu-templates/presets/september-2026`, audience ?? {}),
 };
 
 export const broadcastsApi = {
@@ -290,6 +312,13 @@ export const activitiesApi = {
   create: (schoolId: string, data: any) => api.post(`/schools/${schoolId}/activities`, data),
   update: (schoolId: string, id: string, data: any) =>
     api.patch(`/schools/${schoolId}/activities/${id}`, data),
+  uploadImage: (schoolId: string, id: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.post(`/schools/${schoolId}/activities/${id}/image`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
   remove: (schoolId: string, id: string) => api.delete(`/schools/${schoolId}/activities/${id}`),
   getRegistrations: (schoolId: string, id: string) =>
     api.get(`/schools/${schoolId}/activities/${id}/registrations`),

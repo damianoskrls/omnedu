@@ -24,6 +24,23 @@ export class ActivitiesController {
     return this.activities.findAll(schoolId, type);
   }
 
+  @Get('schedule/all')
+  @Roles('school_admin')
+  getSchedule(@Param('schoolId') schoolId: string) {
+    return this.activities.getSchedule(schoolId);
+  }
+
+  @Get('instructors/all')
+  @Roles('school_admin')
+  getInstructors(@Param('schoolId') schoolId: string) {
+    return this.activities.getInstructors(schoolId);
+  }
+
+  @Get('registrations/mine')
+  myRegistrations(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
+    return this.activities.getRegistrationsForParent(user.sub, schoolId);
+  }
+
   @Get(':id')
   findOne(@Param('schoolId') schoolId: string, @Param('id') id: string) {
     return this.activities.findOne(id, schoolId);
@@ -47,11 +64,6 @@ export class ActivitiesController {
   @Delete(':id/register/:studentId')
   cancel(@Param('id') activityId: string, @Param('studentId') studentId: string) {
     return this.activities.cancelRegistration(activityId, studentId);
-  }
-
-  @Get('registrations/mine')
-  myRegistrations(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
-    return this.activities.getRegistrationsForParent(user.sub, schoolId);
   }
 
   @Get(':id/registrations')
@@ -89,6 +101,27 @@ export class ActivitiesController {
     return this.activities.removeRegistration(regId, schoolId);
   }
 
+  @Post(':id/image')
+  @Roles('school_admin')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: memoryStorage(),
+    fileFilter: (_req, file, cb) => {
+      if (!file.mimetype.startsWith('image/')) return cb(new BadRequestException('Only images allowed'), false);
+      cb(null, true);
+    },
+    limits: { fileSize: 5 * 1024 * 1024 },
+  }))
+  async uploadImage(
+    @Param('schoolId') schoolId: string,
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('No file uploaded');
+    const imageUrl = await this.storage.upload(file, 'activities');
+    await this.activities.update(id, schoolId, { imageUrl });
+    return { imageUrl };
+  }
+
   @Patch(':id')
   @Roles('school_admin')
   update(@Param('schoolId') schoolId: string, @Param('id') id: string, @Body() body: any) {
@@ -102,12 +135,6 @@ export class ActivitiesController {
   }
 
   // ── Schedule ─────────────────────────────────────────────
-
-  @Get('schedule/all')
-  @Roles('school_admin')
-  getSchedule(@Param('schoolId') schoolId: string) {
-    return this.activities.getSchedule(schoolId);
-  }
 
   @Post(':id/schedule')
   @Roles('school_admin')
@@ -126,12 +153,6 @@ export class ActivitiesController {
   }
 
   // ── Instructors ───────────────────────────────────────────
-
-  @Get('instructors/all')
-  @Roles('school_admin')
-  getInstructors(@Param('schoolId') schoolId: string) {
-    return this.activities.getInstructors(schoolId);
-  }
 
   @Post('instructors/create')
   @Roles('school_admin')
