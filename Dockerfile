@@ -5,5 +5,6 @@ COPY . .
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @omnedu/api exec prisma generate
 RUN pnpm --filter @omnedu/api build
+RUN ls -la apps/api/dist/
 EXPOSE 3001
-CMD ["sh", "-c", "cd apps/api && node_modules/.bin/prisma migrate deploy; cd /app && node apps/api/dist/main"]
+CMD ["sh", "-c", "pnpm --filter @omnedu/api db:migrate:prod && node apps/api/dist/main"]
