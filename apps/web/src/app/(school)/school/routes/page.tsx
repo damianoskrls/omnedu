@@ -83,6 +83,9 @@ export default function RoutesPage() {
   const [editStudentModal, setEditStudentModal] = useState<{ serviceId: string; ssId: string } | null>(null);
   const [editStudentForm, setEditStudentForm] = useState<any>({});
   const [routeMapModal, setRouteMapModal] = useState<{ serviceId: string; routeId: string } | null>(null);
+  const [timelineServiceId, setTimelineServiceId] = useState<string | null>(null);
+  const [timelineDay, setTimelineDay] = useState<DayKey>(currentSchoolDay);
+  const [timelineRouteId, setTimelineRouteId] = useState<string>('all');
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
@@ -395,15 +398,23 @@ export default function RoutesPage() {
                       <span className="flex items-center gap-1"><Users className="w-3 h-3" />{students?.length ?? service._count?.studentServices ?? 0} μαθητές</span>
                     </div>
                   </div>
-                  {isAdmin && (
+                  <div className="flex items-center gap-2 shrink-0">
                     <button
-                      onClick={() => setServiceModal({ ...service })}
-                      className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 shrink-0"
-                      title="Ρυθμίσεις"
+                      onClick={() => { setTimelineServiceId(service.id); setTimelineRouteId('all'); }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#77328D] text-white text-xs font-semibold hover:bg-[#642678]"
                     >
-                      <Settings className="w-4 h-4" />
+                      <Clock className="w-3.5 h-3.5" /> Δρομολόγιο
                     </button>
-                  )}
+                    {isAdmin && (
+                      <button
+                        onClick={() => setServiceModal({ ...service })}
+                        className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"
+                        title="Ρυθμίσεις"
+                      >
+                        <Settings className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Students — always visible */}
@@ -699,6 +710,24 @@ export default function RoutesPage() {
           <ModalFooter onCancel={() => setAssignModal(null)} onSave={saveAssign} saving={saving} disabled={!assignForm.studentIds?.length} />
         </Modal>
       )}
+      {timelineServiceId && (() => {
+        const service = services.find(item => item.id === timelineServiceId);
+        if (!service) return null;
+        const riders = (studentServiceData[service.id] ?? []).filter(entry => entry.isActive !== false);
+        const routes = service.routes ?? [];
+        return (
+          <Modal title={`Δρομολόγιο · ${service.name}`} onClose={() => setTimelineServiceId(null)} wider>
+            <BusRouteBoard
+              riders={riders}
+              routes={routes}
+              day={timelineDay}
+              onDay={setTimelineDay}
+              routeId={timelineRouteId}
+              onRoute={setTimelineRouteId}
+            />
+          </Modal>
+        );
+      })()}
       {/* ─── Route map modal ──────────────────────────────────────────────── */}
       {routeMapModal && (() => {
         const svc = services.find(s => s.id === routeMapModal.serviceId);
@@ -1236,10 +1265,190 @@ function StudentMultiPicker({
   );
 }
 
-function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
+function currentSchoolDay(): DayKey {
+  const map: DayKey[] = ['mon', 'mon', 'tue', 'wed', 'thu', 'fri', 'mon'];
+  return map[new Date().getDay()] ?? 'mon';
+}
+
+function minutesOf(value?: string | null) {
+  if (!value) return null;
+  const match = String(value).trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+function clockLabel(value?: string | null) {
+  const minutes = minutesOf(value);
+  if (minutes == null) return 'Χωρίς ώρα';
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+}
+
+type RouteDot = {
+  id: string;
+  name: string;
+  time: string | null;
+  minutes: number | null;
+  address?: string;
+  stopName?: string;
+  avatarUrl?: string;
+};
+
+function routeDots(riders: StudentEntry[], kind: 'pickup' | 'dropoff', day: DayKey, routeId: string): RouteDot[] {
+  return riders
+    .filter((entry) => {
+      if (routeId !== 'all' && entry.route?.id !== routeId) return false;
+      const mode = entry.serviceMode ?? 'both';
+      return kind === 'pickup' ? mode !== 'dropoff' : mode !== 'pickup';
+    })
+    .map((entry) => {
+      const daily = entry.dailyTimes?.[day]?.[kind];
+      const time = daily
+        || (kind === 'pickup' ? entry.pickupTime ?? entry.stop?.pickupTime : entry.dropoffTime ?? entry.stop?.dropoffTime)
+        || null;
+      return {
+        id: entry.id,
+        name: entry.student.fullName,
+        time,
+        minutes: minutesOf(time),
+        address: entry.homeAddress,
+        stopName: entry.stop?.name,
+        avatarUrl: entry.student.avatarUrl,
+      };
+    })
+    .sort((a, b) => {
+      if (a.minutes == null && b.minutes == null) return a.name.localeCompare(b.name, 'el');
+      if (a.minutes == null) return 1;
+      if (b.minutes == null) return -1;
+      if (a.minutes !== b.minutes) return a.minutes - b.minutes;
+      return a.name.localeCompare(b.name, 'el');
+    });
+}
+
+function BusRouteBoard({
+  riders, routes, day, onDay, routeId, onRoute,
+}: {
+  riders: StudentEntry[];
+  routes: Route[];
+  day: DayKey;
+  onDay: (day: DayKey) => void;
+  routeId: string;
+  onRoute: (id: string) => void;
+}) {
+  const pickup = routeDots(riders, 'pickup', day, routeId);
+  const dropoff = routeDots(riders, 'dropoff', day, routeId);
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        {DAYS.map((item) => (
+          <button
+            key={item.key}
+            onClick={() => onDay(item.key)}
+            className={`px-3 py-1 rounded-full text-xs font-semibold ${day === item.key ? 'bg-[#77328D] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+          >
+            {item.label}
+          </button>
+        ))}
+        {routes.length > 1 && (
+          <div className="flex flex-wrap gap-2 ml-auto">
+            <button
+              onClick={() => onRoute('all')}
+              className={`px-3 py-1 rounded-full text-xs font-semibold ${routeId === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}
+            >
+              Όλα
+            </button>
+            {routes.map((route) => (
+              <button
+                key={route.id}
+                onClick={() => onRoute(route.id)}
+                className={`px-3 py-1 rounded-full text-xs font-semibold ${routeId === route.id ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}
+              >
+                {route.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <RouteLine
+        kind="pickup"
+        title="Παραλαβή"
+        hint="Πρωί, από το σπίτι προς το σχολείο. Η σειρά είναι η ώρα παραλαβής."
+        dots={pickup}
+      />
+      <RouteLine
+        kind="dropoff"
+        title="Παράδοση"
+        hint="Απόγευμα, από το σχολείο προς το σπίτι. Η σειρά είναι η ώρα παράδοσης."
+        dots={dropoff}
+      />
+    </div>
+  );
+}
+
+function RouteLine({ kind, title, hint, dots }: { kind: 'pickup' | 'dropoff'; title: string; hint: string; dots: RouteDot[] }) {
+  const schoolFirst = kind === 'dropoff';
+  const accent = kind === 'pickup' ? '#E95926' : '#77328D';
+  const wash = kind === 'pickup' ? 'bg-orange-50/70 border-orange-100' : 'bg-[#faf5fc] border-[#e6d0ee]';
+  const nodes: Array<{ key: string; school?: boolean; dot?: RouteDot; index?: number }> = schoolFirst
+    ? [{ key: 'school', school: true }, ...dots.map((dot, index) => ({ key: dot.id, dot, index }))]
+    : [...dots.map((dot, index) => ({ key: dot.id, dot, index })), { key: 'school', school: true }];
+
+  return (
+    <section className={`rounded-2xl border p-4 ${wash}`}>
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <h3 className="font-bold text-gray-900">{title}</h3>
+          <p className="text-xs text-gray-500 mt-0.5">{hint}</p>
+        </div>
+        <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-white text-gray-600 border border-gray-100">
+          {dots.length} {dots.length === 1 ? 'μαθητής' : 'μαθητές'}
+        </span>
+      </div>
+      {dots.length === 0 ? (
+        <p className="text-sm text-gray-400 py-6 text-center">Κανένας μαθητής σε αυτή τη γραμμή.</p>
+      ) : (
+        <div className="overflow-x-auto pb-2">
+          <div className="relative flex items-start gap-2 min-w-max px-2 pt-1">
+            <div
+              className="absolute left-8 right-8 top-[48px] h-1 rounded-full"
+              style={{ background: `linear-gradient(90deg, ${accent}33, ${accent}, ${accent}33)` }}
+            />
+            {nodes.map((node) => node.school ? (
+              <div key={node.key} className="relative z-10 w-[120px] shrink-0 flex flex-col items-center text-center">
+                <span className="h-6 mb-2" />
+                <span className="w-9 h-9 rounded-xl bg-white border-2 flex items-center justify-center shadow-sm" style={{ borderColor: accent, color: accent }}>
+                  <Home className="w-4 h-4" />
+                </span>
+                <p className="mt-2 text-xs font-bold text-gray-800">Σχολείο</p>
+                <p className="text-[11px] text-gray-400">{schoolFirst ? 'Αφετηρία' : 'Τέρμα'}</p>
+              </div>
+            ) : (
+              <div key={node.key} className="relative z-10 w-[132px] shrink-0 flex flex-col items-center text-center">
+                <span className="mb-2 h-6 inline-flex min-w-[58px] items-center justify-center rounded-full bg-white px-2 text-[11px] font-bold shadow-sm" style={{ color: accent }}>
+                  {clockLabel(node.dot?.time)}
+                </span>
+                <span className="w-9 h-9 rounded-full border-[3px] bg-white shadow-sm overflow-hidden flex items-center justify-center text-xs font-bold" style={{ borderColor: accent, color: accent }}>
+                  {node.dot?.avatarUrl
+                    ? <img src={node.dot.avatarUrl} alt="" className="w-full h-full object-cover" />
+                    : (node.index ?? 0) + 1}
+                </span>
+                <p className="mt-2 text-xs font-semibold text-gray-900 leading-tight line-clamp-2">{node.dot?.name}</p>
+                <p className="text-[11px] text-gray-500 line-clamp-2">{node.dot?.stopName || node.dot?.address || ' '}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function Modal({ title, onClose, children, wide, wider }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean; wider?: boolean }) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className={`bg-white rounded-2xl shadow-xl w-full ${wide ? 'max-w-2xl' : 'max-w-lg'} max-h-[92vh] flex flex-col overflow-hidden`}>
+      <div className={`bg-white rounded-2xl shadow-xl w-full ${wider ? 'max-w-5xl' : wide ? 'max-w-2xl' : 'max-w-lg'} max-h-[92vh] flex flex-col overflow-hidden`}>
         <div className="flex items-center justify-between p-5 border-b border-gray-100 shrink-0">
           <h2 className="font-semibold text-gray-900">{title}</h2>
           <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100"><X className="w-4 h-4 text-gray-500" /></button>
