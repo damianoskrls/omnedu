@@ -155,6 +155,16 @@ export default function BillingPage() {
     }
   }
 
+  async function handleAdminConsent(eventId: string, enrollmentId: string, status: string) {
+    setMarkingPayment(enrollmentId);
+    try {
+      await schoolEventsApi.adminUpdateEnrollment(schoolId, eventId, enrollmentId, status);
+      await loadEventEnrollments(eventId);
+    } finally {
+      setMarkingPayment(null);
+    }
+  }
+
   async function handleMarkEventPayment(eventId: string, enrollmentId: string, paid: boolean) {
     setMarkingPayment(enrollmentId);
     try {
@@ -448,6 +458,24 @@ export default function BillingPage() {
                             <span className={`text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ${EVENT_ENROLLMENT_STATUS[enr.status]?.color ?? 'bg-gray-100 text-gray-500'}`}>
                               {EVENT_ENROLLMENT_STATUS[enr.status]?.label ?? enr.status}
                             </span>
+                            {(enr.status === 'pending_consent' || enr.status === 'consent_declined') && (
+                              <button
+                                onClick={() => handleAdminConsent(evt.id, enr.id, Number(evt.costPerChild) > 0 ? 'pending_payment' : 'consent_given')}
+                                disabled={markingPayment === enr.id}
+                                className="flex items-center gap-1 px-2.5 py-1 text-xs bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 shrink-0"
+                              >
+                                <Check className="h-3 w-3" /> Συναίνεση
+                              </button>
+                            )}
+                            {enr.status === 'pending_consent' && (
+                              <button
+                                onClick={() => handleAdminConsent(evt.id, enr.id, 'consent_declined')}
+                                disabled={markingPayment === enr.id}
+                                className="px-2.5 py-1 text-xs border border-red-200 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-50 shrink-0"
+                              >
+                                Άρνηση
+                              </button>
+                            )}
                             {enr.status === 'pending_payment' && (
                               <button
                                 onClick={() => handleMarkEventPayment(evt.id, enr.id, true)}

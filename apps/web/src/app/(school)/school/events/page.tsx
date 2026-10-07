@@ -177,6 +177,15 @@ export default function EventsPage() {
     setEnrollments(p => p.map(e => e.id === enrollId ? { ...e, status: paid ? 'paid' : 'pending_payment', paidAt: paid ? new Date() : null } : e));
   };
 
+  const setConsent = async (eventId: string, enrollId: string, status: string) => {
+    await schoolEventsApi.adminUpdateEnrollment(schoolId, eventId, enrollId, status);
+    setEnrollments(p => p.map(e => e.id === enrollId ? {
+      ...e,
+      status,
+      parentConsentAt: status === 'pending_consent' || status === 'consent_declined' ? null : new Date(),
+    } : e));
+  };
+
   const uploadEventMedia = async (eventId: string, file: File) => {
     setUploadingMedia(true);
     try {
@@ -310,13 +319,30 @@ export default function EventsPage() {
                         {enrollments.map(en => {
                           const stMeta = ENROLLMENT_STATUS[en.status] ?? ENROLLMENT_STATUS.pending_consent;
                           const canMarkPaid = en.status === 'pending_payment' || en.status === 'paid';
+                          const consentStatus = Number(ev.costPerChild) > 0 ? 'pending_payment' : 'consent_given';
                           return (
-                            <div key={en.id} className="flex items-center gap-3 bg-white rounded-xl border border-gray-100 px-4 py-2.5">
+                            <div key={en.id} className="flex items-center gap-3 bg-white rounded-xl border border-gray-100 px-4 py-2.5 flex-wrap">
                               <div className="w-8 h-8 rounded-full bg-violet-100 flex items-center justify-center shrink-0">
                                 <span className="text-violet-600 font-bold text-xs">{en.student.fullName.charAt(0)}</span>
                               </div>
-                              <span className="font-medium text-sm text-gray-800 flex-1">{en.student.fullName}</span>
+                              <span className="font-medium text-sm text-gray-800 flex-1 min-w-[8rem]">{en.student.fullName}</span>
                               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${stMeta.color}`}>{stMeta.label}</span>
+                              {(en.status === 'pending_consent' || en.status === 'consent_declined') && (
+                                <button
+                                  onClick={() => setConsent(ev.id, en.id, consentStatus)}
+                                  className="text-xs px-2.5 py-1 rounded-lg font-medium bg-violet-600 text-white hover:bg-violet-700"
+                                >
+                                  Συναίνεση
+                                </button>
+                              )}
+                              {en.status === 'pending_consent' && (
+                                <button
+                                  onClick={() => setConsent(ev.id, en.id, 'consent_declined')}
+                                  className="text-xs px-2.5 py-1 rounded-lg font-medium border border-red-200 text-red-600 hover:bg-red-50"
+                                >
+                                  Άρνηση
+                                </button>
+                              )}
                               {canMarkPaid && (
                                 <button
                                   onClick={() => togglePayment(ev.id, en.id, en.status)}
