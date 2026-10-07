@@ -39,6 +39,9 @@ export class StudentsService {
               include: {
                 level: { select: { id: true, name: true } },
                 instructions: { orderBy: { sortOrder: 'asc' } },
+                teachers: {
+                  include: { user: { select: { id: true, fullName: true, avatarUrl: true, phone: true } } },
+                },
               },
             },
             academicYear: true,
@@ -80,7 +83,7 @@ export class StudentsService {
           include: {
             event: {
               select: {
-                id: true, title: true, eventType: true, eventDate: true,
+                id: true, title: true, description: true, eventType: true, eventDate: true,
                 costPerChild: true, status: true, mediaUrls: true,
               },
             },
@@ -144,7 +147,7 @@ export class StudentsService {
           include: {
             event: {
               select: {
-                id: true, title: true, eventType: true, eventDate: true,
+                id: true, title: true, description: true, eventType: true, eventDate: true,
                 costPerChild: true, status: true,
                 postMedia: { orderBy: { createdAt: 'asc' } },
               },

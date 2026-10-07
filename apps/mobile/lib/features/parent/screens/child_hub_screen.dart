@@ -25,19 +25,22 @@ class ChildHubScreen extends StatelessWidget {
         Navigator.push(context, MaterialPageRoute(builder: (_) => ChildBillingScreen(schoolId: schoolId, child: child)));
       }),
       _Tile('Δραστηριότητες', Icons.palette_rounded, const Color(0xFF0F766E), () {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => ChildActivitiesScreen(child: child)));
+        Navigator.push(context, MaterialPageRoute(builder: (_) => ChildActivitiesScreen(schoolId: schoolId, child: child)));
+      }),
+      _Tile('Εκδρομές', Icons.hiking_rounded, const Color(0xFFE95926), () {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => ChildEventsScreen(schoolId: schoolId, child: child)));
       }),
       _Tile('Ερωτηματολόγια', Icons.fact_check_rounded, const Color(0xFF1D4ED8), () {
         Navigator.push(context, MaterialPageRoute(builder: (_) => QuestionnairesScreen(schoolId: schoolId, child: child)));
       }),
       _Tile('Παροχές & σχολικό', Icons.directions_bus_rounded, const Color(0xFF0369A1), () {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => ServicesScreen(child: child)));
+        Navigator.push(context, MaterialPageRoute(builder: (_) => ServicesScreen(schoolId: schoolId, child: child)));
       }),
       _Tile('Κανονισμοί', Icons.gavel_rounded, const Color(0xFF642678), () {
         Navigator.push(context, MaterialPageRoute(builder: (_) => RegulationsScreen(schoolId: schoolId)));
       }),
       _Tile('Εκπαιδευτικοί', Icons.groups_rounded, const Color(0xFF77328D), () {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => TeachersScreen(child: child)));
+        Navigator.push(context, MaterialPageRoute(builder: (_) => TeachersScreen(schoolId: schoolId, child: child)));
       }),
       _Tile('Ειδοποιήσεις', Icons.notifications_rounded, const Color(0xFFDB2777), () {
         Navigator.push(context, MaterialPageRoute(builder: (_) => AlertsScreen(schoolId: schoolId)));

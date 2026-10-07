@@ -153,17 +153,26 @@ export class SchoolsService {
   }
 
   async getRegulations(schoolId: string, academicYear?: string) {
-    const school = await this.prisma.school.findUnique({ where: { id: schoolId }, select: { id: true } });
+    const school = await this.prisma.school.findUnique({
+      where: { id: schoolId },
+      select: { id: true, operatingRegulation: true, financialRegulation: true },
+    });
     if (!school) throw new NotFoundException('School not found');
     await this.copyLegacyRegulations(schoolId);
-    const year = academicYear || await this.currentYearLabel(schoolId);
+    const current = await this.currentYearLabel(schoolId);
+    const year = academicYear || current;
     const row = await this.prisma.schoolRegulation.findUnique({
       where: { schoolId_academicYear: { schoolId, academicYear: year } },
     });
+    const pick = (fromYear?: string | null, fromSchool?: string | null) => {
+      if (fromYear?.trim()) return fromYear;
+      if (year === current && fromSchool?.trim()) return fromSchool;
+      return fromYear ?? null;
+    };
     return {
       academicYear: year,
-      operatingRegulation: row?.operatingText ?? null,
-      financialRegulation: row?.financialText ?? null,
+      operatingRegulation: pick(row?.operatingText, school.operatingRegulation),
+      financialRegulation: pick(row?.financialText, school.financialRegulation),
     };
   }
 

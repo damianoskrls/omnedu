@@ -227,101 +227,359 @@ class _MoneyRow extends StatelessWidget {
   }
 }
 
-class ChildActivitiesScreen extends StatelessWidget {
-  final Map<String, dynamic> child;
-  const ChildActivitiesScreen({super.key, required this.child});
+class ParentEmptyState extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String message;
+  const ParentEmptyState({super.key, required this.icon, required this.title, required this.message});
 
   @override
   Widget build(BuildContext context) {
-    final regs = child['activityRegistrations'] as List<dynamic>? ?? [];
-    return Scaffold(
-      appBar: AppBar(title: const Text('Δραστηριότητες')),
-      body: regs.isEmpty
-          ? const Center(child: Text('Δεν υπάρχουν δραστηριότητες για αυτό το παιδί.'))
-          : ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: regs.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (_, i) {
-                final reg = regs[i] as Map;
-                final activity = reg['activity'] as Map? ?? {};
-                final monthly = activity['monthlyCost'];
-                return ListTile(
-                  tileColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  title: Text(activity['title'] as String? ?? 'Δραστηριότητα'),
-                  subtitle: Text(monthly == null ? (reg['status'] as String? ?? '') : '$monthly € / μήνα'),
-                );
-              },
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 84,
+              height: 84,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(colors: [Color(0xFF77328D), Color(0xFFE95926)]),
+              ),
+              child: Icon(icon, color: Colors.white, size: 40),
             ),
+            const SizedBox(height: 16),
+            Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF2C2422))),
+            const SizedBox(height: 8),
+            Text(message, textAlign: TextAlign.center, style: const TextStyle(height: 1.4, color: Color(0xFF6B7280))),
+          ],
+        ),
+      ),
     );
   }
 }
 
-class ServicesScreen extends StatelessWidget {
+final liveChildProvider = FutureProvider.family<Map<String, dynamic>, ({String schoolId, String studentId})>((ref, key) async {
+  final dio = ref.read(dioProvider);
+  final resp = await dio.get('/schools/${key.schoolId}/students/${key.studentId}');
+  return Map<String, dynamic>.from(resp.data as Map);
+});
+
+class ChildActivitiesScreen extends ConsumerWidget {
+  final String schoolId;
   final Map<String, dynamic> child;
-  const ServicesScreen({super.key, required this.child});
+  const ChildActivitiesScreen({super.key, required this.schoolId, required this.child});
 
   @override
-  Widget build(BuildContext context) {
-    final services = child['studentServices'] as List<dynamic>? ?? [];
+  Widget build(BuildContext context, WidgetRef ref) {
+    final studentId = child['id'] as String? ?? '';
+    final key = (schoolId: schoolId, studentId: studentId);
+    final live = ref.watch(liveChildProvider(key));
     return Scaffold(
-      appBar: AppBar(title: const Text('Παροχές & σχολικό')),
-      body: services.isEmpty
-          ? const Center(child: Text('Δεν έχουν καταχωρηθεί παροχές. Χωρίς σχολικό.'))
-          : ListView(
+      backgroundColor: const Color(0xFFF6F3FA),
+      appBar: AppBar(
+        title: const Text('Δραστηριότητες'),
+        actions: [
+          IconButton(onPressed: () => ref.invalidate(liveChildProvider(key)), icon: const Icon(Icons.refresh_rounded)),
+        ],
+      ),
+      body: live.when(
+        loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFF77328D))),
+        error: (e, _) => ParentEmptyState(icon: Icons.cloud_off_rounded, title: 'Δεν φορτώθηκαν', message: '$e'),
+        data: (data) {
+          final regs = data['activityRegistrations'] as List<dynamic>? ?? [];
+          if (regs.isEmpty) {
+            return const ParentEmptyState(
+              icon: Icons.palette_outlined,
+              title: 'Χωρίς δραστηριότητες',
+              message: 'Δεν έχει εγγραφεί ακόμα σε δραστηριότητα. Μόλις την προσθέσει η διαχείριση, θα εμφανιστεί εδώ.',
+            );
+          }
+          return RefreshIndicator(
+            color: const Color(0xFF77328D),
+            onRefresh: () => ref.refresh(liveChildProvider(key).future),
+            child: ListView.separated(
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
-              children: services.map((raw) {
-                final s = raw as Map;
-                final service = s['service'] as Map? ?? {};
-                final route = s['route'] as Map?;
-                final stop = s['stop'] as Map?;
-                final type = service['serviceType'] as String? ?? '';
-                final isBus = type == 'bus' || (service['name'] as String? ?? '').toLowerCase().contains('σχολ');
+              itemCount: regs.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              itemBuilder: (_, i) {
+                final reg = regs[i] as Map;
+                final activity = reg['activity'] as Map? ?? {};
+                final monthly = activity['monthlyCost'];
+                final once = activity['oneTimeCost'];
+                final start = DateTime.tryParse(activity['startsOn'] as String? ?? '');
                 return Container(
-                  margin: const EdgeInsets.only(bottom: 10),
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(service['name'] as String? ?? 'Παροχή', style: const TextStyle(fontWeight: FontWeight.w800)),
-                      if (isBus) const Text('Έχει σχολικό', style: TextStyle(color: Color(0xFF0369A1))),
-                      if (route != null) Text('Διαδρομή: ${route['name']}'),
-                      if (stop != null) Text('Στάση: ${stop['name'] ?? ''} ${stop['address'] ?? ''}'),
-                      if (stop?['pickupTime'] != null) Text('Παραλαβή: ${stop!['pickupTime']}'),
-                      if (stop?['dropoffTime'] != null) Text('Παράδοση: ${stop!['dropoffTime']}'),
+                      Text(activity['title'] as String? ?? 'Δραστηριότητα', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                      const SizedBox(height: 6),
+                      if (monthly != null) Text('$monthly € / μήνα', style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w700)),
+                      if (once != null) Text('Εφάπαξ $once €'),
+                      if (start != null) Text('Έναρξη ${_grDate(start)}'),
                     ],
                   ),
                 );
-              }).toList(),
+              },
             ),
+          );
+        },
+      ),
     );
   }
 }
 
-class TeachersScreen extends StatelessWidget {
+class ServicesScreen extends ConsumerWidget {
+  final String schoolId;
   final Map<String, dynamic> child;
-  const TeachersScreen({super.key, required this.child});
+  const ServicesScreen({super.key, required this.schoolId, required this.child});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final studentId = child['id'] as String? ?? '';
+    final key = (schoolId: schoolId, studentId: studentId);
+    final live = ref.watch(liveChildProvider(key));
+    return Scaffold(
+      backgroundColor: const Color(0xFFF6F3FA),
+      appBar: AppBar(
+        title: const Text('Παροχές & σχολικό'),
+        actions: [
+          IconButton(onPressed: () => ref.invalidate(liveChildProvider(key)), icon: const Icon(Icons.refresh_rounded)),
+        ],
+      ),
+      body: live.when(
+        loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFF77328D))),
+        error: (e, _) => ParentEmptyState(icon: Icons.cloud_off_rounded, title: 'Δεν φορτώθηκαν', message: '$e'),
+        data: (data) {
+          final services = data['studentServices'] as List<dynamic>? ?? [];
+          if (services.isEmpty) {
+            return const ParentEmptyState(
+              icon: Icons.directions_bus_outlined,
+              title: 'Χωρίς σχολικό',
+              message: 'Δεν έχουν καταχωρηθεί παροχές ή σχολικό για αυτό το παιδί.',
+            );
+          }
+          return RefreshIndicator(
+            color: const Color(0xFF77328D),
+            onRefresh: () => ref.refresh(liveChildProvider(key).future),
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(16),
+              children: services.map((raw) => _ServiceCard(service: Map<String, dynamic>.from(raw as Map))).toList(),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ServiceCard extends StatelessWidget {
+  final Map<String, dynamic> service;
+  const _ServiceCard({required this.service});
+
+  String? _text(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? null : text;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final enrollments = child['enrollments'] as List<dynamic>? ?? [];
-    final teachers = <Map>[];
-    final seen = <String>{};
-    for (final enrollment in enrollments) {
-      final list = enrollment['class']?['teachers'] as List<dynamic>? ?? [];
-      for (final t in list) {
-        final user = t['user'] as Map?;
-        final id = user?['id'] as String? ?? '';
-        if (user != null && seen.add(id)) teachers.add(user);
-      }
-    }
+    final catalog = service['service'] as Map? ?? {};
+    final route = service['route'] as Map?;
+    final stop = service['stop'] as Map?;
+    final type = catalog['serviceType'] as String? ?? '';
+    final name = catalog['name'] as String? ?? 'Παροχή';
+    final isBus = type == 'bus' || name.toLowerCase().contains('σχολ');
+    final mode = service['serviceMode'] as String? ?? 'both';
+    const modes = {'pickup': 'Μόνο παραλαβή', 'dropoff': 'Μόνο παράδοση', 'both': 'Παραλαβή και παράδοση'};
+    final pickup = _text(service['pickupTime']) ?? _text(stop?['pickupTime']);
+    final dropoff = _text(service['dropoffTime']) ?? _text(stop?['dropoffTime']);
+    final rows = <(IconData, String)>[
+      if (isBus) (Icons.directions_bus_rounded, modes[mode] ?? mode),
+      if (route != null) (Icons.alt_route_rounded, 'Διαδρομή: ${route['name'] ?? ''}'),
+      if (stop != null) (Icons.place_rounded, 'Στάση: ${stop['name'] ?? ''} ${stop['address'] ?? ''}'.trim()),
+      if (pickup != null) (Icons.schedule_rounded, 'Παραλαβή: $pickup'),
+      if (dropoff != null) (Icons.schedule_rounded, 'Παράδοση: $dropoff'),
+      if (_text(service['homeAddress']) != null) (Icons.home_rounded, 'Διεύθυνση: ${service['homeAddress']}'),
+      if (_text(service['pickupContact']) != null) (Icons.person_rounded, 'Παραδίδει: ${service['pickupContact']}'),
+      if (_text(service['dropoffContact']) != null) (Icons.person_rounded, 'Παραλαμβάνει: ${service['dropoffContact']}'),
+      if (_text(service['notes']) != null) (Icons.notes_rounded, service['notes'].toString()),
+      if (catalog['monthlyCost'] != null) (Icons.euro_rounded, '${catalog['monthlyCost']} € / μήνα'),
+    ];
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(isBus ? Icons.directions_bus_rounded : Icons.room_service_rounded, color: const Color(0xFF0369A1)),
+              const SizedBox(width: 8),
+              Expanded(child: Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ...rows.map((row) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(row.$1, size: 16, color: const Color(0xFF77328D)),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(row.$2)),
+                  ],
+                ),
+              )),
+        ],
+      ),
+    );
+  }
+}
+
+class ChildEventsScreen extends ConsumerWidget {
+  final String schoolId;
+  final Map<String, dynamic> child;
+  const ChildEventsScreen({super.key, required this.schoolId, required this.child});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final events = ref.watch(_childEventsProvider(schoolId));
+    final studentId = child['id'] as String? ?? '';
     return Scaffold(
+      backgroundColor: const Color(0xFFF6F3FA),
+      appBar: AppBar(
+        title: const Text('Εκδρομές & εκδηλώσεις'),
+        actions: [
+          IconButton(onPressed: () => ref.invalidate(_childEventsProvider(schoolId)), icon: const Icon(Icons.refresh_rounded)),
+        ],
+      ),
+      body: events.when(
+        loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFF77328D))),
+        error: (e, _) => ParentEmptyState(icon: Icons.cloud_off_rounded, title: 'Δεν φορτώθηκαν', message: '$e'),
+        data: (list) {
+          final mine = list.where((item) {
+            final student = item['student'] as Map?;
+            return student?['id'] == studentId;
+          }).toList();
+          if (mine.isEmpty) {
+            return const ParentEmptyState(
+              icon: Icons.hiking_rounded,
+              title: 'Χωρίς εκδρομές',
+              message: 'Δεν υπάρχουν εκδρομές ή εκδηλώσεις για αυτό το παιδί. Θα εμφανιστούν μόλις τις δημοσιεύσει η διαχείριση.',
+            );
+          }
+          return RefreshIndicator(
+            color: const Color(0xFF77328D),
+            onRefresh: () => ref.refresh(_childEventsProvider(schoolId).future),
+            child: ListView.separated(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(16),
+              itemCount: mine.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              itemBuilder: (_, i) => _ChildEventCard(enrollment: Map<String, dynamic>.from(mine[i] as Map)),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+final _childEventsProvider = FutureProvider.family<List<dynamic>, String>((ref, schoolId) async {
+  final dio = ref.read(dioProvider);
+  final resp = await dio.get('/schools/$schoolId/events/parent/my-events');
+  return resp.data is List ? resp.data as List<dynamic> : [];
+});
+
+class _ChildEventCard extends StatelessWidget {
+  final Map<String, dynamic> enrollment;
+  const _ChildEventCard({required this.enrollment});
+
+  @override
+  Widget build(BuildContext context) {
+    final event = enrollment['event'] as Map? ?? {};
+    final type = event['eventType'] as String? ?? '';
+    const types = {'excursion': 'Εκδρομή', 'theater': 'Θεατρικό', 'sport': 'Αθλητική', 'cultural': 'Πολιτιστική'};
+    final date = DateTime.tryParse(event['eventDate'] as String? ?? '');
+    final description = (event['description'] as String?)?.trim() ?? '';
+    final cost = event['costPerChild'];
+    final teachers = event['teachers'] as List<dynamic>? ?? [];
+    final names = teachers.map((t) => (t as Map)['user']?['fullName']).whereType<String>().join(', ');
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.hiking_rounded, color: Color(0xFFE95926)),
+              const SizedBox(width: 8),
+              Expanded(child: Text(event['title'] as String? ?? 'Εκδήλωση', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(types[type] ?? 'Εκδήλωση', style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w700)),
+          if (date != null) Text(_grDate(date)),
+          if (cost != null) Text('Κόστος: $cost €'),
+          if (names.isNotEmpty) Text('Εκπαιδευτικοί: $names'),
+          if (description.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(description, style: const TextStyle(height: 1.4)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class TeachersScreen extends ConsumerWidget {
+  final String schoolId;
+  final Map<String, dynamic> child;
+  const TeachersScreen({super.key, required this.schoolId, required this.child});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final studentId = child['id'] as String? ?? '';
+    final key = (schoolId: schoolId, studentId: studentId);
+    final live = ref.watch(liveChildProvider(key));
+    return Scaffold(
+      backgroundColor: const Color(0xFFF6F3FA),
       appBar: AppBar(title: const Text('Εκπαιδευτικοί')),
-      body: teachers.isEmpty
-          ? const Center(child: Text('Δεν έχουν οριστεί εκπαιδευτικοί στην τάξη.'))
-          : ListView.separated(
+      body: live.when(
+        loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFF77328D))),
+        error: (e, _) => ParentEmptyState(icon: Icons.cloud_off_rounded, title: 'Δεν φορτώθηκαν', message: '$e'),
+        data: (data) {
+          final enrollments = data['enrollments'] as List<dynamic>? ?? [];
+          final teachers = <Map>[];
+          final seen = <String>{};
+          for (final enrollment in enrollments) {
+            final list = enrollment['class']?['teachers'] as List<dynamic>? ?? [];
+            for (final t in list) {
+              final user = t['user'] as Map?;
+              final id = user?['id'] as String? ?? '';
+              if (user != null && seen.add(id)) teachers.add(user);
+            }
+          }
+          if (teachers.isEmpty) {
+            return const ParentEmptyState(
+              icon: Icons.groups_outlined,
+              title: 'Χωρίς εκπαιδευτικούς',
+              message: 'Δεν έχουν οριστεί εκπαιδευτικοί στην τάξη του παιδιού.',
+            );
+          }
+          return RefreshIndicator(
+            onRefresh: () => ref.refresh(liveChildProvider(key).future),
+            child: ListView.separated(
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
               itemCount: teachers.length,
               separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -330,12 +588,15 @@ class TeachersScreen extends StatelessWidget {
                 return ListTile(
                   tileColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  leading: const CircleAvatar(child: Icon(Icons.person)),
+                  leading: const CircleAvatar(backgroundColor: Color(0xFFF6F3FA), child: Icon(Icons.person, color: Color(0xFF77328D))),
                   title: Text(t['fullName'] as String? ?? ''),
-                  subtitle: Text(t['phone'] as String? ?? ''),
+                  subtitle: Text((t['phone'] as String?)?.isNotEmpty == true ? t['phone'] as String : 'Τάξη'),
                 );
               },
             ),
+          );
+        },
+      ),
     );
   }
 }
@@ -346,34 +607,83 @@ class RegulationsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final school = ref.watch(_schoolProvider(schoolId));
+    final school = ref.watch(_regulationsProvider(schoolId));
     return Scaffold(
-      appBar: AppBar(title: const Text('Κανονισμοί')),
+      backgroundColor: const Color(0xFFF6F3FA),
+      appBar: AppBar(
+        title: const Text('Κανονισμοί'),
+        actions: [
+          IconButton(onPressed: () => ref.invalidate(_regulationsProvider(schoolId)), icon: const Icon(Icons.refresh_rounded)),
+        ],
+      ),
       body: school.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e')),
-        data: (data) => ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            if ((data['academicYear'] as String?)?.isNotEmpty == true)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Text('Σχολικό έτος ${data['academicYear']}', style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF77328D))),
-              ),
-            _RegulationBlock(title: 'Κανονισμός λειτουργίας', body: data['operatingRegulation'] as String?),
-            const SizedBox(height: 12),
-            _RegulationBlock(title: 'Οικονομικός κανονισμός', body: data['financialRegulation'] as String?),
-          ],
+        loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFF77328D))),
+        error: (e, _) => ParentEmptyState(
+          icon: Icons.gavel_rounded,
+          title: 'Οι κανονισμοί δεν φορτώθηκαν',
+          message: 'Τράβηξε προς τα κάτω για ανανέωση μόλις η διαχείριση τους αποθηκεύσει.\n$e',
         ),
+        data: (data) {
+          final operating = data['operatingRegulation'] as String?;
+          final financial = data['financialRegulation'] as String?;
+          final empty = (operating == null || operating.trim().isEmpty) && (financial == null || financial.trim().isEmpty);
+          if (empty) {
+            return const ParentEmptyState(
+              icon: Icons.menu_book_outlined,
+              title: 'Δεν έχουν καταχωρηθεί',
+              message: 'Ο διαχειριστής δεν έχει αποθηκεύσει ακόμα κανονισμό για αυτό το σχολικό έτος.',
+            );
+          }
+          return RefreshIndicator(
+            color: const Color(0xFF77328D),
+            onRefresh: () => ref.refresh(_regulationsProvider(schoolId).future),
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(16),
+              children: [
+                if ((data['academicYear'] as String?)?.isNotEmpty == true)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text('Σχολικό έτος ${data['academicYear']}', style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF77328D))),
+                  ),
+                _RegulationBlock(title: 'Κανονισμός λειτουργίας', body: operating),
+                const SizedBox(height: 12),
+                _RegulationBlock(title: 'Οικονομικός κανονισμός', body: financial),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
 }
 
-final _schoolProvider = FutureProvider.family<Map<String, dynamic>, String>((ref, schoolId) async {
+final _regulationsProvider = FutureProvider.family<Map<String, dynamic>, String>((ref, schoolId) async {
   final dio = ref.read(dioProvider);
-  final resp = await dio.get('/schools/$schoolId/regulations');
-  return Map<String, dynamic>.from(resp.data as Map);
+  Map<String, dynamic>? fromYear;
+  try {
+    final resp = await dio.get('/schools/$schoolId/regulations');
+    if (resp.data is Map) fromYear = Map<String, dynamic>.from(resp.data as Map);
+  } catch (_) {}
+  final operating = (fromYear?['operatingRegulation'] as String?)?.trim() ?? '';
+  final financial = (fromYear?['financialRegulation'] as String?)?.trim() ?? '';
+  if (operating.isNotEmpty || financial.isNotEmpty) return fromYear!;
+  try {
+    final school = await dio.get('/schools/$schoolId');
+    if (school.data is Map) {
+      final row = Map<String, dynamic>.from(school.data as Map);
+      final op = (row['operatingRegulation'] as String?)?.trim() ?? '';
+      final fin = (row['financialRegulation'] as String?)?.trim() ?? '';
+      if (op.isNotEmpty || fin.isNotEmpty) {
+        return {
+          'academicYear': fromYear?['academicYear'],
+          'operatingRegulation': row['operatingRegulation'],
+          'financialRegulation': row['financialRegulation'],
+        };
+      }
+    }
+  } catch (_) {}
+  return fromYear ?? {'academicYear': null, 'operatingRegulation': null, 'financialRegulation': null};
 });
 
 class _RegulationBlock extends StatelessWidget {

@@ -85,6 +85,29 @@ class ActivitiesScreen extends ConsumerWidget {
                 loading: () => const SizedBox.shrink(),
                 error: (e, _) => Center(child: Text('Σφάλμα: $e')),
                 data: (children) {
+                  final registered = children.any((c) {
+                    final regs = (c as Map)['activityRegistrations'];
+                    return regs is List && regs.isNotEmpty;
+                  });
+                  final catalogEmpty = activitiesAsync.maybeWhen(data: (rows) => rows.isEmpty, orElse: () => false);
+                  if (children.isNotEmpty && !registered && catalogEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.fromLTRB(24, 80, 24, 24),
+                      child: Column(
+                        children: [
+                          Icon(Icons.palette_outlined, size: 72, color: Color(0xFFD1D5DB)),
+                          SizedBox(height: 12),
+                          Text('Χωρίς δραστηριότητες', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF2C2422))),
+                          SizedBox(height: 8),
+                          Text(
+                            'Δεν υπάρχουν δραστηριότητες για τα παιδιά σας. Θα εμφανιστούν εδώ μόλις τις καταχωρήσει η διαχείριση.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Color(0xFF6B7280), height: 1.4),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
                   if (children.isEmpty) return const SizedBox.shrink();
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
