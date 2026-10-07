@@ -41,7 +41,7 @@ export default function ClassDetailPage() {
 
   // Meeting form
   const [showMeetingForm, setShowMeetingForm] = useState(false);
-  const [meetingForm, setMeetingForm] = useState({ title: '', description: '', meetingDate: '' });
+  const [meetingForm, setMeetingForm] = useState({ title: '', description: '', meetingDate: '', durationMinutes: '15', windowStart: '16:00', windowEnd: '19:00' });
   const [savingMeeting, setSavingMeeting] = useState(false);
 
   // Instructions
@@ -78,7 +78,7 @@ export default function ClassDetailPage() {
     try {
       await parentMeetingsApi.create(schoolId, { ...meetingForm, classId });
       setShowMeetingForm(false);
-      setMeetingForm({ title: '', description: '', meetingDate: '' });
+      setMeetingForm({ title: '', description: '', meetingDate: '', durationMinutes: '15', windowStart: '16:00', windowEnd: '19:00' });
       load();
     } finally {
       setSavingMeeting(false);
@@ -438,13 +438,29 @@ export default function ClassDetailPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Ημερομηνία & Ώρα *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Ημέρα *</label>
                 <input
-                  type="datetime-local"
+                  type="date"
                   value={meetingForm.meetingDate}
                   onChange={(e) => setMeetingForm({ ...meetingForm, meetingDate: e.target.value })}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <label className="text-sm">
+                  <span className="block font-medium text-gray-700 mb-1">Διάρκεια</span>
+                  <select value={meetingForm.durationMinutes} onChange={(e) => setMeetingForm({ ...meetingForm, durationMinutes: e.target.value })} className="w-full border border-gray-300 rounded-lg px-2 py-2 text-sm">
+                    {[10, 15, 20, 30].map((minutes) => <option key={minutes} value={minutes}>{minutes} λεπτά</option>)}
+                  </select>
+                </label>
+                <label className="text-sm">
+                  <span className="block font-medium text-gray-700 mb-1">Από</span>
+                  <input type="time" value={meetingForm.windowStart} onChange={(e) => setMeetingForm({ ...meetingForm, windowStart: e.target.value })} className="w-full border border-gray-300 rounded-lg px-2 py-2 text-sm" />
+                </label>
+                <label className="text-sm">
+                  <span className="block font-medium text-gray-700 mb-1">Έως</span>
+                  <input type="time" value={meetingForm.windowEnd} onChange={(e) => setMeetingForm({ ...meetingForm, windowEnd: e.target.value })} className="w-full border border-gray-300 rounded-lg px-2 py-2 text-sm" />
+                </label>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Περιγραφή / Ανακοίνωση</label>
@@ -458,7 +474,7 @@ export default function ClassDetailPage() {
               </div>
               <p className="text-xs text-gray-400 flex items-center gap-1.5">
                 <Calendar size={12} />
-                Θα αποστέλλεται push notification στους γονείς 3 μέρες πριν.
+                Οι γονείς ειδοποιούνται αμέσως και διαλέγουν ώρα μέσα σε αυτό το διάστημα.
               </p>
             </div>
             <div className="flex gap-3 mt-6">
@@ -494,7 +510,9 @@ function MeetingCard({ meeting, past, onDelete }: { meeting: any; past?: boolean
             {meeting.title}
           </p>
           <p className={`text-xs mt-0.5 ${past ? 'text-gray-400' : 'text-indigo-500'}`}>
-            {format(date, 'EEEE, d MMM yyyy · HH:mm', { locale: el })}
+            {format(date, 'EEEE, d MMM yyyy', { locale: el })}
+            {meeting.windowStart && meeting.windowEnd ? ` · ${meeting.windowStart}–${meeting.windowEnd}` : ''}
+            {meeting.durationMinutes ? ` · ${meeting.durationMinutes} λεπτά` : ''}
           </p>
           {meeting.description && (
             <p className="text-xs text-gray-400 mt-1 line-clamp-2">{meeting.description}</p>

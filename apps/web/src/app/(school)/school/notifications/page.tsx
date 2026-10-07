@@ -33,6 +33,9 @@ const AUTO_EVENTS = [
   { key: 'daily_report',        label: 'Νέα ημερήσια αναφορά' },
   { key: 'new_message',         label: 'Νέο μήνυμα' },
   { key: 'thematic_plan',       label: 'Νέο διαθεματικό' },
+  { key: 'parent_meeting',      label: 'Ενημέρωση γονέων' },
+  { key: 'parent_meeting_request', label: 'Αίτημα ώρας συνάντησης' },
+  { key: 'parent_meeting_accepted', label: 'Κλεισμένη συνάντηση' },
 ];
 
 const defaultForm = () => ({

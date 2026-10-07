@@ -7,9 +7,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../features/messages/conversation_ui.dart';
+import '../../features/parent/screens/parent_meetings_screen.dart';
 import '../../features/parent/screens/billing_screen.dart';
 import '../../features/parent/screens/bulletin_screen.dart';
 import '../../features/parent/screens/thematic_screen.dart';
+import '../../features/teacher/screens/teacher_meetings_screen.dart';
 import '../../features/teacher/screens/teacher_thematic_screen.dart';
 import '../api/api_client.dart';
 import '../providers/auth_provider.dart';
@@ -223,6 +225,36 @@ Future<void> openNotification(BuildContext context, WidgetRef ref, Map<String, d
     return;
   }
 
+  if (type == 'parent_meeting' || type == 'parent_meeting_request' || type == 'parent_meeting_accepted') {
+    final classId = data['classId'] as String? ?? '';
+    final className = data['className'] as String? ?? '';
+    final meetingId = data['meetingId'] as String?;
+    final role = ref.read(authProvider).user?.role;
+    if (role == 'teacher') {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => TeacherMeetingsScreen(schoolId: schoolId, classId: classId, className: className),
+        ),
+      );
+    } else {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ParentMeetingsScreen(
+            schoolId: schoolId,
+            classId: classId,
+            className: className,
+            studentId: data['studentId'] as String? ?? '',
+            studentName: data['studentName'] as String? ?? 'Παιδί',
+            meetingId: meetingId,
+          ),
+        ),
+      );
+    }
+    return;
+  }
+
   if (type == 'thematic') {
     final classId = data['classId'] as String? ?? '';
     if (classId.isEmpty) return;
@@ -310,6 +342,9 @@ class InboxScreen extends ConsumerWidget {
     if (type == 'daily_report') return Icons.menu_book_rounded;
     if (type == 'payment') return Icons.payments_rounded;
     if (type == 'thematic') return Icons.auto_stories_rounded;
+    if (type == 'parent_meeting' || type == 'parent_meeting_request' || type == 'parent_meeting_accepted') {
+      return Icons.event_available_rounded;
+    }
     return Icons.notifications_rounded;
   }
 }

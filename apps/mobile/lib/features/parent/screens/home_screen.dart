@@ -6,6 +6,7 @@ import '../../../core/widgets/app_image.dart';
 import '../../../core/widgets/person_face.dart';
 import 'account_settings_screen.dart';
 import 'child_hub_screen.dart';
+import 'parent_meetings_screen.dart';
 import 'school_posts_screen.dart';
 import 'thematic_screen.dart';
 
@@ -128,6 +129,7 @@ class HomeScreen extends ConsumerWidget {
     final menuAsync = ref.watch(todayMenuProvider(schoolId));
     final postsAsync = ref.watch(_recentPostsProvider(schoolId));
     final thematicAsync = ref.watch(monthThematicProvider(schoolId));
+    final meetingsAsync = ref.watch(parentMeetingsProvider(schoolId));
     final user = ref.watch(authProvider).user;
     final firstName = user?.fullName.split(' ').first ?? '';
     final schoolName = user?.memberships.isNotEmpty == true
@@ -143,6 +145,7 @@ class HomeScreen extends ConsumerWidget {
           ref.invalidate(todayMenuProvider(schoolId));
           ref.invalidate(_recentPostsProvider(schoolId));
           ref.invalidate(monthThematicProvider(schoolId));
+          ref.invalidate(parentMeetingsProvider(schoolId));
         },
         child: CustomScrollView(
           slivers: [
@@ -268,6 +271,7 @@ class HomeScreen extends ConsumerWidget {
                   final reports = reportsAsync.asData?.value ?? const [];
                   final menu = menuAsync.asData?.value;
                   final plans = thematicAsync.asData?.value ?? const [];
+                  final meetings = meetingsAsync.asData?.value ?? const [];
                   return Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Column(
@@ -280,6 +284,7 @@ class HomeScreen extends ConsumerWidget {
                             report: _reportFor(reports, child['id']?.toString(), _dayKey(DateTime.now())),
                             menu: menu,
                             thematic: _thematicFor(plans, child),
+                            meeting: acceptedMeetingFor(meetings, child['id']?.toString()),
                             onTap: () => Navigator.of(context).push(
                               MaterialPageRoute(
                                 builder: (_) => ChildHubScreen(schoolId: schoolId, child: child),
@@ -379,8 +384,9 @@ class _TodayChildCard extends StatelessWidget {
   final Map<String, dynamic>? report;
   final Map<String, dynamic>? menu;
   final Map<String, dynamic>? thematic;
+  final Map<String, dynamic>? meeting;
   final VoidCallback onTap;
-  const _TodayChildCard({required this.child, required this.report, required this.menu, required this.thematic, required this.onTap});
+  const _TodayChildCard({required this.child, required this.report, required this.menu, required this.thematic, required this.meeting, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -425,6 +431,13 @@ class _TodayChildCard extends StatelessWidget {
               _LineBlock(title: 'Ενημέρωση', lines: bulletin.isEmpty ? const ['Δεν έχει ανέβει δελτίο σήμερα.'] : bulletin),
               _LineBlock(title: 'Τι έφαγε', lines: meals.isEmpty ? const ['Δεν έχει καταχωρηθεί φαγητό για σήμερα.'] : meals),
               if (events.isNotEmpty) _LineBlock(title: 'Εκδηλώσεις', lines: events),
+              if (meeting != null)
+                _LineBlock(
+                  title: 'Επερχόμενη συνάντηση',
+                  lines: [
+                    '${meetingDay(meeting!['meetingDate'])} στις ${meeting!['acceptedSlot'] ?? ''}',
+                  ],
+                ),
               _LineBlock(
                 title: 'Διαθεματικό ${thematicMonthLabel(thematicMonthKey(DateTime.now()))}',
                 lines: [

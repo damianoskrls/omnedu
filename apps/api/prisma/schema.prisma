@@ -133,6 +133,8 @@ model User {
   createdEvents            SchoolEvent[]
   eventTeacherAssignments  SchoolEventTeacher[]
   uploadedEventMedia       SchoolEventMedia[]
+  taughtParentMeetings     ParentMeeting[]       @relation("MeetingTeacher")
+  meetingRequests          ParentMeetingRequest[]
 
   @@map("users")
 }
@@ -353,6 +355,7 @@ model Student {
   studentServices          StudentService[]
   eventEnrollments             SchoolEventEnrollment[]
   questionnaireResponses       QuestionnaireResponse[]
+  meetingRequests              ParentMeetingRequest[]
   notifBroadcastsAsTarget      NotificationBroadcast[] @relation("BroadcastTargetStudent")
   feeOverride           StudentFeeOverride?
   subsidies             StudentSubsidy[]
@@ -788,22 +791,47 @@ model Notification {
 // ─────────────────────────────────────────────────────────
 
 model ParentMeeting {
-  id          String    @id @default(uuid())
-  schoolId    String    @map("school_id")
-  title       String
-  description String?
-  meetingDate DateTime  @map("meeting_date")
-  classId     String?   @map("class_id")
-  levelId     String?   @map("level_id")
-  notifSentAt DateTime? @map("notif_sent_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
+  id               String    @id @default(uuid())
+  schoolId         String    @map("school_id")
+  title            String
+  description      String?
+  meetingDate      DateTime  @map("meeting_date")
+  classId          String?   @map("class_id")
+  levelId          String?   @map("level_id")
+  teacherUserId    String?   @map("teacher_user_id")
+  durationMinutes  Int       @default(15) @map("duration_minutes")
+  windowStart      String?   @map("window_start")
+  windowEnd        String?   @map("window_end")
+  notifSentAt      DateTime? @map("notif_sent_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
 
-  school  School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  class   Class?  @relation(fields: [classId], references: [id], onDelete: Cascade)
-  level   Level?  @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  school   School                 @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  class    Class?                 @relation(fields: [classId], references: [id], onDelete: Cascade)
+  level    Level?                 @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  teacher  User?                  @relation("MeetingTeacher", fields: [teacherUserId], references: [id], onDelete: SetNull)
+  requests ParentMeetingRequest[]
 
   @@index([schoolId, meetingDate])
   @@map("parent_meetings")
+}
+
+model ParentMeetingRequest {
+  id           String   @id @default(uuid())
+  meetingId    String   @map("meeting_id")
+  studentId    String   @map("student_id")
+  parentUserId String   @map("parent_user_id")
+  slotTime     String   @map("slot_time")
+  status       String   @default("requested")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  meeting ParentMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  student Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  parent  User          @relation(fields: [parentUserId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, studentId])
+  @@index([meetingId, slotTime])
+  @@map("parent_meeting_requests")
 }
 
 // ─────────────────────────────────────────────────────────

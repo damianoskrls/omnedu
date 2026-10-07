@@ -3,6 +3,7 @@ import '../../../core/widgets/person_face.dart';
 import 'bulletin_screen.dart';
 import 'child_detail_screen.dart';
 import 'parent_child_pages.dart';
+import 'parent_meetings_screen.dart';
 import 'thematic_screen.dart';
 
 class ChildHubScreen extends StatelessWidget {
@@ -32,6 +33,20 @@ class ChildHubScreen extends StatelessWidget {
     final tiles = <_Tile>[
       _Tile('Ημερήσιο Δελτίο', Icons.menu_book_rounded, const Color(0xFF77328D), () {
         Navigator.push(context, MaterialPageRoute(builder: (_) => BulletinScreen(schoolId: schoolId, child: child)));
+      }),
+      _Tile('Συναντήσεις', Icons.event_available_rounded, const Color(0xFF0F766E), () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ParentMeetingsScreen(
+              schoolId: schoolId,
+              classId: classId,
+              className: className,
+              studentId: child['id']?.toString() ?? '',
+              studentName: name,
+            ),
+          ),
+        );
       }),
       _Tile('Διαθεματικό', Icons.auto_stories_rounded, const Color(0xFF642678), () {
         Navigator.push(

@@ -1,6 +1,11 @@
 import { Module } from '@nestjs/common';
-import { ParentMeetingsService } from './parent-meetings.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { ParentMeetingsController } from './parent-meetings.controller';
+import { ParentMeetingsService } from './parent-meetings.service';
 
-@Module({ controllers: [ParentMeetingsController], providers: [ParentMeetingsService] })
+@Module({
+  imports: [NotificationsModule],
+  controllers: [ParentMeetingsController],
+  providers: [ParentMeetingsService],
+})
 export class ParentMeetingsModule {}

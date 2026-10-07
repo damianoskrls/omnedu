@@ -5,6 +5,7 @@ import '../../../core/widgets/app_image.dart';
 import '../../../core/providers/auth_provider.dart';
 import 'teacher_student_screen.dart';
 import 'teacher_thematic_screen.dart';
+import 'teacher_meetings_screen.dart';
 import 'teacher_notify_screen.dart';
 
 final _myClassesProvider = FutureProvider.family<List<dynamic>, String>(
@@ -234,6 +235,27 @@ class _TeacherHomeScreenState extends ConsumerState<TeacherHomeScreen> {
                           ),
                         ),
                       ],
+                    ),
+                  ),
+                ),
+              if (_selectedClassId != null)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(backgroundColor: const Color(0xFF642678)),
+                      onPressed: () {
+                        final cls = classes.cast<Map>().firstWhere((c) => c['id'] == _selectedClassId);
+                        Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => TeacherMeetingsScreen(
+                            schoolId: widget.schoolId,
+                            classId: _selectedClassId!,
+                            className: cls['name'] as String? ?? '',
+                          ),
+                        ));
+                      },
+                      icon: const Icon(Icons.event_available_rounded),
+                      label: const Text('Συναντήσεις γονέων'),
                     ),
                   ),
                 ),
