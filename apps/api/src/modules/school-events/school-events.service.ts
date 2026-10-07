@@ -193,6 +193,34 @@ export class SchoolEventsService implements OnModuleInit {
         update: {},
       });
     }
+    await this.notifyPublished(schoolId, eventId);
+  }
+
+  private async notifyPublished(schoolId: string, eventId: string) {
+    const event = await this.prisma.schoolEvent.findFirst({
+      where: { id: eventId, schoolId },
+      select: { title: true, description: true, eventDate: true, eventType: true, costPerChild: true },
+    });
+    if (!event) return;
+    const rows = await this.prisma.schoolEventEnrollment.findMany({
+      where: { eventId },
+      select: { student: { select: { parents: { select: { userId: true } } } } },
+    });
+    const parents = rows.flatMap((row) => row.student.parents.map((parent) => parent.userId));
+    const kind = event.eventType === 'excursion' ? 'Εκδρομή' : event.eventType === 'theater' ? 'Θέατρο' : 'Εκδήλωση';
+    const when = event.eventDate
+      ? `${String(event.eventDate.getUTCDate()).padStart(2, '0')}/${String(event.eventDate.getUTCMonth() + 1).padStart(2, '0')}/${event.eventDate.getUTCFullYear()}`
+      : '';
+    const cost = event.costPerChild != null && Number(event.costPerChild) > 0 ? `${Number(event.costPerChild).toFixed(2)} €` : '';
+    const details = (event.description ?? '').replace(/\s+/g, ' ').trim();
+    const body = [kind, when, cost, details].filter(Boolean).join(' · ').slice(0, 180);
+    await this.notifications.notifyUsers(schoolId, parents, {
+      event: 'school_event',
+      type: 'school_event',
+      title: event.title,
+      body: body || 'Νέα εκδήλωση. Πάτα για να δεις τις λεπτομέρειες.',
+      data: { screen: 'events', eventId },
+    });
   }
 
   // Enrollment management (admin)

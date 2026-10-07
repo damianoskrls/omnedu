@@ -41,6 +41,7 @@ class EventGalleryScreen extends StatelessWidget {
   final String? status;
   final String? description;
   final String? recap;
+  final String? detailsLine;
   final List<Map<String, dynamic>> media;
 
   const EventGalleryScreen({
@@ -51,9 +52,10 @@ class EventGalleryScreen extends StatelessWidget {
     this.status,
     this.description,
     this.recap,
+    this.detailsLine,
   });
 
-  bool get _hasPost => media.isNotEmpty || (recap ?? '').trim().isNotEmpty;
+  bool get _hasPost => media.isNotEmpty || (recap ?? '').trim().isNotEmpty || (description ?? '').trim().isNotEmpty || (detailsLine ?? '').trim().isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -83,10 +85,17 @@ class EventGalleryScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if ((recap ?? '').trim().isNotEmpty)
-                    Text(recap!.trim(), style: const TextStyle(fontSize: 16, height: 1.45, color: Color(0xFF2C2422)))
-                  else if ((description ?? '').trim().isNotEmpty)
-                    Text(description!.trim(), style: const TextStyle(fontSize: 15, height: 1.4, color: Color(0xFF4B5563))),
+                  if ((detailsLine ?? '').trim().isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(detailsLine!.trim(), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF77328D))),
+                    ),
+                  if ((description ?? '').trim().isNotEmpty)
+                    Text(description!.trim(), style: const TextStyle(fontSize: 15, height: 1.45, color: Color(0xFF374151))),
+                  if ((recap ?? '').trim().isNotEmpty) ...[
+                    if ((description ?? '').trim().isNotEmpty) const SizedBox(height: 10),
+                    Text(recap!.trim(), style: const TextStyle(fontSize: 16, height: 1.45, color: Color(0xFF2C2422))),
+                  ],
                   if (media.isNotEmpty) ...[
                     const SizedBox(height: 14),
                     const Text('Πάτα ένα αρχείο για να το δεις και να το αποθηκεύσεις.', style: TextStyle(color: Color(0xFF6B7280), fontSize: 12)),

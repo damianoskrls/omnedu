@@ -37,6 +37,9 @@ const AUTO_EVENTS = [
   { key: 'parent_meeting_request', label: 'Αίτημα ώρας συνάντησης' },
   { key: 'parent_meeting_accepted', label: 'Κλεισμένη συνάντηση' },
   { key: 'event_post', label: 'Ανάρτηση εκδήλωσης' },
+  { key: 'school_event', label: 'Νέα εκδήλωση ή εκδρομή' },
+  { key: 'celebration', label: 'Γιορτή' },
+  { key: 'school_post', label: 'Νέα ανάρτηση' },
 ];
 
 const defaultForm = () => ({

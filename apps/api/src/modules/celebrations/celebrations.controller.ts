@@ -26,6 +26,15 @@ export class CelebrationsController {
     return this.svc.findAll(schoolId, user, academicYear);
   }
 
+  @Get(':id')
+  findOne(
+    @Param('schoolId') schoolId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.svc.findOne(schoolId, id, user);
+  }
+
   @Post()
   @Roles('school_admin')
   create(@Param('schoolId') schoolId: string, @Body() body: any) {

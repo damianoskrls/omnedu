@@ -2,12 +2,13 @@ import { randomUUID } from 'crypto';
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class CelebrationsService implements OnModuleInit {
   private readonly logger = new Logger(CelebrationsService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private notifications: NotificationsService) {}
 
   async onModuleInit() {
     await this.ensureTable();
@@ -54,6 +55,18 @@ export class CelebrationsService implements OnModuleInit {
     return rows.filter((row) => this.visibleToParent(row.audienceType, row.audienceIds, scope));
   }
 
+  async findOne(schoolId: string, id: string, user: JwtPayload) {
+    await this.ensureTable();
+    const row = await this.prisma.schoolCelebration.findFirst({ where: { id, schoolId } });
+    if (!row) throw new NotFoundException('Η γιορτή δεν βρέθηκε.');
+    if (user.isSuperAdmin || user.role === 'school_admin' || user.role === 'teacher') return row;
+    const scope = await this.parentScope(schoolId, user.sub);
+    if (!this.visibleToParent(row.audienceType, row.audienceIds, scope)) {
+      throw new NotFoundException('Η γιορτή δεν βρέθηκε.');
+    }
+    return row;
+  }
+
   async setImage(id: string, schoolId: string, imageUrl: string) {
     const existing = await this.prisma.schoolCelebration.findFirst({ where: { id, schoolId } });
     if (!existing) throw new NotFoundException('Η γιορτή δεν βρέθηκε.');
@@ -64,13 +77,15 @@ export class CelebrationsService implements OnModuleInit {
     await this.ensureTable();
     const title = String(data.title ?? '').trim();
     if (!title) throw new BadRequestException('Γράψε τον τίτλο της γιορτής.');
-    return this.prisma.schoolCelebration.create({
+    const created = await this.prisma.schoolCelebration.create({
       data: {
         id: randomUUID(),
         schoolId,
         ...this.writeData(data, title),
       },
     });
+    await this.notifyAudience(schoolId, created, false);
+    return created;
   }
 
   async update(id: string, schoolId: string, data: any) {
@@ -78,16 +93,71 @@ export class CelebrationsService implements OnModuleInit {
     if (!existing) throw new NotFoundException('Η γιορτή δεν βρέθηκε.');
     const title = data.title === undefined ? existing.title : String(data.title).trim();
     if (!title) throw new BadRequestException('Γράψε τον τίτλο της γιορτής.');
-    return this.prisma.schoolCelebration.update({
+    const updated = await this.prisma.schoolCelebration.update({
       where: { id },
       data: this.writeData({ ...data, academicYear: data.academicYear ?? existing.academicYear }, title),
     });
+    await this.notifyAudience(schoolId, updated, true);
+    return updated;
   }
 
   async remove(id: string, schoolId: string) {
     const existing = await this.prisma.schoolCelebration.findFirst({ where: { id, schoolId } });
     if (!existing) throw new NotFoundException('Η γιορτή δεν βρέθηκε.');
     return this.prisma.schoolCelebration.delete({ where: { id } });
+  }
+
+  private async notifyAudience(
+    schoolId: string,
+    row: { id: string; title: string; eventDate: Date | null; arrivalTime: string | null; place: string | null; details: string | null; imageUrl: string | null; audienceType: string; audienceIds: string },
+    updated: boolean,
+  ) {
+    const userIds = await this.recipientIds(schoolId, row.audienceType, row.audienceIds);
+    const when = this.formatDate(row.eventDate);
+    const bits = [when, row.arrivalTime ? `προσέλευση ${row.arrivalTime}` : '', row.place ?? ''].filter(Boolean);
+    const details = (row.details ?? '').replace(/\s+/g, ' ').trim();
+    const summary = [bits.join(' · '), details].filter(Boolean).join('. ').slice(0, 180);
+    await this.notifications.notifyUsers(schoolId, userIds, {
+      event: 'celebration',
+      type: 'celebration',
+      title: row.title,
+      body: summary || (updated ? 'Η γιορτή ενημερώθηκε. Πάτα για να δεις τις λεπτομέρειες.' : 'Νέα γιορτή. Πάτα για να δεις τις λεπτομέρειες.'),
+      data: {
+        screen: 'celebration',
+        celebrationId: row.id,
+        ...(row.imageUrl ? { imageUrl: row.imageUrl } : {}),
+      },
+    });
+  }
+
+  private async recipientIds(schoolId: string, audienceType: string, audienceIds: string) {
+    if (audienceType === 'teachers') {
+      const members = await this.prisma.schoolMember.findMany({
+        where: { schoolId, role: 'teacher', isActive: true },
+        select: { userId: true },
+      });
+      return members.map((member) => member.userId);
+    }
+    const ids = this.parseIds(audienceIds);
+    const parents = await this.prisma.studentParent.findMany({
+      where: {
+        student: {
+          schoolId,
+          isActive: true,
+          ...(audienceType === 'class' ? { enrollments: { some: { classId: { in: ids } } } } : {}),
+          ...(audienceType === 'level' ? { enrollments: { some: { class: { levelId: { in: ids } } } } } : {}),
+        },
+      },
+      select: { userId: true },
+    });
+    return parents.map((parent) => parent.userId);
+  }
+
+  private formatDate(value: Date | null) {
+    if (!value) return '';
+    const day = String(value.getUTCDate()).padStart(2, '0');
+    const month = String(value.getUTCMonth() + 1).padStart(2, '0');
+    return `${day}/${month}/${value.getUTCFullYear()}`;
   }
 
   private writeData(data: any, title: string) {

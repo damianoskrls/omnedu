@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class SchoolPostsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private notifications: NotificationsService) {}
 
   async findAll(schoolId: string, type?: string) {
     return this.prisma.schoolPost.findMany({
@@ -40,7 +41,7 @@ export class SchoolPostsService {
     audienceType?: string;
     audienceIds?: string[] | string;
   }) {
-    return this.prisma.schoolPost.create({
+    const created = await this.prisma.schoolPost.create({
       data: {
         schoolId,
         authorId,
@@ -56,6 +57,8 @@ export class SchoolPostsService {
         author: { select: { id: true, fullName: true, avatarUrl: true } },
       },
     });
+    if (created.publishedAt) await this.notifyAudience(schoolId, created);
+    return created;
   }
 
   async update(id: string, schoolId: string, authorId: string, data: {
@@ -70,7 +73,7 @@ export class SchoolPostsService {
     const post = await this.prisma.schoolPost.findFirst({ where: { id, schoolId } });
     if (!post) throw new NotFoundException('Post not found');
 
-    return this.prisma.schoolPost.update({
+    const updated = await this.prisma.schoolPost.update({
       where: { id },
       data: {
         ...(data.title !== undefined && { title: data.title }),
@@ -87,6 +90,69 @@ export class SchoolPostsService {
         author: { select: { id: true, fullName: true, avatarUrl: true } },
       },
     });
+    const becamePublic = !post.publishedAt && updated.publishedAt;
+    const changed = post.title !== updated.title
+      || (post.content ?? '') !== (updated.content ?? '')
+      || JSON.stringify(post.mediaUrls) !== JSON.stringify(updated.mediaUrls);
+    if (updated.publishedAt && (becamePublic || changed)) await this.notifyAudience(schoolId, updated);
+    return updated;
+  }
+
+  private async notifyAudience(schoolId: string, post: {
+    id: string;
+    title: string;
+    content: string | null;
+    postType: string;
+    mediaUrls: string[];
+    audienceType: string;
+    audienceIds: string;
+  }) {
+    const userIds = await this.recipientIds(schoolId, post.audienceType, post.audienceIds);
+    const text = (post.content ?? '').replace(/\s+/g, ' ').trim();
+    const photos = post.mediaUrls.length
+      ? (post.postType === 'excursion' ? 'Νέες φωτογραφίες από την εκδρομή.' : 'Νέες φωτογραφίες.')
+      : '';
+    const body = [text, photos].filter(Boolean).join(' ').slice(0, 180) || 'Νέα ανάρτηση του σχολείου.';
+    await this.notifications.notifyUsers(schoolId, userIds, {
+      event: 'school_post',
+      type: 'school_post',
+      title: post.title,
+      body,
+      data: {
+        screen: 'posts',
+        postId: post.id,
+        ...(post.mediaUrls[0] ? { imageUrl: post.mediaUrls[0] } : {}),
+      },
+    });
+  }
+
+  private async recipientIds(schoolId: string, audienceType: string, audienceIds: string) {
+    let ids: string[] = [];
+    try {
+      const parsed = JSON.parse(audienceIds || '[]');
+      ids = Array.isArray(parsed) ? parsed.map((id) => String(id)) : [];
+    } catch {
+      ids = [];
+    }
+    if (audienceType === 'teachers') {
+      const members = await this.prisma.schoolMember.findMany({
+        where: { schoolId, role: 'teacher', isActive: true },
+        select: { userId: true },
+      });
+      return members.map((member) => member.userId);
+    }
+    const parents = await this.prisma.studentParent.findMany({
+      where: {
+        student: {
+          schoolId,
+          isActive: true,
+          ...(audienceType === 'class' ? { enrollments: { some: { classId: { in: ids } } } } : {}),
+          ...(audienceType === 'level' ? { enrollments: { some: { class: { levelId: { in: ids } } } } } : {}),
+        },
+      },
+      select: { userId: true },
+    });
+    return parents.map((parent) => parent.userId);
   }
 
   private audienceIds(value?: string[] | string) {

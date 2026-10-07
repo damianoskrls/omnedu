@@ -247,6 +247,50 @@ class _MediaPreview extends StatelessWidget {
   }
 }
 
+class SchoolPostScreen extends ConsumerStatefulWidget {
+  final String schoolId;
+  final String postId;
+  const SchoolPostScreen({super.key, required this.schoolId, required this.postId});
+
+  @override
+  ConsumerState<SchoolPostScreen> createState() => _SchoolPostScreenState();
+}
+
+class _SchoolPostScreenState extends ConsumerState<SchoolPostScreen> {
+  Map<String, dynamic>? _post;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final resp = await ref.read(dioProvider).get('/schools/${widget.schoolId}/posts/${widget.postId}');
+      final data = resp.data;
+      if (!mounted) return;
+      setState(() {
+        _post = data is Map ? Map<String, dynamic>.from(data) : null;
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator(color: Color(0xFF77328D))));
+    }
+    final post = _post;
+    if (post == null) return const Scaffold(body: Center(child: Text('Η ανάρτηση δεν βρέθηκε.')));
+    return _PostDetailScreen(post: post);
+  }
+}
+
 class _PostDetailScreen extends StatelessWidget {
   final Map<String, dynamic> post;
   const _PostDetailScreen({required this.post});

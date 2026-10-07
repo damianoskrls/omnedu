@@ -7,7 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../features/messages/conversation_ui.dart';
+import '../../features/parent/screens/celebration_detail_screen.dart';
 import '../../features/parent/screens/events_screen.dart';
+import '../../features/parent/screens/school_posts_screen.dart';
 import '../../features/parent/screens/parent_meetings_screen.dart';
 import '../../features/parent/screens/billing_screen.dart';
 import '../../features/parent/screens/bulletin_screen.dart';
@@ -239,8 +241,44 @@ Future<void> openNotification(BuildContext context, WidgetRef ref, Map<String, d
     return;
   }
 
-  if (type == 'event_post') {
-    await Navigator.push(context, MaterialPageRoute(builder: (_) => ParentEventsScreen(schoolId: schoolId)));
+  if (type == 'event_post' || type == 'school_event') {
+    final eventId = data['eventId'] as String? ?? '';
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => eventId.isEmpty
+            ? ParentEventsScreen(schoolId: schoolId)
+            : ParentEventScreen(schoolId: schoolId, eventId: eventId),
+      ),
+    );
+    return;
+  }
+
+  if (type == 'celebration') {
+    final celebrationId = data['celebrationId'] as String? ?? '';
+    if (celebrationId.isEmpty) {
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => ParentEventsScreen(schoolId: schoolId)));
+      return;
+    }
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CelebrationDetailScreen(schoolId: schoolId, celebrationId: celebrationId),
+      ),
+    );
+    return;
+  }
+
+  if (type == 'school_post') {
+    final postId = data['postId'] as String? ?? '';
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => postId.isEmpty
+            ? SchoolPostsScreen(schoolId: schoolId)
+            : SchoolPostScreen(schoolId: schoolId, postId: postId),
+      ),
+    );
     return;
   }
 
@@ -387,6 +425,9 @@ class InboxScreen extends ConsumerWidget {
     if (type == 'message') return Icons.chat_bubble_rounded;
     if (type == 'daily_report') return Icons.menu_book_rounded;
     if (type == 'payment') return Icons.payments_rounded;
+    if (type == 'celebration') return Icons.celebration_rounded;
+    if (type == 'school_event' || type == 'event_post') return Icons.photo_library_rounded;
+    if (type == 'school_post') return Icons.newspaper_rounded;
     if (type == 'thematic') return Icons.auto_stories_rounded;
     if (type == 'parent_meeting' || type == 'parent_meeting_request' || type == 'parent_meeting_accepted') {
       return Icons.event_available_rounded;

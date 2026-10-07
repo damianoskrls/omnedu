@@ -6,6 +6,7 @@ import '../../../core/api/api_client.dart';
 import '../../../core/utils/event_status.dart';
 import '../../../core/widgets/app_image.dart';
 import '../../../core/widgets/person_face.dart';
+import 'celebration_detail_screen.dart';
 import 'event_gallery_screen.dart';
 
 // Returns list of enrollments (each has `event` + `student` + status)
@@ -97,7 +98,7 @@ class _ParentEventsScreenState extends ConsumerState<ParentEventsScreen> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Σφάλμα: $e')),
         data: (enrollments) {
-          final celebrationCards = _celebrationSections(celebrations);
+          final celebrationCards = _celebrationSections(widget.schoolId, celebrations);
           if (enrollments.isEmpty && celebrationCards.isEmpty) {
             return const Center(
               child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -151,7 +152,7 @@ class _ParentEventsScreenState extends ConsumerState<ParentEventsScreen> {
   }
 }
 
-List<Widget> _celebrationSections(List<dynamic> rows) {
+List<Widget> _celebrationSections(String schoolId, List<dynamic> rows) {
   final grouped = <String, List<Map<String, dynamic>>>{};
   for (final row in rows) {
     if (row is! Map) continue;
@@ -166,15 +167,16 @@ List<Widget> _celebrationSections(List<dynamic> rows) {
         padding: const EdgeInsets.only(bottom: 8, top: 4),
         child: Text('Γιορτές $year', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
       ),
-      ...grouped[year]!.map((item) => _CelebrationCard(celebration: item)),
+      ...grouped[year]!.map((item) => _CelebrationCard(schoolId: schoolId, celebration: item)),
       const SizedBox(height: 12),
     ],
   ];
 }
 
 class _CelebrationCard extends StatelessWidget {
+  final String schoolId;
   final Map<String, dynamic> celebration;
-  const _CelebrationCard({required this.celebration});
+  const _CelebrationCard({required this.schoolId, required this.celebration});
 
   @override
   Widget build(BuildContext context) {
@@ -187,11 +189,29 @@ class _CelebrationCard extends StatelessWidget {
     final before = items.where((item) => item['phase'] != 'after').toList();
     final after = items.where((item) => item['phase'] == 'after').toList();
 
-    return Container(
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          final id = celebration['id']?.toString() ?? '';
+          if (id.isEmpty) return;
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => CelebrationDetailScreen(
+                schoolId: schoolId,
+                celebrationId: id,
+                initial: celebration,
+              ),
+            ),
+          );
+        },
+        child: Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE9D5FF)),
       ),
@@ -222,6 +242,8 @@ class _CelebrationCard extends StatelessWidget {
           _ItemBlock(title: 'Πριν τη γιορτή', items: before),
           _ItemBlock(title: 'Μετά τη γιορτή', items: after),
         ],
+      ),
+        ),
       ),
     );
   }
@@ -575,5 +597,53 @@ class _EventCard extends StatelessWidget {
     } catch (_) {
       return iso;
     }
+  }
+}
+
+class ParentEventScreen extends ConsumerWidget {
+  final String schoolId;
+  final String eventId;
+  const ParentEventScreen({super.key, required this.schoolId, required this.eventId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final events = ref.watch(_parentEventsProvider(schoolId));
+    return events.when(
+      loading: () => const Scaffold(body: Center(child: CircularProgressIndicator(color: Color(0xFF77328D)))),
+      error: (_, __) => const Scaffold(body: Center(child: Text('Η εκδήλωση δεν φορτώθηκε.'))),
+      data: (rows) {
+        Map<String, dynamic>? event;
+        final children = <String>[];
+        for (final row in rows) {
+          if (row is! Map) continue;
+          final item = Map<String, dynamic>.from(row);
+          final current = item['event'];
+          if (current is! Map || current['id']?.toString() != eventId) continue;
+          event ??= Map<String, dynamic>.from(current);
+          final name = (item['student'] as Map?)?['fullName']?.toString() ?? '';
+          if (name.isNotEmpty) children.add(name);
+        }
+        if (event == null) {
+          return const Scaffold(body: Center(child: Text('Η εκδήλωση δεν είναι διαθέσιμη.')));
+        }
+        final cost = double.tryParse(event['costPerChild']?.toString() ?? '') ?? 0;
+        final date = event['eventDate']?.toString();
+        final when = date == null || date.isEmpty ? '' : formatCelebrationDate(date);
+        final details = [
+          if (children.isNotEmpty) children.join(', '),
+          if (when.isNotEmpty) when,
+          if (cost > 0) '${cost.toStringAsFixed(2)} €',
+        ].join(' · ');
+        return EventGalleryScreen(
+          title: event['title'] as String? ?? 'Εκδήλωση',
+          eventDate: date,
+          status: event['status'] as String?,
+          description: event['description'] as String?,
+          recap: event['recap'] as String?,
+          media: eventMediaList(event['postMedia']),
+          detailsLine: details,
+        );
+      },
+    );
   }
 }

@@ -4,6 +4,20 @@ import { ConfigService } from '@nestjs/config';
 import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 
+const parentPushEvents = new Set([
+  'new_message',
+  'daily_report',
+  'payment_overdue',
+  'event_post',
+  'school_event',
+  'celebration',
+  'school_post',
+  'thematic_plan',
+  'parent_meeting',
+  'parent_meeting_request',
+  'parent_meeting_accepted',
+]);
+
 interface BroadcastData {
   title: string;
   body: string;
@@ -248,7 +262,7 @@ export class NotificationsService implements OnModuleInit {
       const settings = await this.getSettings(schoolId);
       const rules = (settings.eventRules as Record<string, string[] | undefined>) ?? {};
       const channels = Array.isArray(rules[input.event]) ? [...rules[input.event]] : ['push'];
-      if (input.event === 'new_message' && !channels.includes('push')) channels.push('push');
+      if (parentPushEvents.has(input.event) && !channels.includes('push')) channels.push('push');
       const data = { ...(input.data ?? {}), type: input.type, schoolId };
       await this.prisma.notification.createMany({
         data: ids.map((userId) => ({
