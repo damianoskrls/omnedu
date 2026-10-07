@@ -70,18 +70,25 @@ export default function ThematicPage() {
 
   const load = useCallback(async () => {
     if (!schoolId) return;
-    const [classRows, planRows] = await Promise.all([
-      classesApi.list(schoolId),
-      thematicPlansApi.list(schoolId, { month }),
-    ]);
-    const nextClasses = Array.isArray(classRows) ? classRows as ClassRow[] : [];
-    const nextPlans = Array.isArray(planRows) ? planRows as Plan[] : [];
-    setClasses(nextClasses);
-    setPlans(nextPlans);
-    setClassId((current) => current || nextClasses[0]?.id || '');
+    try {
+      const classRows = await classesApi.list(schoolId);
+      const nextClasses = Array.isArray(classRows) ? classRows as ClassRow[] : [];
+      setClasses(nextClasses);
+      setClassId((current) => current || nextClasses[0]?.id || '');
+      setError('');
+    } catch {
+      setError('Οι τάξεις δεν φορτώθηκαν.');
+      return;
+    }
+    try {
+      const planRows = await thematicPlansApi.list(schoolId, { month });
+      setPlans(Array.isArray(planRows) ? planRows as Plan[] : []);
+    } catch {
+      setPlans([]);
+    }
   }, [schoolId, month]);
 
-  useEffect(() => { load().catch(() => setError('Οι τάξεις δεν φορτώθηκαν.')); }, [load]);
+  useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
     if (holdSample) return;
@@ -196,14 +203,8 @@ export default function ThematicPage() {
             {classes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
         </label>
-        <label className="text-sm">
-          <span className="block font-medium text-gray-700 mb-1">Μήνας</span>
-          <input type="month" value={month} onChange={(e) => { setHoldSample(false); setMonth(e.target.value); }} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-        </label>
-        <label className="text-sm">
-          <span className="block font-medium text-gray-700 mb-1">Έως (προαιρετικά)</span>
-          <input type="month" value={form.throughMonth} onChange={(e) => setField('throughMonth', e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-        </label>
+        <MonthField label="Μήνας" value={month} onChange={(value) => { setHoldSample(false); setMonth(value); }} />
+        <MonthField label="Έως (προαιρετικά)" value={form.throughMonth} allowEmpty onChange={(value) => setField('throughMonth', value)} />
       </div>
 
       <div className="flex flex-wrap gap-2 mb-4">
@@ -295,6 +296,33 @@ export default function ThematicPage() {
         </article>
       </div>
     </div>
+  );
+}
+
+function MonthField({ label, value, onChange, allowEmpty }: { label: string; value: string; onChange: (value: string) => void; allowEmpty?: boolean }) {
+  const now = new Date().getFullYear();
+  const selectedYear = /^\d{4}-\d{2}$/.test(value) ? Number(value.slice(0, 4)) : now;
+  const selectedMonth = /^\d{4}-\d{2}$/.test(value) ? value.slice(5, 7) : '';
+  const years = Array.from(new Set([selectedYear - 1, selectedYear, selectedYear + 1, now])).sort();
+  const emit = (monthPart: string, yearPart: number) => {
+    if (!monthPart) { onChange(''); return; }
+    onChange(`${yearPart}-${monthPart}`);
+  };
+  return (
+    <label className="text-sm">
+      <span className="block font-medium text-gray-700 mb-1">{label}</span>
+      <span className="grid grid-cols-2 gap-2">
+        <select value={selectedMonth} onChange={(e) => emit(e.target.value, selectedYear)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+          {allowEmpty && <option value="">—</option>}
+          {MONTHS.map((name, index) => (
+            <option key={name} value={String(index + 1).padStart(2, '0')}>{name}</option>
+          ))}
+        </select>
+        <select value={selectedYear} onChange={(e) => emit(selectedMonth || (allowEmpty ? '' : '01'), Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+          {years.map((year) => <option key={year} value={year}>{year}</option>)}
+        </select>
+      </span>
+    </label>
   );
 }
 

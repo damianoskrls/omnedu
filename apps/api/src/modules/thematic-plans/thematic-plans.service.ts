@@ -21,15 +21,20 @@ export class ThematicPlansService {
   constructor(private prisma: PrismaService) {}
 
   async findAll(schoolId: string, month?: string, classId?: string) {
-    return this.prisma.thematicPlan.findMany({
-      where: {
-        schoolId,
-        ...(month ? { month } : {}),
-        ...(classId ? { classId } : {}),
-      },
-      include: { class: { select: { id: true, name: true } } },
-      orderBy: [{ month: 'desc' }, { class: { name: 'asc' } }],
-    });
+    try {
+      return await this.prisma.thematicPlan.findMany({
+        where: {
+          schoolId,
+          ...(month ? { month } : {}),
+          ...(classId ? { classId } : {}),
+        },
+        include: { class: { select: { id: true, name: true } } },
+        orderBy: [{ month: 'desc' }, { class: { name: 'asc' } }],
+      });
+    } catch (err: any) {
+      if (err?.code === 'P2021' || err?.code === 'P2022') return [];
+      throw err;
+    }
   }
 
   async upsert(schoolId: string, data: PlanInput) {
