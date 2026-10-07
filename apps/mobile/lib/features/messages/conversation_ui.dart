@@ -28,6 +28,32 @@ final messagesProvider = FutureProvider.family<List<dynamic>, ConvKey>(
   },
 );
 
+int unreadConversationCount(List<dynamic> conversations, String userId) {
+  var count = 0;
+  for (final raw in conversations) {
+    if (raw is! Map) continue;
+    if (_conversationUnread(Map<String, dynamic>.from(raw), userId)) count++;
+  }
+  return count;
+}
+
+bool _conversationUnread(Map<String, dynamic> conv, String userId) {
+  final messages = conv['messages'] as List? ?? [];
+  if (messages.isEmpty || messages.first is! Map) return false;
+  final last = Map<String, dynamic>.from(messages.first as Map);
+  final senderId = last['senderId']?.toString() ?? '';
+  if (senderId == userId) return false;
+  final sentAt = DateTime.tryParse(last['sentAt']?.toString() ?? '');
+  DateTime? readAt;
+  for (final raw in conv['participants'] as List? ?? []) {
+    if (raw is! Map) continue;
+    final id = raw['userId']?.toString() ?? raw['user']?['id']?.toString();
+    if (id == userId) readAt = DateTime.tryParse(raw['lastReadAt']?.toString() ?? '');
+  }
+  if (sentAt == null || readAt == null) return true;
+  return sentAt.isAfter(readAt);
+}
+
 class ConvKey {
   final String schoolId;
   final String convId;

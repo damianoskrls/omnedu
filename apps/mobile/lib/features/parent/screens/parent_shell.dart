@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/notifications/notification_center.dart';
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/utils/system_insets.dart';
+import '../../../core/widgets/app_top_bar.dart';
 import 'home_screen.dart';
 import 'activities_screen.dart';
 import 'events_screen.dart';
@@ -18,8 +19,6 @@ class ParentShell extends ConsumerStatefulWidget {
 }
 
 class _ParentShellState extends ConsumerState<ParentShell> {
-  int _index = 0;
-
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authProvider).user!;
@@ -27,12 +26,14 @@ class _ParentShellState extends ConsumerState<ParentShell> {
 
     final pages = [
       HomeScreen(schoolId: schoolId),
-      InboxScreen(schoolId: schoolId, embedded: true),
       ActivitiesScreen(schoolId: schoolId),
       ParentEventsScreen(schoolId: schoolId),
       BillingScreen(schoolId: schoolId),
+      InboxScreen(schoolId: schoolId, embedded: true),
       ParentMessagesScreen(schoolId: schoolId, userId: user.id),
     ];
+    final rawIndex = ref.watch(shellTabProvider);
+    final index = rawIndex >= 0 && rawIndex < pages.length ? rawIndex : 0;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.dark,
@@ -41,13 +42,13 @@ class _ParentShellState extends ConsumerState<ParentShell> {
         extendBody: false,
         body: Stack(
           children: [
-            IndexedStack(index: _index, children: pages),
+            IndexedStack(index: index, children: pages),
             NotificationWatcher(schoolId: schoolId),
           ],
         ),
         bottomNavigationBar: _FloatingNavBar(
-          selectedIndex: _index,
-          onTap: (i) => setState(() => _index = i),
+          selectedIndex: index < 4 ? index : -1,
+          onTap: (i) => ref.read(shellTabProvider.notifier).state = i,
         ),
       ),
     );
@@ -69,11 +70,9 @@ class _FloatingNavBar extends StatelessWidget {
 
   static const _items = [
     _NavItem(icon: Icons.home_outlined, activeIcon: Icons.home_rounded, label: 'Αρχική'),
-    _NavItem(icon: Icons.notifications_outlined, activeIcon: Icons.notifications_rounded, label: 'Ειδοποιήσεις'),
     _NavItem(icon: Icons.sports_soccer_outlined, activeIcon: Icons.sports_soccer_rounded, label: 'Δραστηριότητες'),
     _NavItem(icon: Icons.event_outlined, activeIcon: Icons.event_rounded, label: 'Εκδηλώσεις'),
     _NavItem(icon: Icons.account_balance_wallet_outlined, activeIcon: Icons.account_balance_wallet_rounded, label: 'Πληρωμές'),
-    _NavItem(icon: Icons.chat_bubble_outline_rounded, activeIcon: Icons.chat_bubble_rounded, label: 'Μηνύματα'),
   ];
 
   @override

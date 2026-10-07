@@ -4,7 +4,6 @@ import '../../../core/api/api_client.dart';
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/widgets/app_image.dart';
 import '../../../core/widgets/person_face.dart';
-import 'account_settings_screen.dart';
 import 'child_hub_screen.dart';
 import 'parent_meetings_screen.dart';
 import 'school_posts_screen.dart';
@@ -71,53 +70,6 @@ final _recentPostsProvider = FutureProvider.family<List<dynamic>, String>(
   },
 );
 
-void _showLogout(BuildContext context, WidgetRef ref) {
-  showModalBottomSheet(
-    context: context,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-    ),
-    builder: (_) => SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE5E7EB),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 20),
-            ListTile(
-              leading: const Icon(Icons.manage_accounts_rounded, color: Color(0xFF77328D)),
-              title: const Text('Ρυθμίσεις λογαριασμού', style: TextStyle(fontWeight: FontWeight.w600)),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AccountSettingsScreen()));
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.logout_rounded, color: Color(0xFFDC2626)),
-              title: const Text(
-                'Αποσύνδεση',
-                style: TextStyle(color: Color(0xFFDC2626), fontWeight: FontWeight.w600),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                ref.read(authProvider.notifier).logout();
-              },
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
-}
-
 class HomeScreen extends ConsumerWidget {
   final String schoolId;
   const HomeScreen({super.key, required this.schoolId});
@@ -132,9 +84,6 @@ class HomeScreen extends ConsumerWidget {
     final meetingsAsync = ref.watch(parentMeetingsProvider(schoolId));
     final user = ref.watch(authProvider).user;
     final firstName = user?.fullName.split(' ').first ?? '';
-    final schoolName = user?.memberships.isNotEmpty == true
-        ? user!.memberships.first.schoolName
-        : 'Ονειροχώρα';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF6F3FA),
@@ -149,35 +98,9 @@ class HomeScreen extends ConsumerWidget {
         },
         child: CustomScrollView(
           slivers: [
-            // School logo row
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 56, 20, 0),
-                child: Row(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Image.asset('assets/images/school_logo.png', width: 42, height: 42, fit: BoxFit.contain),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      schoolName,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF2C2422),
-                        letterSpacing: -0.3,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // Greeting card
             SliverToBoxAdapter(
               child: Container(
-                margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 padding: const EdgeInsets.all(22),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
@@ -214,27 +137,6 @@ class HomeScreen extends ConsumerWidget {
                             style: TextStyle(fontSize: 13, color: Colors.white70),
                           ),
                         ],
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: () => _showLogout(context, ref),
-                      child: Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Center(
-                          child: Text(
-                            firstName.isNotEmpty ? firstName[0].toUpperCase() : '?',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 20,
-                            ),
-                          ),
-                        ),
                       ),
                     ),
                   ],

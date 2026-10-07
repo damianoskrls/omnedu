@@ -70,7 +70,7 @@ class _TeacherHomeScreenState extends ConsumerState<TeacherHomeScreen> {
               // Header
               SliverToBoxAdapter(
                 child: Container(
-                  margin: const EdgeInsets.fromLTRB(16, 56, 16, 0),
+                  margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                   padding: const EdgeInsets.all(22),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
@@ -107,27 +107,6 @@ class _TeacherHomeScreenState extends ConsumerState<TeacherHomeScreen> {
                               style: TextStyle(fontSize: 13, color: Colors.white70),
                             ),
                           ],
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: () => _showLogout(context),
-                        child: Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Center(
-                            child: Text(
-                              firstName.isNotEmpty ? firstName[0].toUpperCase() : '?',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 20,
-                              ),
-                            ),
-                          ),
                         ),
                       ),
                     ],
@@ -294,34 +273,6 @@ class _TeacherHomeScreenState extends ConsumerState<TeacherHomeScreen> {
     );
   }
 
-  void _showLogout(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (_) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(width: 40, height: 4, decoration: BoxDecoration(color: const Color(0xFFE5E7EB), borderRadius: BorderRadius.circular(2))),
-              const SizedBox(height: 20),
-              ListTile(
-                leading: const Icon(Icons.logout_rounded, color: Color(0xFFDC2626)),
-                title: const Text('Αποσύνδεση', style: TextStyle(color: Color(0xFFDC2626), fontWeight: FontWeight.w600)),
-                onTap: () {
-                  Navigator.pop(context);
-                  ref.read(authProvider.notifier).logout();
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _StudentsSliver extends ConsumerWidget {
