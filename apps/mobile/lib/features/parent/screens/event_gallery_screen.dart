@@ -28,6 +28,7 @@ void openEventGallery(BuildContext context, Map event) {
         eventDate: event['eventDate'] as String?,
         status: event['status'] as String?,
         description: event['description'] as String?,
+        recap: event['recap'] as String?,
         media: eventMediaList(event['postMedia']),
       ),
     ),
@@ -39,6 +40,7 @@ class EventGalleryScreen extends StatelessWidget {
   final String? eventDate;
   final String? status;
   final String? description;
+  final String? recap;
   final List<Map<String, dynamic>> media;
 
   const EventGalleryScreen({
@@ -48,9 +50,10 @@ class EventGalleryScreen extends StatelessWidget {
     this.eventDate,
     this.status,
     this.description,
+    this.recap,
   });
 
-  bool get completed => eventDisplayStatus(status, eventDate) == 'completed';
+  bool get _hasPost => media.isNotEmpty || (recap ?? '').trim().isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -60,27 +63,37 @@ class EventGalleryScreen extends StatelessWidget {
       body: ListView(
         padding: EdgeInsets.fromLTRB(16, 16, 16, 24 + systemBottomInset(context)),
         children: [
-          if ((description ?? '').trim().isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: Text(description!.trim(), style: const TextStyle(height: 1.4, color: Color(0xFF2C2422))),
-            ),
-          if (!completed)
+          if (!_hasPost && eventDisplayStatus(status, eventDate) != 'completed')
             const _GalleryNotice(
               icon: Icons.photo_library_outlined,
               title: 'Το υλικό δεν είναι ακόμα διαθέσιμο',
-              message: 'Φωτογραφίες και βίντεο εμφανίζονται όταν η εκδρομή έχει ολοκληρωθεί.',
+              message: 'Ο εκπαιδευτικός ανεβάζει την ανάρτηση μετά την εκδήλωση.',
             )
-          else if (media.isEmpty)
+          else if (!_hasPost)
             const _GalleryNotice(
               icon: Icons.photo_camera_outlined,
-              title: 'Χωρίς υλικό',
-              message: 'Ο εκπαιδευτικός δεν έχει ανεβάσει ακόμα φωτογραφίες ή βίντεο.',
+              title: 'Χωρίς ανάρτηση',
+              message: 'Ο εκπαιδευτικός δεν έχει ανεβάσει ακόμα κείμενο, φωτογραφίες ή βίντεο.',
             )
           else ...[
-            const Text('Φωτογραφίες & βίντεο', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF77328D))),
-            const SizedBox(height: 6),
-            const Text('Πάτα ένα αρχείο για να το δεις και να το αποθηκεύσεις στο κινητό.', style: TextStyle(color: Color(0xFF6B7280), height: 1.3)),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if ((recap ?? '').trim().isNotEmpty)
+                    Text(recap!.trim(), style: const TextStyle(fontSize: 16, height: 1.45, color: Color(0xFF2C2422)))
+                  else if ((description ?? '').trim().isNotEmpty)
+                    Text(description!.trim(), style: const TextStyle(fontSize: 15, height: 1.4, color: Color(0xFF4B5563))),
+                  if (media.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    const Text('Πάτα ένα αρχείο για να το δεις και να το αποθηκεύσεις.', style: TextStyle(color: Color(0xFF6B7280), fontSize: 12)),
+                  ],
+                ],
+              ),
+            ),
             const SizedBox(height: 12),
             GridView.builder(
               shrinkWrap: true,

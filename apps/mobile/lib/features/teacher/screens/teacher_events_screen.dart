@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:dio/dio.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/utils/event_status.dart';
 import '../../../core/widgets/app_image.dart';
 import '../../../core/widgets/person_face.dart';
+import 'event_post_screen.dart';
 
 final _teacherEventsProvider = FutureProvider.family<List<dynamic>, String>(
   (ref, schoolId) async {
@@ -41,86 +40,14 @@ class TeacherEventsScreen extends ConsumerStatefulWidget {
 }
 
 class _TeacherEventsScreenState extends ConsumerState<TeacherEventsScreen> {
-  final _picker = ImagePicker();
-  String? _uploadingEventId;
-
-  Future<void> _uploadMedia(String eventId, ImageSource source, String mediaType) async {
-    try {
-      final XFile? file = mediaType == 'video'
-          ? await _picker.pickVideo(source: source)
-          : await _picker.pickImage(source: source, imageQuality: 85);
-
-      if (file == null || !mounted) return;
-      setState(() => _uploadingEventId = eventId);
-
-      final dio = ref.read(dioProvider);
-      final formData = FormData.fromMap({
-        'file': await MultipartFile.fromFile(file.path, filename: file.name),
-      });
-      await dio.post(
-        '/schools/${widget.schoolId}/events/$eventId/media',
-        data: formData,
-        options: Options(contentType: 'multipart/form-data'),
-      );
-      ref.invalidate(_teacherEventsProvider(widget.schoolId));
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Σφάλμα ανεβάσματος: $e'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _uploadingEventId = null);
-    }
-  }
-
-  void _showUploadSheet(String eventId) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(width: 40, height: 4, decoration: BoxDecoration(color: const Color(0xFFE5E7EB), borderRadius: BorderRadius.circular(2))),
-            const SizedBox(height: 16),
-            const Text('Προσθήκη Υλικού', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
-            const SizedBox(height: 20),
-            _UploadOption(
-              icon: Icons.photo_camera_outlined,
-              label: 'Φωτογραφία (Κάμερα)',
-              color: const Color(0xFF4F46E5),
-              onTap: () { Navigator.pop(context); _uploadMedia(eventId, ImageSource.camera, 'image'); },
-            ),
-            const SizedBox(height: 10),
-            _UploadOption(
-              icon: Icons.photo_library_outlined,
-              label: 'Φωτογραφία (Γκαλερί)',
-              color: const Color(0xFF7C3AED),
-              onTap: () { Navigator.pop(context); _uploadMedia(eventId, ImageSource.gallery, 'image'); },
-            ),
-            const SizedBox(height: 10),
-            _UploadOption(
-              icon: Icons.videocam_outlined,
-              label: 'Βίντεο (Κάμερα)',
-              color: const Color(0xFFEC4899),
-              onTap: () { Navigator.pop(context); _uploadMedia(eventId, ImageSource.camera, 'video'); },
-            ),
-            const SizedBox(height: 10),
-            _UploadOption(
-              icon: Icons.video_library_outlined,
-              label: 'Βίντεο (Γκαλερί)',
-              color: const Color(0xFFEA580C),
-              onTap: () { Navigator.pop(context); _uploadMedia(eventId, ImageSource.gallery, 'video'); },
-            ),
-          ],
-        ),
+  Future<void> _openPost(Map<String, dynamic> event) async {
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EventPostScreen(schoolId: widget.schoolId, event: event),
       ),
     );
+    if (saved == true) ref.invalidate(_teacherEventsProvider(widget.schoolId));
   }
 
   @override
@@ -173,12 +100,9 @@ class _TeacherEventsScreenState extends ConsumerState<TeacherEventsScreen> {
               separatorBuilder: (_, __) => const SizedBox(height: 14),
               itemBuilder: (_, i) {
                 final event = events[i] as Map<String, dynamic>;
-                final eventId = event['id'] as String? ?? '';
-                final isUploading = _uploadingEventId == eventId;
                 return _TeacherEventCard(
                   event: event,
-                  isUploading: isUploading,
-                  onUpload: () => _showUploadSheet(eventId),
+                  onUpload: () => _openPost(event),
                 );
               },
             ),
@@ -189,40 +113,10 @@ class _TeacherEventsScreenState extends ConsumerState<TeacherEventsScreen> {
   }
 }
 
-class _UploadOption extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-  const _UploadOption({required this.icon, required this.label, required this.color, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.06),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(0.15)),
-        ),
-        child: Row(children: [
-          Icon(icon, color: color, size: 22),
-          const SizedBox(width: 14),
-          Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 15)),
-        ]),
-      ),
-    );
-  }
-}
-
 class _TeacherEventCard extends StatefulWidget {
   final Map<String, dynamic> event;
-  final bool isUploading;
   final VoidCallback onUpload;
-  const _TeacherEventCard({required this.event, required this.isUploading, required this.onUpload});
+  const _TeacherEventCard({required this.event, required this.onUpload});
 
   @override
   State<_TeacherEventCard> createState() => _TeacherEventCardState();
@@ -433,32 +327,36 @@ class _TeacherEventCardState extends State<_TeacherEventCard> {
           ],
 
           // Upload button
+          if ((event['recap'] as String?)?.trim().isNotEmpty == true)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                (event['recap'] as String).trim(),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 13, height: 1.35, color: Color(0xFF2C2422)),
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-            child: widget.isUploading
-                ? const Center(child: Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ))
-                : SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: widget.onUpload,
-                      icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
-                      label: const Text('Ανέβασμα φωτογραφίας / βίντεο'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF4F46E5),
-                        side: const BorderSide(color: Color(0xFFC7D2FE)),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                      ),
-                    ),
-                  ),
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: widget.onUpload,
+                icon: const Icon(Icons.photo_library_outlined, size: 18),
+                label: const Text('Ανάρτηση με κείμενο και υλικό'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF77328D),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                ),
+              ),
+            ),
           ),
           const Padding(
             padding: EdgeInsets.fromLTRB(16, 0, 16, 14),
             child: Text(
-              'Οι γονείς βλέπουν τις φωτογραφίες και τα βίντεο στην καρτέλα Εκδηλώσεις.',
+              'Οι γονείς βλέπουν το κείμενο, τις φωτογραφίες και τα βίντεο σαν ανάρτηση.',
               style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)),
             ),
           ),

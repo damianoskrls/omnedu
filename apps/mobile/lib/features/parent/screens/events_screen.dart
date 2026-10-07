@@ -346,6 +346,7 @@ class _EventCard extends StatelessWidget {
     final eventDate = event['eventDate'] as String?;
     final cost = double.tryParse(event['costPerChild']?.toString() ?? '0') ?? 0;
     final description = event['description'] as String?;
+    final recap = (event['recap'] as String?)?.trim() ?? '';
     final media = eventMediaList(event['postMedia']);
     final completed = eventDisplayStatus(event['status'] as String?, eventDate) == 'completed';
 
@@ -415,7 +416,12 @@ class _EventCard extends StatelessWidget {
             ),
           ),
 
-          if (description != null && description.isNotEmpty)
+          if (recap.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(recap, maxLines: 4, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, height: 1.4, color: Color(0xFF2C2422))),
+            )
+          else if (description != null && description.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Text(description, style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280))),
@@ -453,7 +459,9 @@ class _EventCard extends StatelessWidget {
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          completed ? 'Φωτογραφίες & βίντεο' : 'Οι φωτογραφίες εμφανίζονται μετά την ολοκλήρωση',
+                          (completed || recap.isNotEmpty || media.isNotEmpty)
+                              ? 'Ανάρτηση εκδήλωσης'
+                              : 'Η ανάρτηση εμφανίζεται μετά την εκδήλωση',
                           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF77328D)),
                         ),
                       ),
@@ -461,15 +469,15 @@ class _EventCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (completed && media.isEmpty)
+                if (completed && media.isEmpty && recap.isEmpty)
                   const Padding(
                     padding: EdgeInsets.only(top: 8, bottom: 4),
                     child: Text(
-                      'Ο εκπαιδευτικός δεν έχει ανεβάσει ακόμα φωτογραφίες ή βίντεο.',
+                      'Ο εκπαιδευτικός δεν έχει ανεβάσει ακόμα την ανάρτηση.',
                       style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF)),
                     ),
                   ),
-                if (completed && media.isNotEmpty) ...[
+                if (media.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   SizedBox(
                     height: 80,

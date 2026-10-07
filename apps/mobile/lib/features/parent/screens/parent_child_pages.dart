@@ -610,6 +610,7 @@ class _ChildEventCard extends StatelessWidget {
     const types = {'excursion': 'Εκδρομή', 'theater': 'Θεατρικό', 'sport': 'Αθλητική', 'cultural': 'Πολιτιστική'};
     final date = DateTime.tryParse(event['eventDate'] as String? ?? '');
     final description = (event['description'] as String?)?.trim() ?? '';
+    final recap = (event['recap'] as String?)?.trim() ?? '';
     final cost = event['costPerChild'];
     final teachers = event['teachers'] as List<dynamic>? ?? [];
     final names = teachers.map((t) => (t as Map)['user']?['fullName']).whereType<String>().join(', ');
@@ -639,7 +640,10 @@ class _ChildEventCard extends StatelessWidget {
               if (date != null) Text(_grDate(date)),
               if (cost != null) Text('Κόστος: $cost €'),
               if (names.isNotEmpty) Text('Εκπαιδευτικοί: $names'),
-              if (description.isNotEmpty) ...[
+              if (recap.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(recap, maxLines: 4, overflow: TextOverflow.ellipsis, style: const TextStyle(height: 1.4)),
+              ] else if (description.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Text(description, style: const TextStyle(height: 1.4)),
               ],
@@ -650,9 +654,9 @@ class _ChildEventCard extends StatelessWidget {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      completed
-                          ? (media.isEmpty ? 'Ολοκληρώθηκε · χωρίς υλικό ακόμα' : 'Φωτογραφίες & βίντεο (${media.length})')
-                          : 'Οι φωτογραφίες εμφανίζονται μετά την ολοκλήρωση',
+                      (completed || recap.isNotEmpty || media.isNotEmpty)
+                          ? (media.isEmpty && recap.isEmpty ? 'Ολοκληρώθηκε · χωρίς ανάρτηση ακόμα' : 'Ανάρτηση${media.isEmpty ? '' : ' · ${media.length} αρχεία'}')
+                          : 'Η ανάρτηση εμφανίζεται μετά την εκδήλωση',
                       style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w700, fontSize: 13),
                     ),
                   ),

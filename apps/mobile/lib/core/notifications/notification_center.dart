@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../features/messages/conversation_ui.dart';
+import '../../features/parent/screens/events_screen.dart';
 import '../../features/parent/screens/parent_meetings_screen.dart';
 import '../../features/parent/screens/billing_screen.dart';
 import '../../features/parent/screens/bulletin_screen.dart';
@@ -235,6 +236,11 @@ Future<void> openNotification(BuildContext context, WidgetRef ref, Map<String, d
 
   if (type == 'payment') {
     await Navigator.push(context, MaterialPageRoute(builder: (_) => BillingScreen(schoolId: schoolId)));
+    return;
+  }
+
+  if (type == 'event_post') {
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => ParentEventsScreen(schoolId: schoolId)));
     return;
   }
 

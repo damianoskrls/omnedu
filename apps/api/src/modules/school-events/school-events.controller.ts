@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Put, Delete, Body, Param, Query,
+  Controller, Get, Post, Put, Patch, Delete, Body, Param, Query,
   UseInterceptors, UploadedFile, BadRequestException, UseGuards,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -101,6 +101,16 @@ export class SchoolEventsController {
   @Get('teacher/my-events')
   listForTeacher(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
     return this.svc.listForTeacher(user.sub, schoolId);
+  }
+
+  @Patch(':eventId/recap')
+  setRecap(
+    @Param('schoolId') schoolId: string,
+    @Param('eventId') eventId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { recap?: string; notify?: boolean },
+  ) {
+    return this.svc.setRecap(schoolId, eventId, user.sub, body?.recap ?? '', Boolean(body?.notify));
   }
 
   // Media upload

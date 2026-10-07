@@ -1,11 +1,22 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { athensTodayYmd, resolveEventStatus } from './event-status';
 import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
-export class SchoolEventsService {
+export class SchoolEventsService implements OnModuleInit {
+  private readonly logger = new Logger(SchoolEventsService.name);
+
   constructor(private prisma: PrismaService, private notifications: NotificationsService) {}
+
+  async onModuleInit() {
+    try {
+      await this.prisma.$executeRawUnsafe('ALTER TABLE "school_events" ADD COLUMN IF NOT EXISTS "recap" TEXT');
+    } catch (error) {
+      const message = String((error as { message?: string })?.message ?? error);
+      if (!/already exists|duplicate/i.test(message)) this.logger.warn(`Event recap column: ${message}`);
+    }
+  }
 
   async list(schoolId: string, status?: string) {
     await this.syncAutomaticStatus(schoolId);
@@ -376,6 +387,43 @@ export class SchoolEventsService {
     return this.prisma.schoolEventMedia.create({
       data: { eventId, uploadedById: userId, url, mediaType },
     });
+  }
+
+  async setRecap(schoolId: string, eventId: string, userId: string, recap: string, notify = false) {
+    const event = await this.prisma.schoolEvent.findFirst({
+      where: { id: eventId, schoolId },
+      include: { teachers: { select: { userId: true } } },
+    });
+    if (!event) throw new NotFoundException('Event not found');
+    const assigned = event.teachers.some((teacher) => teacher.userId === userId) || event.createdById === userId;
+    if (!assigned) {
+      const admin = await this.prisma.schoolMember.findFirst({
+        where: { schoolId, userId, role: 'school_admin', isActive: true },
+        select: { id: true },
+      });
+      if (!admin) throw new ForbiddenException('Μόνο οι εκπαιδευτικοί της εκδήλωσης μπορούν να γράψουν την ανάρτηση');
+    }
+    const text = recap.trim();
+    const updated = await this.prisma.schoolEvent.update({
+      where: { id: eventId },
+      data: { recap: text || null },
+    });
+    if (notify) {
+      const enrollments = await this.prisma.schoolEventEnrollment.findMany({
+        where: { eventId, status: { not: 'consent_declined' } },
+        select: { student: { select: { parents: { select: { userId: true } } } } },
+      });
+      const parents = enrollments.flatMap((row) => row.student.parents.map((parent) => parent.userId));
+      const preview = text.replace(/\s+/g, ' ').trim();
+      await this.notifications.notifyUsers(schoolId, parents, {
+        event: 'event_post',
+        type: 'event_post',
+        title: event.title,
+        body: preview ? preview.slice(0, 180) : 'Νέες φωτογραφίες και βίντεο από την εκδήλωση.',
+        data: { screen: 'events', eventId },
+      });
+    }
+    return updated;
   }
 
   /** Published events become completed the day after they happen. Completed events with a future date go back to published. */

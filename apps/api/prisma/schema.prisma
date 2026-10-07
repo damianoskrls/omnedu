@@ -1271,6 +1271,7 @@ model SchoolEvent {
   audienceType String    @default("all") @map("audience_type")
   audienceIds  String    @default("[]") @map("audience_ids")
   mediaUrls    String[]  @map("media_urls")     // pre-event images (poster etc)
+  recap        String?   @db.Text
   status       String    @default("draft")      // draft | published | completed
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
