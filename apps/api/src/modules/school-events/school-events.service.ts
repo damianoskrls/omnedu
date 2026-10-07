@@ -191,7 +191,16 @@ export class SchoolEventsService {
     return this.prisma.schoolEventEnrollment.findMany({
       where: { eventId },
       include: {
-        student: { select: { id: true, fullName: true, avatarUrl: true } },
+        student: {
+          select: {
+            id: true,
+            fullName: true,
+            avatarUrl: true,
+            parents: {
+              select: { userId: true, isPrimary: true, user: { select: { fullName: true } } },
+            },
+          },
+        },
       },
       orderBy: { createdAt: 'asc' },
     });

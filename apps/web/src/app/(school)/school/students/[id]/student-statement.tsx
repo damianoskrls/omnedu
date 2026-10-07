@@ -1,5 +1,7 @@
 'use client';
 
+import { PaymentDetailsLink } from '@/components/PaymentDetailsLink';
+
 const MONTHS = ['', 'Ιανουάριος', 'Φεβρουάριος', 'Μάρτιος', 'Απρίλιος', 'Μάιος', 'Ιούνιος', 'Ιούλιος', 'Αύγουστος', 'Σεπτέμβριος', 'Οκτώβριος', 'Νοέμβριος', 'Δεκέμβριος'];
 
 const money = (value: number) => `€${Math.abs(value).toFixed(2)}`;
@@ -50,6 +52,11 @@ export function StudentStatement({
               <span className={`inline-block mt-1 text-xs font-semibold px-2 py-0.5 rounded-full ${statusLabel(current.status, Number(current.totalDue)).className}`}>
                 {statusLabel(current.status, Number(current.totalDue)).text}
               </span>
+              {(current.status === 'paid' || current.status === 'partial') && Number(current.totalDue) > 0 && (
+                <div className="mt-1 flex justify-end">
+                  <PaymentDetailsLink notes={current.notes} paidAt={current.paidAt} />
+                </div>
+              )}
             </div>
           </div>
           <LineList lines={current.lines} />
@@ -78,6 +85,11 @@ export function StudentStatement({
             <span className={`inline-block mt-1 text-xs font-semibold px-2 py-0.5 rounded-full ${statusLabel(statement.stationery.status).className}`}>
               {statement.stationery.status === 'paid' ? 'Πληρώθηκε' : 'Δεν έχει πληρωθεί'}
             </span>
+            {(statement.stationery.status === 'paid' || statement.stationery.status === 'partial') && (
+              <div className="mt-1 flex justify-end">
+                <PaymentDetailsLink notes={statement.stationery.notes} paidAt={statement.stationery.paidAt} />
+              </div>
+            )}
           </div>
           {isAdmin && statement.stationery.status !== 'paid' && (
             <button
@@ -114,6 +126,11 @@ export function StudentStatement({
                   <div className="text-right shrink-0">
                     <p className="text-lg font-extrabold text-gray-900">{money(Number(month.totalDue))}</p>
                     <span className={`inline-block mt-1 text-xs font-semibold px-2 py-0.5 rounded-full ${badge.className}`}>{badge.text}</span>
+                    {(month.status === 'paid' || month.status === 'partial') && Number(month.totalDue) > 0 && (
+                      <div className="mt-1 flex justify-end">
+                        <PaymentDetailsLink notes={month.notes} paidAt={month.paidAt} />
+                      </div>
+                    )}
                     {isAdmin && month.chargeId && month.status !== 'paid' && month.status !== 'upcoming' && (
                       <button onClick={() => onPayMonth(month.chargeId, Number(month.totalDue))} className="block ml-auto mt-2 text-xs font-semibold text-[#77328D]">Εξόφληση</button>
                     )}
@@ -167,7 +184,12 @@ function ExtraList({
           <div key={extra.id} className="flex items-center gap-2 rounded-lg bg-orange-50 px-3 py-2 text-sm">
             <span className="flex-1 text-gray-800">{extra.kind === 'event' ? `Εκδρομή · ${extra.title}` : extra.title}</span>
             <span className="font-semibold">{money(Number(extra.amount))}</span>
-            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badge.className}`}>{badge.text}</span>
+            <span className="flex flex-col items-end">
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badge.className}`}>{badge.text}</span>
+              {(extra.status === 'paid' || extra.status === 'partial') && (
+                <PaymentDetailsLink notes={extra.notes} paidAt={extra.paidAt} />
+              )}
+            </span>
             {isAdmin && extra.status !== 'paid' && (
               <button onClick={() => onPayExtra(extra)} disabled={saving} className="text-xs font-semibold text-green-700">Πληρώθηκε</button>
             )}

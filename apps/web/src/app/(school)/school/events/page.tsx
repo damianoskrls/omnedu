@@ -9,8 +9,9 @@ import {
 } from 'lucide-react';
 import { AudienceSelector, AudienceValue, audienceLabel } from '@/components/AudienceSelector';
 import { eventDisplayStatus } from '@/lib/event-status';
-import { paymentNote } from '@/lib/payment-note';
+import { payerOptions, paymentNote } from '@/lib/payment-note';
 import { PaymentConfirmModal, PaymentPrompt } from '@/components/PaymentConfirmModal';
+import { PaymentDetailsLink } from '@/components/PaymentDetailsLink';
 
 const EVENT_TYPES: Record<string, { label: string; color: string; bg: string }> = {
   excursion: { label: 'Εκδρομή', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
@@ -186,6 +187,7 @@ export default function EventsPage() {
       detail: 'Εκδήλωση',
       studentName: en.student.fullName,
       studentId: en.studentId ?? en.student.id,
+      parents: payerOptions(en.student?.parents),
       schoolId,
       schoolName: window.localStorage.getItem('school_name') || 'Σχολείο',
       logoUrl: window.localStorage.getItem('school_logo_url') || '',
@@ -375,12 +377,15 @@ export default function EventsPage() {
                                 </button>
                               )}
                               {en.status === 'paid' && (
-                                <button
-                                  onClick={() => togglePayment(ev.id, en.id, en.status)}
-                                  className="text-xs px-2.5 py-1 rounded-lg font-medium bg-green-100 text-green-700 hover:bg-red-50 hover:text-red-600"
-                                >
-                                  ✓ Πληρωμένο
-                                </button>
+                                <div className="flex flex-col items-end">
+                                  <button
+                                    onClick={() => togglePayment(ev.id, en.id, en.status)}
+                                    className="text-xs px-2.5 py-1 rounded-lg font-medium bg-green-100 text-green-700 hover:bg-red-50 hover:text-red-600"
+                                  >
+                                    ✓ Πληρωμένο
+                                  </button>
+                                  <PaymentDetailsLink notes={en.notes} paidAt={en.paidAt} />
+                                </div>
                               )}
                             </div>
                           );

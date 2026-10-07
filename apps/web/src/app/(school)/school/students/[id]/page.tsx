@@ -6,8 +6,9 @@ import dynamic from 'next/dynamic';
 import { studentsApi, billingApi, classesApi, activitiesApi, extraServicesApi, medicationRequestsApi, studentFormsApi, broadcastsApi, schoolEventsApi } from '@/lib/api';
 import { StudentStatement } from './student-statement';
 import { buildStudentQuoteInput, chargeMatchesQuote, findStationeryCharge, isOpenMonth, quoteStudentMonth, schoolYearMonths, schoolYearOf } from '@/lib/month-quote';
-import { paymentNote, PaymentInfo } from '@/lib/payment-note';
+import { noteWithoutPayment, payerOptions, paymentNote, PaymentInfo } from '@/lib/payment-note';
 import { PaymentConfirmModal, PaymentPrompt } from '@/components/PaymentConfirmModal';
+import { PaymentDetailsLink } from '@/components/PaymentDetailsLink';
 import { useStoredUser } from '@/lib/auth';
 import {
   ArrowLeft, Phone, Mail, MapPin, Droplets,
@@ -492,10 +493,7 @@ export default function StudentProfilePage() {
     lockPaidAmount?: boolean;
     run: (info: PaymentInfo) => Promise<void>;
   }) {
-    const parents = (student.parents ?? [])
-      .map((parent: any) => ({ id: String(parent.userId), name: String(parent.user?.fullName ?? ''), primary: !!parent.isPrimary }))
-      .filter((parent: { name: string }) => parent.name)
-      .sort((a: { primary: boolean }, b: { primary: boolean }) => Number(b.primary) - Number(a.primary));
+    const parents = payerOptions(student.parents);
     setPayPrompt({
       schoolId,
       studentId: id,
@@ -1941,6 +1939,11 @@ export default function StudentProfilePage() {
                       <span className={`inline-block mt-1 text-xs font-semibold px-2 py-0.5 rounded-full ${stationeryPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
                         {stationeryPaid ? 'Πληρώθηκε' : stationeryPartial ? 'Μερική πληρωμή' : 'Δεν έχει πληρωθεί'}
                       </span>
+                      {(stationeryPaid || stationeryPartial) && (
+                        <div className="mt-1 flex justify-end">
+                          <PaymentDetailsLink notes={stationeryCharge.notes} paidAt={stationeryCharge.paidAt} />
+                        </div>
+                      )}
                       {stationeryPartial && (
                         <p className="text-xs text-blue-700 mt-1">Υπόλοιπο €{(stationeryAmount - Number(stationeryCharge.paidAmount)).toFixed(2)}</p>
                       )}
@@ -2013,9 +2016,16 @@ export default function StudentProfilePage() {
                       {enr.event.costPerChild > 0 && (
                         <span className="text-sm font-semibold text-gray-700 shrink-0">€{enr.event.costPerChild}</span>
                       )}
-                      <span className={`text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ${ENROLLMENT_STATUS_META[enr.status]?.color ?? 'bg-gray-100 text-gray-500'}`}>
-                        {ENROLLMENT_STATUS_META[enr.status]?.label ?? enr.status}
-                      </span>
+                      <div className="flex flex-col items-end shrink-0">
+                        <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${ENROLLMENT_STATUS_META[enr.status]?.color ?? 'bg-gray-100 text-gray-500'}`}>
+                          {ENROLLMENT_STATUS_META[enr.status]?.label ?? enr.status}
+                        </span>
+                        {(enr.status === 'paid' || enr.status === 'partial') && (
+                          <div className="mt-1">
+                            <PaymentDetailsLink notes={enr.notes} paidAt={enr.paidAt} />
+                          </div>
+                        )}
+                      </div>
                       {isAdmin && enr.status === 'pending_consent' && (
                         <button
                           onClick={async () => {
@@ -2227,9 +2237,16 @@ export default function StudentProfilePage() {
                                   <div className="font-bold text-gray-900">€{shownTotal.toFixed(0)}</div>
                                 </div>
 
-                                <span className={`shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${statusClass}`}>
-                                  {statusText}
-                                </span>
+                                <div className="flex flex-col items-end shrink-0">
+                                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusClass}`}>
+                                    {statusText}
+                                  </span>
+                                  {charge && (frozen && shownTotal > 0 || charge.status === 'partial') && (
+                                    <div className="mt-1">
+                                      <PaymentDetailsLink notes={charge.notes} paidAt={charge.paidAt} />
+                                    </div>
+                                  )}
+                                </div>
 
                                 {/* Actions */}
                                 {isAdmin && !isFuture && charge && (
@@ -2269,7 +2286,10 @@ export default function StudentProfilePage() {
                             <div key={c.id} className="mt-2 ml-24 flex items-center gap-3 py-1.5 px-3 bg-orange-50 border border-orange-100 rounded-lg">
                               <div className="flex-1 min-w-0">
                                 <span className="text-xs font-medium text-gray-700">{c.description}</span>
-                                {c.notes && <span className="text-xs text-gray-400 ml-2">{c.notes}</span>}
+                                {noteWithoutPayment(c.notes) && <span className="text-xs text-gray-400 ml-2">{noteWithoutPayment(c.notes)}</span>}
+                                {(c.status === 'paid' || c.status === 'partial') && (
+                                  <PaymentDetailsLink notes={c.notes} paidAt={c.paidAt} />
+                                )}
                               </div>
                               <span className="text-xs font-semibold text-gray-700 shrink-0">€{Number(c.amount).toFixed(0)}</span>
                               <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${

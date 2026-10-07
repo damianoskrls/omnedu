@@ -4,8 +4,9 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { billingApi, levelsApi, schoolEventsApi, broadcastsApi } from '@/lib/api';
 import { eventDisplayStatus } from '@/lib/event-status';
-import { paymentNote } from '@/lib/payment-note';
+import { payerOptions, paymentNote } from '@/lib/payment-note';
 import { PaymentConfirmModal, PaymentPrompt } from '@/components/PaymentConfirmModal';
+import { PaymentDetailsLink } from '@/components/PaymentDetailsLink';
 import { useStoredUser } from '@/lib/auth';
 import {
   ChevronLeft, ChevronRight, Settings, Zap, Bus, CheckCircle2,
@@ -241,6 +242,7 @@ export default function BillingPage() {
       detail: 'Μηνιαία χρέωση',
       studentName: charge.student.fullName,
       studentId: charge.studentId ?? charge.student.id,
+      parents: payerOptions(charge.student?.parents),
       schoolId,
       schoolName: window.localStorage.getItem('school_name') || 'Σχολείο',
       logoUrl: window.localStorage.getItem('school_logo_url') || '',
@@ -490,6 +492,7 @@ export default function BillingPage() {
                                   detail: 'Εκδήλωση',
                                   studentName: enr.student.fullName,
                                   studentId: enr.studentId ?? enr.student.id,
+                                  parents: payerOptions(enr.student?.parents),
                                   schoolId,
                                   schoolName: window.localStorage.getItem('school_name') || 'Σχολείο',
                                   logoUrl: window.localStorage.getItem('school_logo_url') || '',
@@ -509,13 +512,16 @@ export default function BillingPage() {
                               </button>
                             )}
                             {enr.status === 'paid' && (
-                              <button
-                                onClick={() => handleMarkEventPayment(evt.id, enr.id, false)}
-                                disabled={markingPayment === enr.id}
-                                className="px-2.5 py-1 text-xs text-gray-400 hover:text-red-500 border border-gray-200 rounded-lg shrink-0"
-                              >
-                                Αναίρεση
-                              </button>
+                              <div className="flex flex-col items-end shrink-0">
+                                <button
+                                  onClick={() => handleMarkEventPayment(evt.id, enr.id, false)}
+                                  disabled={markingPayment === enr.id}
+                                  className="px-2.5 py-1 text-xs text-gray-400 hover:text-red-500 border border-gray-200 rounded-lg"
+                                >
+                                  Αναίρεση
+                                </button>
+                                <PaymentDetailsLink notes={enr.notes} paidAt={enr.paidAt} />
+                              </div>
                             )}
                             <button
                               onClick={() => router.push(`/school/students/${enr.studentId}`)}
@@ -733,9 +739,16 @@ export default function BillingPage() {
                       </div>
 
                       {/* Status badge */}
-                      <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium shrink-0 ${s.color}`}>
-                        <Icon className="h-3.5 w-3.5" />
-                        {s.label}
+                      <div className="flex flex-col items-end shrink-0">
+                        <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium ${s.color}`}>
+                          <Icon className="h-3.5 w-3.5" />
+                          {s.label}
+                        </div>
+                        {(charge.status === 'paid' || charge.status === 'partial') && (
+                          <div className="mt-1">
+                            <PaymentDetailsLink notes={charge.notes} paidAt={charge.paidAt} />
+                          </div>
+                        )}
                       </div>
 
                       {/* Actions */}

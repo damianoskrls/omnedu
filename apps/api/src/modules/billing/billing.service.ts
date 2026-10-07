@@ -154,6 +154,9 @@ export class BillingService {
         student: {
           select: {
             id: true, fullName: true,
+            parents: {
+              select: { userId: true, isPrimary: true, user: { select: { fullName: true } } },
+            },
             enrollments: {
               where: { academicYear: { isCurrent: true } },
               include: { class: { include: { level: { select: { id: true, name: true } } } } },
@@ -453,6 +456,8 @@ export class BillingService {
             title: item.description,
             amount: Number(item.amount),
             status: item.status,
+            notes: item.notes,
+            paidAt: item.paidAt,
           })),
         ...student.eventEnrollments
           .filter((enrollment) => enrollment.event?.eventDate && this.chargeInMonth(enrollment.event.eventDate, month, chargeYear) && Number(enrollment.event.costPerChild ?? 0) > 0)
@@ -463,6 +468,8 @@ export class BillingService {
             amount: Number(enrollment.event.costPerChild),
             status: enrollment.status === 'paid' ? 'paid' : enrollment.status === 'pending_payment' ? 'unpaid' : enrollment.status,
             eventId: enrollment.eventId,
+            notes: enrollment.notes,
+            paidAt: enrollment.paidAt,
           })),
       ];
       if (stationery && this.chargeInMonth(stationery.chargeDate, month, chargeYear)) {
@@ -472,6 +479,8 @@ export class BillingService {
           title: stationery.description,
           amount: Number(stationery.amount),
           status: stationery.status,
+          notes: stationery.notes,
+          paidAt: stationery.paidAt,
         });
       }
       return {
@@ -481,6 +490,8 @@ export class BillingService {
         status: charge ? charge.status : open ? 'unpaid' : 'upcoming',
         totalDue: useStored ? Number(charge.totalDue) : quote.totalDue,
         paidAmount: charge ? Number(charge.paidAmount) : 0,
+        notes: charge?.notes ?? null,
+        paidAt: charge?.paidAt ?? null,
         lines,
         extras,
       };
@@ -507,6 +518,8 @@ export class BillingService {
             amount: Number(stationery.amount),
             status: stationery.status,
             paidAmount: Number(stationery.paidAmount),
+            notes: stationery.notes,
+            paidAt: stationery.paidAt,
           }
         : null,
       months,

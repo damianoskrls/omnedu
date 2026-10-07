@@ -41,6 +41,7 @@ export function PaymentConfirmModal({
   const [paidAmount, setPaidAmount] = useState('');
   const [paidAt, setPaidAt] = useState(todayInput());
   const [payerName, setPayerName] = useState('');
+  const [payerMode, setPayerMode] = useState<'parent' | 'other'>('parent');
   const [addresseeName, setAddresseeName] = useState('');
   const [method, setMethod] = useState('cash');
   const [sendReceipt, setSendReceipt] = useState(false);
@@ -55,6 +56,7 @@ export function PaymentConfirmModal({
     const parent = prompt.parents?.[0]?.name ?? '';
     setPaidAmount(moneyInput(prompt.chargeAmount));
     setPaidAt(todayInput());
+    setPayerMode(parent ? 'parent' : 'other');
     setPayerName(parent);
     setAddresseeName(parent);
     setMethod('cash');
@@ -177,31 +179,46 @@ export function PaymentConfirmModal({
             <span className="block text-sm font-medium text-gray-700 mb-1">Πότε έγινε</span>
             <input type="date" value={paidAt} onChange={e => setPaidAt(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm" />
           </label>
-          <label className="block">
+          <div>
             <span className="block text-sm font-medium text-gray-700 mb-1">Από ποιον έγινε</span>
+            <p className="text-xs text-gray-500 mb-2">Διάλεξε γονέα ή γράψε όποιον άλλον πλήρωσε.</p>
             {!!prompt.parents?.length && (
-              <select
-                value={prompt.parents.some(parent => parent.name === payerName) ? payerName : ''}
-                onChange={e => {
-                  if (!e.target.value) return;
-                  setPayerName(e.target.value);
-                  if (!addresseeName) setAddresseeName(e.target.value);
-                }}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm mb-2 bg-white"
-              >
-                <option value="">Επιλογή γονέα</option>
+              <div className="flex flex-wrap gap-2 mb-2">
                 {prompt.parents.map(parent => (
-                  <option key={parent.id} value={parent.name}>{parent.name}</option>
+                  <button
+                    key={parent.id}
+                    type="button"
+                    onClick={() => {
+                      setPayerMode('parent');
+                      setPayerName(parent.name);
+                      setAddresseeName(parent.name);
+                    }}
+                    className={`rounded-full border px-3 py-1.5 text-sm ${payerMode === 'parent' && payerName === parent.name ? 'border-[#77328D] bg-[#faf5fc] font-semibold text-[#642678]' : 'border-gray-200 text-gray-700'}`}
+                  >
+                    {parent.name}
+                  </button>
                 ))}
-              </select>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPayerMode('other');
+                    setPayerName('');
+                  }}
+                  className={`rounded-full border px-3 py-1.5 text-sm ${payerMode === 'other' ? 'border-[#77328D] bg-[#faf5fc] font-semibold text-[#642678]' : 'border-gray-200 text-gray-700'}`}
+                >
+                  Άλλος
+                </button>
+              </div>
             )}
-            <input
-              value={payerName}
-              onChange={e => setPayerName(e.target.value)}
-              placeholder="Όνομα όποιου πλήρωσε"
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm"
-            />
-          </label>
+            {(payerMode === 'other' || !prompt.parents?.length) && (
+              <input
+                value={payerName}
+                onChange={e => setPayerName(e.target.value)}
+                placeholder="Όνομα όποιου πλήρωσε"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm"
+              />
+            )}
+          </div>
           <label className="block">
             <span className="block text-sm font-medium text-gray-700 mb-1">Τρόπος</span>
             <select value={method} onChange={e => setMethod(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white">
