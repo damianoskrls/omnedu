@@ -197,7 +197,13 @@ export class SchoolEventsService {
     });
   }
 
-  async updateEnrollmentPayment(schoolId: string, eventId: string, enrollmentId: string, paid: boolean) {
+  async updateEnrollmentPayment(
+    schoolId: string,
+    eventId: string,
+    enrollmentId: string,
+    paid: boolean,
+    extra?: { paidAt?: string; notes?: string },
+  ) {
     const event = await this.prisma.schoolEvent.findFirst({ where: { id: eventId, schoolId } });
     if (!event) throw new NotFoundException('Event not found');
 
@@ -205,7 +211,8 @@ export class SchoolEventsService {
       where: { id: enrollmentId },
       data: {
         status: paid ? 'paid' : 'pending_payment',
-        paidAt: paid ? new Date() : null,
+        paidAt: paid ? (extra?.paidAt ? new Date(extra.paidAt) : new Date()) : null,
+        ...(extra?.notes ? { notes: extra.notes } : {}),
       },
     });
   }

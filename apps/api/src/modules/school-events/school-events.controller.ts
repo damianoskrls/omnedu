@@ -65,9 +65,9 @@ export class SchoolEventsController {
     @Param('schoolId') schoolId: string,
     @Param('eventId') eventId: string,
     @Param('enrollmentId') enrollmentId: string,
-    @Body() body: { paid: boolean },
+    @Body() body: { paid: boolean; paidAt?: string; notes?: string },
   ) {
-    return this.svc.updateEnrollmentPayment(schoolId, eventId, enrollmentId, body.paid);
+    return this.svc.updateEnrollmentPayment(schoolId, eventId, enrollmentId, body.paid, body);
   }
 
   // Admin: manually update enrollment status (consent / payment override)

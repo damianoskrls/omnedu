@@ -423,8 +423,8 @@ export const schoolEventsApi = {
   update: (schoolId: string, eventId: string, data: any) => api.put(`/schools/${schoolId}/events/${eventId}`, data),
   remove: (schoolId: string, eventId: string) => api.delete(`/schools/${schoolId}/events/${eventId}`),
   getEnrollments: (schoolId: string, eventId: string) => api.get(`/schools/${schoolId}/events/${eventId}/enrollments`),
-  markPayment: (schoolId: string, eventId: string, enrollmentId: string, paid: boolean) =>
-    api.put(`/schools/${schoolId}/events/${eventId}/enrollments/${enrollmentId}/payment`, { paid }),
+  markPayment: (schoolId: string, eventId: string, enrollmentId: string, paid: boolean, extra?: { paidAt?: string; notes?: string }) =>
+    api.put(`/schools/${schoolId}/events/${eventId}/enrollments/${enrollmentId}/payment`, { paid, ...extra }),
   uploadMedia: (schoolId: string, eventId: string, file: File) => {
     const fd = new FormData();
     fd.append('file', file);

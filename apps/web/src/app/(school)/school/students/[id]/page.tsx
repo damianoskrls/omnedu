@@ -6,6 +6,8 @@ import dynamic from 'next/dynamic';
 import { studentsApi, billingApi, classesApi, activitiesApi, extraServicesApi, medicationRequestsApi, studentFormsApi, broadcastsApi, schoolEventsApi } from '@/lib/api';
 import { StudentStatement } from './student-statement';
 import { buildStudentQuoteInput, chargeMatchesQuote, findStationeryCharge, isOpenMonth, quoteStudentMonth, schoolYearMonths, schoolYearOf } from '@/lib/month-quote';
+import { paymentNote, PaymentInfo } from '@/lib/payment-note';
+import { PaymentConfirmModal, PaymentPrompt } from '@/components/PaymentConfirmModal';
 import { useStoredUser } from '@/lib/auth';
 import {
   ArrowLeft, Phone, Mail, MapPin, Droplets,
@@ -126,9 +128,7 @@ export default function StudentProfilePage() {
   const [feeOverride, setFeeOverride] = useState<any>(null);
   const [feeForm, setFeeForm] = useState<any>(null);
   const [savingFee, setSavingFee] = useState(false);
-  const [payingChargeId, setPayingChargeId] = useState<string | null>(null);
-  const [payAmount, setPayAmount] = useState('');
-  const [savingPay, setSavingPay] = useState(false);
+  const [payPrompt, setPayPrompt] = useState<PaymentPrompt | null>(null);
   const [editingInfo, setEditingInfo] = useState(false);
   const [infoForm, setInfoForm] = useState<any>(null);
   const [savingInfo, setSavingInfo] = useState(false);
@@ -427,8 +427,11 @@ export default function StudentProfilePage() {
     await loadBillingData();
   }
 
-  async function handlePayOneTime(charge: any, paidAmount: number) {
-    await billingApi.updateOneTimeCharge(schoolId, charge.id, { paidAmount });
+  async function handlePayOneTime(charge: any, paidAmount: number, info?: PaymentInfo) {
+    await billingApi.updateOneTimeCharge(schoolId, charge.id, {
+      paidAmount,
+      ...(info ? { paidAt: info.paidAt, notes: paymentNote(info, charge.notes) } : { status: paidAmount <= 0 ? 'unpaid' : undefined }),
+    });
     await loadBillingData();
   }
 
@@ -481,6 +484,28 @@ export default function StudentProfilePage() {
   if (!student) return (
     <div className="text-center py-20 text-gray-400">Ο μαθητής δεν βρέθηκε.</div>
   );
+
+  function askPayment(opts: {
+    title: string;
+    detail?: string;
+    chargeAmount: number;
+    lockPaidAmount?: boolean;
+    run: (info: PaymentInfo) => Promise<void>;
+  }) {
+    const parents = (student.parents ?? [])
+      .map((parent: any) => ({ id: String(parent.userId), name: String(parent.user?.fullName ?? ''), primary: !!parent.isPrimary }))
+      .filter((parent: { name: string }) => parent.name)
+      .sort((a: { primary: boolean }, b: { primary: boolean }) => Number(b.primary) - Number(a.primary));
+    setPayPrompt({
+      schoolId,
+      studentId: id,
+      studentName: student.fullName,
+      parents,
+      schoolName: window.localStorage.getItem('school_name') || 'Σχολείο',
+      logoUrl: window.localStorage.getItem('school_logo_url') || '',
+      ...opts,
+    });
+  }
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1480,16 +1505,21 @@ export default function StudentProfilePage() {
                   )}
                   {enr.status === 'pending_payment' && (
                     <button
-                      onClick={async () => {
-                        setUpdatingEnrollment(enr.id);
-                        try {
-                          await schoolEventsApi.adminUpdateEnrollment(schoolId, enr.eventId, enr.id, 'paid');
+                      onClick={() => askPayment({
+                        title: enr.event.title,
+                        detail: 'Εκδήλωση',
+                        chargeAmount: Number(enr.event.costPerChild) || 0,
+                        lockPaidAmount: true,
+                        run: async (info) => {
+                          await schoolEventsApi.markPayment(schoolId, enr.eventId, enr.id, true, {
+                            paidAt: info.paidAt,
+                            notes: paymentNote(info),
+                          });
                           const fresh: any = await studentsApi.get(schoolId, id);
                           setStudent(fresh);
-                        } finally { setUpdatingEnrollment(null); }
-                      }}
-                      disabled={updatingEnrollment === enr.id}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 disabled:opacity-50"
+                        },
+                      })}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700"
                     >
                       <Check className="h-3.5 w-3.5" /> Εξόφληση
                     </button>
@@ -1652,28 +1682,24 @@ export default function StudentProfilePage() {
         }
         const quoteFor = (m: number, y: number) => quoteStudentMonth({ ...quoteInput, month: m, year: y });
 
-        const handleQuickPay = async (charge: any) => {
-          setSavingPay(true);
-          try {
-            await billingApi.updateCharge(schoolId, charge.id, { paidAmount: Number(charge.totalDue), status: 'paid' });
-            await loadBillingData();
-          } finally {
-            setSavingPay(false);
-          }
-        };
-
-        const handleSubmitPay = async (charge: any) => {
-          const amt = parseFloat(payAmount);
-          if (isNaN(amt) || amt < 0) return;
-          setSavingPay(true);
-          try {
-            await billingApi.updateCharge(schoolId, charge.id, { paidAmount: amt });
-            setPayingChargeId(null);
-            setPayAmount('');
-            await loadBillingData();
-          } finally {
-            setSavingPay(false);
-          }
+        const recordMonthPayment = (charge: any, due: number, title: string) => {
+          const already = Number(charge?.paidAmount ?? 0);
+          const remaining = Math.max(0, due - already);
+          askPayment({
+            title,
+            detail: 'Μηνιαία χρέωση',
+            chargeAmount: remaining || due,
+            run: async (info) => {
+              const next = Math.min(due, already + info.paidAmount);
+              await billingApi.updateCharge(schoolId, charge.id, {
+                paidAmount: next,
+                status: next + 0.009 >= due ? 'paid' : 'partial',
+                paidAt: info.paidAt,
+                notes: paymentNote(info, charge.notes),
+              });
+              await loadBillingData();
+            },
+          });
         };
 
         // Year totals
@@ -1702,14 +1728,31 @@ export default function StudentProfilePage() {
           .reduce((s: number, e: any) => s + Number(e.event?.costPerChild ?? 0), 0);
 
         const handleMarkEventPaid = async (enr: any, paid: boolean) => {
-          setMarkingEventPayment(enr.id);
-          try {
-            await schoolEventsApi.markPayment(schoolId, enr.eventId, enr.id, paid);
-            const fresh: any = await studentsApi.get(schoolId, id);
-            setStudent(fresh);
-          } finally {
-            setMarkingEventPayment(null);
+          if (!paid) {
+            setMarkingEventPayment(enr.id);
+            try {
+              await schoolEventsApi.markPayment(schoolId, enr.eventId, enr.id, false);
+              const fresh: any = await studentsApi.get(schoolId, id);
+              setStudent(fresh);
+            } finally {
+              setMarkingEventPayment(null);
+            }
+            return;
           }
+          askPayment({
+            title: enr.event?.title ?? 'Εκδήλωση',
+            detail: 'Εκδήλωση',
+            chargeAmount: Number(enr.event?.costPerChild) || 0,
+            lockPaidAmount: true,
+            run: async (info) => {
+              await schoolEventsApi.markPayment(schoolId, enr.eventId, enr.id, true, {
+                paidAt: info.paidAt,
+                notes: paymentNote(info),
+              });
+              const fresh: any = await studentsApi.get(schoolId, id);
+              setStudent(fresh);
+            },
+          });
         };
 
         return (
@@ -1718,9 +1761,10 @@ export default function StudentProfilePage() {
               <StudentStatement
                 statement={statement}
                 isAdmin={isAdmin}
-                saving={savingPay || markingEventPayment !== null}
+                saving={markingEventPayment !== null}
                 onPayMonth={(chargeId, amount) => {
-                  billingApi.updateCharge(schoolId, chargeId, { paidAmount: amount, status: 'paid' }).then(loadBillingData);
+                  const charge = charges.find((row: any) => row.id === chargeId) ?? { id: chargeId, paidAmount: 0, notes: '' };
+                  recordMonthPayment(charge, amount, 'Μηνιαία χρέωση');
                 }}
                 onUndoMonth={(chargeId) => {
                   billingApi.updateCharge(schoolId, chargeId, { paidAmount: 0, status: 'unpaid' }).then(loadBillingData);
@@ -1731,7 +1775,14 @@ export default function StudentProfilePage() {
                     if (enrollment) handleMarkEventPaid(enrollment, true);
                     return;
                   }
-                  handlePayOneTime({ id: extra.id }, Number(extra.amount));
+                  askPayment({
+                    title: extra.description || 'Γραφική ύλη',
+                    detail: 'Έκτακτη χρέωση',
+                    chargeAmount: Number(extra.amount) || 0,
+                    run: async (info) => {
+                      await handlePayOneTime({ id: extra.id, amount: extra.amount, notes: '' }, info.paidAmount, info);
+                    },
+                  });
                 }}
               />
             )}
@@ -1899,7 +1950,20 @@ export default function StudentProfilePage() {
                   )}
                   {isAdmin && stationeryCharge && !stationeryPaid && (
                     <button
-                      onClick={() => handlePayOneTime(stationeryCharge, stationeryAmount)}
+                      onClick={() => {
+                        const already = Number(stationeryCharge.paidAmount ?? 0);
+                        const remaining = Math.max(0, stationeryAmount - already);
+                        askPayment({
+                          title: 'Γραφική ύλη',
+                          detail: 'Έναρξη χρονιάς',
+                          chargeAmount: remaining || stationeryAmount,
+                          run: (info) => handlePayOneTime(
+                            stationeryCharge,
+                            Math.min(stationeryAmount, already + info.paidAmount),
+                            info,
+                          ),
+                        });
+                      }}
                       className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
                     >
                       Σημείωσε ως πληρωμένη
@@ -1971,16 +2035,8 @@ export default function StudentProfilePage() {
                       )}
                       {isAdmin && enr.status === 'pending_payment' && (
                         <button
-                          onClick={async () => {
-                            setMarkingEventPayment(enr.id);
-                            try {
-                              await schoolEventsApi.adminUpdateEnrollment(schoolId, enr.eventId, enr.id, 'paid');
-                              const fresh: any = await studentsApi.get(schoolId, id);
-                              setStudent(fresh);
-                            } finally { setMarkingEventPayment(null); }
-                          }}
-                          disabled={markingEventPayment === enr.id}
-                          className="flex items-center gap-1 px-2.5 py-1 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 shrink-0"
+                          onClick={() => handleMarkEventPaid(enr, true)}
+                          className="flex items-center gap-1 px-2.5 py-1 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 shrink-0"
                         >
                           <Check className="h-3 w-3" /> Εξόφληση
                         </button>
@@ -2123,7 +2179,6 @@ export default function StudentProfilePage() {
                       const isCurrent = cmp === 0;
                       const isFuture = cmp > 0;
                       const genKey = `${m}-${y}`;
-                      const isPaying = payingChargeId === charge?.id;
                       const statusText = frozen
                         ? (shownTotal <= 0 ? 'Καλύπτεται' : 'Εξοφλήθη')
                         : isFuture
@@ -2182,19 +2237,11 @@ export default function StudentProfilePage() {
                                     {charge.status !== 'paid' && (
                                       <>
                                         <button
-                                          onClick={() => handleQuickPay({ ...charge, totalDue: shownTotal })}
-                                          disabled={savingPay}
+                                          onClick={() => recordMonthPayment(charge, shownTotal, `${MONTH_FULL[m]} ${y}`)}
                                           className="p-1.5 rounded-lg hover:bg-green-50 text-gray-400 hover:text-green-600"
-                                          title="Εξόφληση ολόκληρου ποσού"
+                                          title="Εξόφληση"
                                         >
                                           <Check className="h-3.5 w-3.5" />
-                                        </button>
-                                        <button
-                                          onClick={() => { setPayingChargeId(charge.id); setPayAmount(String(Math.max(0, shownTotal - Number(charge.paidAmount)))); }}
-                                          className="p-1.5 rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-indigo-600"
-                                          title="Καταχώρηση πληρωμής"
-                                        >
-                                          <Pencil className="h-3.5 w-3.5" />
                                         </button>
                                       </>
                                     )}
@@ -2217,28 +2264,6 @@ export default function StudentProfilePage() {
                             )}
                           </div>
 
-                          {/* Inline pay form */}
-                          {isPaying && (
-                            <div className="mt-2 pl-27 flex items-center gap-2">
-                              <div className="flex items-center gap-1 bg-white border border-indigo-200 rounded-lg px-2 py-1">
-                                <span className="text-sm text-gray-500">€</span>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  value={payAmount}
-                                  onChange={e => setPayAmount(e.target.value)}
-                                  className="w-24 text-sm focus:outline-none"
-                                  autoFocus
-                                />
-                              </div>
-                              <button onClick={() => handleSubmitPay(charge)} disabled={savingPay} className="px-3 py-1 bg-indigo-600 text-white text-xs rounded-lg hover:bg-indigo-700 disabled:opacity-50">
-                                {savingPay ? '...' : 'Αποθήκευση'}
-                              </button>
-                              <button onClick={() => { setPayingChargeId(null); setPayAmount(''); }} className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700">Ακύρωση</button>
-                            </div>
-                          )}
-
                           {/* One-time charges for this month */}
                           {monthOTC.map((c: any) => (
                             <div key={c.id} className="mt-2 ml-24 flex items-center gap-3 py-1.5 px-3 bg-orange-50 border border-orange-100 rounded-lg">
@@ -2255,7 +2280,12 @@ export default function StudentProfilePage() {
                                 {c.status === 'paid' ? 'Εξοφλήθη' : c.status === 'partial' ? 'Μερική' : 'Εκκρεμεί'}
                               </span>
                               {isAdmin && c.status !== 'paid' && (
-                                <button onClick={() => handlePayOneTime(c, Number(c.amount))} className="p-1 rounded hover:bg-green-100 text-gray-400 hover:text-green-600 shrink-0" title="Εξόφληση"><Check className="h-3.5 w-3.5" /></button>
+                                <button onClick={() => askPayment({
+                                  title: c.description,
+                                  detail: 'Έκτακτη χρέωση',
+                                  chargeAmount: Math.max(0, Number(c.amount) - Number(c.paidAmount ?? 0)) || Number(c.amount),
+                                  run: (info) => handlePayOneTime(c, Math.min(Number(c.amount), Number(c.paidAmount ?? 0) + info.paidAmount), info),
+                                })} className="p-1 rounded hover:bg-green-100 text-gray-400 hover:text-green-600 shrink-0" title="Εξόφληση"><Check className="h-3.5 w-3.5" /></button>
                               )}
                               {isAdmin && (
                                 <button onClick={() => setOneTimeForm({ ...c, amount: String(c.amount), chargeDate: new Date(c.chargeDate).toISOString().slice(0, 10) })} className="p-1 rounded hover:bg-gray-100 text-gray-300 hover:text-gray-500 shrink-0"><Pencil className="h-3 w-3" /></button>
@@ -3049,6 +3079,7 @@ export default function StudentProfilePage() {
           </div>
         </div>
       )}
+      <PaymentConfirmModal prompt={payPrompt} onClose={() => setPayPrompt(null)} />
     </div>
   );
 }

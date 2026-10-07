@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { AudienceSelector, AudienceValue, audienceLabel } from '@/components/AudienceSelector';
 import { eventDisplayStatus } from '@/lib/event-status';
+import { paymentNote } from '@/lib/payment-note';
+import { PaymentConfirmModal, PaymentPrompt } from '@/components/PaymentConfirmModal';
 
 const EVENT_TYPES: Record<string, { label: string; color: string; bg: string }> = {
   excursion: { label: 'Εκδρομή', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
@@ -64,6 +66,7 @@ export default function EventsPage() {
   const [mediaPanel, setMediaPanel] = useState<string | null>(null);
   const mediaFileRef = useRef<HTMLInputElement>(null);
   const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [payPrompt, setPayPrompt] = useState<PaymentPrompt | null>(null);
 
   useEffect(() => {
     if (!schoolId) return;
@@ -175,6 +178,27 @@ export default function EventsPage() {
     const paid = currentStatus !== 'paid';
     await schoolEventsApi.markPayment(schoolId, eventId, enrollId, paid);
     setEnrollments(p => p.map(e => e.id === enrollId ? { ...e, status: paid ? 'paid' : 'pending_payment', paidAt: paid ? new Date() : null } : e));
+  };
+
+  const askEventPayment = (ev: any, en: any) => {
+    setPayPrompt({
+      title: ev.title,
+      detail: 'Εκδήλωση',
+      studentName: en.student.fullName,
+      studentId: en.studentId ?? en.student.id,
+      schoolId,
+      schoolName: window.localStorage.getItem('school_name') || 'Σχολείο',
+      logoUrl: window.localStorage.getItem('school_logo_url') || '',
+      chargeAmount: Number(ev.costPerChild) || 0,
+      lockPaidAmount: true,
+      run: async (info) => {
+        await schoolEventsApi.markPayment(schoolId, ev.id, en.id, true, {
+          paidAt: info.paidAt,
+          notes: paymentNote(info),
+        });
+        setEnrollments(rows => rows.map(row => row.id === en.id ? { ...row, status: 'paid', paidAt: info.paidAt, notes: paymentNote(info) } : row));
+      },
+    });
   };
 
   const setConsent = async (eventId: string, enrollId: string, status: string) => {
@@ -318,7 +342,6 @@ export default function EventsPage() {
                       <div className="space-y-2">
                         {enrollments.map(en => {
                           const stMeta = ENROLLMENT_STATUS[en.status] ?? ENROLLMENT_STATUS.pending_consent;
-                          const canMarkPaid = en.status === 'pending_payment' || en.status === 'paid';
                           const consentStatus = Number(ev.costPerChild) > 0 ? 'pending_payment' : 'consent_given';
                           return (
                             <div key={en.id} className="flex items-center gap-3 bg-white rounded-xl border border-gray-100 px-4 py-2.5 flex-wrap">
@@ -343,16 +366,20 @@ export default function EventsPage() {
                                   Άρνηση
                                 </button>
                               )}
-                              {canMarkPaid && (
+                              {en.status === 'pending_payment' && (
+                                <button
+                                  onClick={() => askEventPayment(ev, en)}
+                                  className="text-xs px-2.5 py-1 rounded-lg font-medium bg-orange-50 text-orange-600 hover:bg-green-50 hover:text-green-700 border border-orange-200"
+                                >
+                                  Σήμανση ως Πληρωμένο
+                                </button>
+                              )}
+                              {en.status === 'paid' && (
                                 <button
                                   onClick={() => togglePayment(ev.id, en.id, en.status)}
-                                  className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-colors ${
-                                    en.status === 'paid'
-                                      ? 'bg-green-100 text-green-700 hover:bg-red-50 hover:text-red-600'
-                                      : 'bg-orange-50 text-orange-600 hover:bg-green-50 hover:text-green-700 border border-orange-200'
-                                  }`}
+                                  className="text-xs px-2.5 py-1 rounded-lg font-medium bg-green-100 text-green-700 hover:bg-red-50 hover:text-red-600"
                                 >
-                                  {en.status === 'paid' ? '✓ Πληρωμένο' : 'Σήμανση ως Πληρωμένο'}
+                                  ✓ Πληρωμένο
                                 </button>
                               )}
                             </div>
@@ -540,6 +567,7 @@ export default function EventsPage() {
           </div>
         </div>
       )}
+      <PaymentConfirmModal prompt={payPrompt} onClose={() => setPayPrompt(null)} />
     </div>
   );
 }

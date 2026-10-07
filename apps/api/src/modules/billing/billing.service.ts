@@ -339,7 +339,7 @@ export class BillingService {
   }
 
   async updateOneTimeCharge(schoolId: string, chargeId: string, data: {
-    paidAmount?: number; status?: string; notes?: string; description?: string; amount?: number;
+    paidAmount?: number; status?: string; notes?: string; description?: string; amount?: number; paidAt?: string;
   }) {
     const charge = await this.prisma.oneTimeCharge.findFirst({ where: { id: chargeId, schoolId } });
     if (!charge) throw new NotFoundException('Charge not found');
@@ -351,12 +351,18 @@ export class BillingService {
       else status = 'partial';
     }
 
+    const paidAt = status === 'unpaid' || (data.paidAmount !== undefined && data.paidAmount <= 0)
+      ? null
+      : data.paidAt
+        ? new Date(data.paidAt)
+        : (status === 'paid' || status === 'partial' ? new Date() : undefined);
+
     return this.prisma.oneTimeCharge.update({
       where: { id: chargeId },
       data: {
         ...data,
         status,
-        paidAt: status === 'paid' ? new Date() : (data.status === 'unpaid' ? null : undefined),
+        paidAt,
       },
     });
   }
