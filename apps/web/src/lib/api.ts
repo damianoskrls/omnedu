@@ -313,6 +313,11 @@ export const broadcastsApi = {
     targetStudentId?: string;
     channels?: string[];
   }) => api.post(`/schools/${schoolId}/notifications/send`, data),
+  uploadImage: (schoolId: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.post(`/schools/${schoolId}/notifications/image`, form);
+  },
   getSettings: (schoolId: string) => api.get(`/schools/${schoolId}/notifications/settings`),
   updateSettings: (schoolId: string, data: any) =>
     api.patch(`/schools/${schoolId}/notifications/settings`, data),

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import * as admin from 'firebase-admin';
@@ -15,9 +15,18 @@ interface BroadcastData {
 }
 
 @Injectable()
-export class NotificationsService {
+export class NotificationsService implements OnModuleInit {
   private readonly logger = new Logger(NotificationsService.name);
   private fcmApp: admin.app.App | null = null;
+
+  async onModuleInit() {
+    try {
+      await this.prisma.$executeRawUnsafe('ALTER TABLE fcm_tokens ADD COLUMN IF NOT EXISTS device_id TEXT');
+    } catch (error) {
+      const message = String((error as { message?: string })?.message ?? error);
+      if (!/already exists|duplicate/i.test(message)) this.logger.warn(`FCM device column: ${message}`);
+    }
+  }
 
   constructor(private prisma: PrismaService, private config: ConfigService) {
     const projectId = this.config.get('firebase.projectId');
@@ -96,8 +105,19 @@ export class NotificationsService {
                 body: data.body,
                 ...(data.imageUrl ? { imageUrl: data.imageUrl } : {}),
               },
-              data: { type: 'broadcast', screen: 'inbox', schoolId },
-              android: { priority: 'high', notification: { channelId: 'oneirochora', sound: 'default' } },
+              data: {
+                type: 'broadcast',
+                screen: 'inbox',
+                schoolId,
+                title: data.title,
+                body: data.body,
+                ...(data.imageUrl ? { imageUrl: data.imageUrl } : {}),
+              },
+              android: {
+                priority: 'high',
+                collapseKey: 'oneirochora-broadcast',
+                notification: { channelId: 'oneirochora', sound: 'default', tag: 'oneirochora-broadcast' },
+              },
             });
             pushDelivered += res.successCount;
             recipientCount += res.successCount;
@@ -154,7 +174,7 @@ export class NotificationsService {
           type: 'broadcast',
           title: data.title,
           body: data.body,
-          data: { screen: 'inbox' },
+          data: { screen: 'inbox', ...(data.imageUrl ? { imageUrl: data.imageUrl } : {}) },
         })),
         skipDuplicates: true,
       });
@@ -168,14 +188,26 @@ export class NotificationsService {
     };
   }
 
-  async registerDevice(userId: string, token: string, platform = 'android') {
+  async registerDevice(userId: string, token: string, platform = 'android', deviceId?: string) {
     const value = token.trim();
     if (!value) return null;
-    return this.prisma.fcmToken.upsert({
+    const id = deviceId?.trim() || null;
+    const row = await this.prisma.fcmToken.upsert({
       where: { token: value },
-      create: { id: crypto.randomUUID(), userId, token: value, platform },
-      update: { userId, platform },
+      create: { id: crypto.randomUUID(), userId, token: value, platform, deviceId: id },
+      update: { userId, platform, deviceId: id },
     });
+    if (id) {
+      await this.prisma.fcmToken.deleteMany({
+        where: {
+          userId,
+          platform,
+          NOT: { token: value },
+          OR: [{ deviceId: id }, { deviceId: null }],
+        },
+      });
+    }
+    return row;
   }
 
   async inbox(userId: string, schoolId: string) {
@@ -246,7 +278,11 @@ export class NotificationsService {
           tokens: chunk,
           notification: { title, body },
           data: payload,
-          android: { priority: 'high', notification: { channelId: 'oneirochora', sound: 'default' } },
+          android: {
+            priority: 'high',
+            collapseKey: 'oneirochora-event',
+            notification: { channelId: 'oneirochora', sound: 'default', tag: `oneirochora-${payload.type || 'event'}` },
+          },
         });
         const stale: string[] = [];
         res.responses.forEach((item, index) => {

@@ -764,6 +764,7 @@ model FcmToken {
   userId    String   @map("user_id")
   token     String   @unique
   platform  String
+  deviceId  String?  @map("device_id")
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

@@ -1,5 +1,8 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpException, Param, Patch, Post, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { IsOptional, IsString } from 'class-validator';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { StorageService } from '../../common/storage/storage.service';
 import { NotificationsService } from './notifications.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -14,12 +17,19 @@ class RegisterDeviceDto {
   @IsOptional()
   @IsString()
   platform?: string;
+
+  @IsOptional()
+  @IsString()
+  deviceId?: string;
 }
 
 @Controller({ path: 'schools/:schoolId/notifications', version: '1' })
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class NotificationsController {
-  constructor(private readonly svc: NotificationsService) {}
+  constructor(
+    private readonly svc: NotificationsService,
+    private readonly storage: StorageService,
+  ) {}
 
   @Get('inbox')
   inbox(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
@@ -36,7 +46,28 @@ export class NotificationsController {
     @CurrentUser() user: JwtPayload,
     @Body() body: RegisterDeviceDto,
   ) {
-    return this.svc.registerDevice(user.sub, body.token, body.platform ?? 'android');
+    return this.svc.registerDevice(user.sub, body.token, body.platform ?? 'android', body.deviceId);
+  }
+
+  @Post('image')
+  @Roles('school_admin')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: memoryStorage(),
+    fileFilter: (_req, file, cb) => {
+      if (!file.mimetype.startsWith('image/')) return cb(new BadRequestException('Μόνο εικόνα επιτρέπεται.'), false);
+      cb(null, true);
+    },
+    limits: { fileSize: 8 * 1024 * 1024 },
+  }))
+  async uploadImage(@UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('Διάλεξε εικόνα.');
+    try {
+      const imageUrl = await this.storage.upload(file, 'notifications');
+      return { imageUrl };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new BadRequestException('Η εικόνα δεν ανέβηκε. Δοκίμασε μια μικρότερη JPG ή PNG.');
+    }
   }
 
   @Get()

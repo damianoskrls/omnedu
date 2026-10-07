@@ -35,6 +35,7 @@ Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
 Future<void> startPhonePush({
   required Future<void> Function(String token) onToken,
   required void Function(Map<String, dynamic> data) onOpened,
+  required void Function(String title, String body) onForeground,
 }) async {
   if (!PhonePushConfig.ready) return;
   if (Firebase.apps.isEmpty) {
@@ -42,6 +43,12 @@ Future<void> startPhonePush({
   }
   FirebaseMessaging.onBackgroundMessage(firebaseBackgroundHandler);
   await FirebaseMessaging.instance.requestPermission(alert: true, badge: true, sound: true);
+  FirebaseMessaging.onMessage.listen((message) {
+    final title = message.notification?.title ?? message.data['title']?.toString() ?? 'Ονειροχώρα';
+    final body = message.notification?.body ?? message.data['body']?.toString() ?? '';
+    if (title.isEmpty && body.isEmpty) return;
+    onForeground(title, body);
+  });
   FirebaseMessaging.onMessageOpenedApp.listen((message) => onOpened(message.data));
   final initial = await FirebaseMessaging.instance.getInitialMessage();
   if (initial != null) {

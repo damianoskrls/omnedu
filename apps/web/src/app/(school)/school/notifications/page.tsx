@@ -39,7 +39,7 @@ const AUTO_EVENTS = [
 ];
 
 const defaultForm = () => ({
-  title: '', body: '', imageUrl: '',
+  title: '', body: '',
   targetType: 'all', targetClassId: '', targetStudentId: '',
   channels: ['push'] as string[],
 });
@@ -60,6 +60,8 @@ export default function NotificationsPage() {
   const [sending, setSending]       = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [form, setForm]             = useState(defaultForm());
+  const [imageFile, setImageFile]   = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState('');
   const [sent, setSent]             = useState(false);
   const [sendNote, setSendNote]     = useState('');
   const [pushConfigured, setPushConfigured] = useState<boolean | null>(null);
@@ -110,10 +112,19 @@ export default function NotificationsPage() {
     if (form.channels.length === 0) return;
     setSending(true);
     try {
+      let imageUrl: string | undefined;
+      if (imageFile) {
+        const uploaded: any = await broadcastsApi.uploadImage(schoolId, imageFile);
+        imageUrl = uploaded?.imageUrl;
+        if (!imageUrl) {
+          setSendNote('Η εικόνα δεν ανέβηκε.');
+          return;
+        }
+      }
       const result: any = await broadcastsApi.send(schoolId, {
         title: form.title,
         body: form.body,
-        imageUrl: form.imageUrl || undefined,
+        imageUrl,
         targetType: form.targetType,
         targetClassId: form.targetClassId || undefined,
         targetStudentId: form.targetStudentId || undefined,
@@ -134,8 +145,12 @@ export default function NotificationsPage() {
       }
       setSent(true);
       setForm(defaultForm());
+      setImageFile(null);
+      setImagePreview('');
       setTimeout(() => setSent(false), 6000);
       load();
+    } catch {
+      setSendNote('Η αποστολή δεν ολοκληρώθηκε.');
     } finally {
       setSending(false);
     }
@@ -417,21 +432,27 @@ export default function NotificationsPage() {
                   <p className="text-xs text-gray-400 text-right mt-0.5">{form.body.length}/1000</p>
                 </div>
 
-                {/* Image URL (email/push only) */}
-                {(form.channels.includes('email') || form.channels.includes('push')) && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1.5">
-                      <Image className="w-3.5 h-3.5" /> URL Εικόνας <span className="text-gray-400 font-normal">(προαιρετικό)</span>
-                    </label>
-                    <input
-                      type="url"
-                      value={form.imageUrl}
-                      onChange={e => setForm(p => ({ ...p, imageUrl: e.target.value }))}
-                      placeholder="https://..."
-                      className={inputCls}
-                    />
-                  </div>
-                )}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1.5">
+                    <Image className="w-3.5 h-3.5" /> Εικόνα <span className="text-gray-400 font-normal">(προαιρετικό)</span>
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="block w-full text-sm text-gray-600"
+                    onChange={e => {
+                      const file = e.target.files?.[0] ?? null;
+                      setImageFile(file);
+                      setImagePreview(current => {
+                        if (current) URL.revokeObjectURL(current);
+                        return file ? URL.createObjectURL(file) : '';
+                      });
+                    }}
+                  />
+                  {imagePreview && (
+                    <img src={imagePreview} alt="" className="mt-2 h-32 w-full rounded-lg object-cover" />
+                  )}
+                </div>
 
                 <button
                   onClick={send}
@@ -491,6 +512,9 @@ export default function NotificationsPage() {
                             })}
                           </div>
                           <p className="text-sm text-gray-600 line-clamp-2">{b.body}</p>
+                          {b.imageUrl && (
+                            <img src={b.imageUrl} alt="" className="mt-2 h-24 max-w-xs rounded-lg object-cover" />
+                          )}
                           <div className="flex items-center gap-3 mt-2 text-xs text-gray-400 flex-wrap">
                             <span>{format(new Date(b.sentAt), 'd MMM yyyy, HH:mm', { locale: el })}</span>
                             <span>·</span>

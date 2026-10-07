@@ -53,9 +53,15 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
       onToken: (token) async {
         if (!mounted || widget.schoolId.isEmpty) return;
         try {
+          final prefs = await SharedPreferences.getInstance();
+          final existing = prefs.getString('push_device_id');
+          final deviceId = (existing != null && existing.isNotEmpty)
+              ? existing
+              : DateTime.now().microsecondsSinceEpoch.toString();
+          if (existing == null || existing.isEmpty) await prefs.setString('push_device_id', deviceId);
           await ref.read(dioProvider).post(
             '/schools/${widget.schoolId}/notifications/device',
-            data: {'token': token, 'platform': 'android'},
+            data: {'token': token, 'platform': 'android', 'deviceId': deviceId},
           );
         } catch (_) {}
       },
@@ -65,6 +71,13 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
           'type': data['type'] ?? 'broadcast',
           'title': data['title'] ?? 'Ονειροχώρα',
           'data': data,
+        });
+      },
+      onForeground: (title, body) {
+        _show({
+          'id': 'live-${DateTime.now().microsecondsSinceEpoch}',
+          'title': title,
+          'body': body,
         });
       },
     );
@@ -125,7 +138,7 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
         final id = notice['id'] as String? ?? '';
         if (id.isEmpty || notice['isRead'] == true || _shown.contains(id)) continue;
         _shown.add(id);
-        await _show(notice);
+        if (!PhonePushConfig.ready) await _show(notice);
       }
       final prefs = await SharedPreferences.getInstance();
       final kept = _shown.toList();
@@ -315,19 +328,46 @@ class InboxScreen extends ConsumerWidget {
             itemBuilder: (_, index) {
               final notice = Map<String, dynamic>.from(list[index] as Map);
               final unread = notice['isRead'] != true;
+              final rawData = notice['data'];
+              final imageUrl = rawData is Map ? rawData['imageUrl']?.toString() : null;
               return Material(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
-                child: ListTile(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  leading: CircleAvatar(
-                    backgroundColor: unread ? const Color(0xFFF3E8F7) : const Color(0xFFF3F4F6),
-                    child: Icon(_icon(notice['type'] as String?), color: const Color(0xFF77328D)),
-                  ),
-                  title: Text(notice['title'] as String? ?? 'Ειδοποίηση', style: const TextStyle(fontWeight: FontWeight.w800)),
-                  subtitle: Text(notice['body'] as String? ?? ''),
-                  trailing: unread ? const Icon(Icons.circle, size: 10, color: Color(0xFFE95926)) : null,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
                   onTap: () => openNotification(context, ref, notice, fromList: true),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        CircleAvatar(
+                          backgroundColor: unread ? const Color(0xFFF3E8F7) : const Color(0xFFF3F4F6),
+                          child: Icon(_icon(notice['type'] as String?), color: const Color(0xFF77328D)),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(notice['title'] as String? ?? 'Ειδοποίηση', style: const TextStyle(fontWeight: FontWeight.w800)),
+                              const SizedBox(height: 2),
+                              Text(notice['body'] as String? ?? ''),
+                              if (imageUrl != null && imageUrl.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: Image.network(imageUrl, height: 140, width: double.infinity, fit: BoxFit.cover),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        if (unread) const Padding(padding: EdgeInsets.only(left: 8, top: 6), child: Icon(Icons.circle, size: 10, color: Color(0xFFE95926))),
+                      ],
+                    ),
+                  ),
                 ),
               );
             },
