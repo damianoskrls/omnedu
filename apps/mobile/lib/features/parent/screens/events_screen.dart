@@ -198,7 +198,16 @@ class _CelebrationCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if ((celebration['imageUrl']?.toString() ?? '').isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: AppImage(celebration['imageUrl'].toString(), height: 160, width: double.infinity, fit: BoxFit.cover),
+              ),
+            ),
           Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF111827))),
+          Text(_audienceLabel(celebration['audienceType']?.toString()), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF77328D))),
           if (date.isNotEmpty || arrival.isNotEmpty || place.isNotEmpty) ...[
             const SizedBox(height: 6),
             Text(
@@ -215,6 +224,13 @@ class _CelebrationCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _audienceLabel(String? type) {
+    if (type == 'class') return 'Για την τάξη';
+    if (type == 'level') return 'Για τη βαθμίδα';
+    if (type == 'teachers') return 'Για τους εκπαιδευτικούς';
+    return 'Όλο το σχολείο';
   }
 
   String _formatDate(String? iso) {

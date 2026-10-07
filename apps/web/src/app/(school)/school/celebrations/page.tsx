@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { celebrationsApi, classesApi } from '@/lib/api';
+import { celebrationsApi, classesApi, levelsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
+import { AudienceSelector, AudienceValue, audienceLabel } from '@/components/AudienceSelector';
 import { PartyPopper, Plus, Pencil, Trash2, X } from 'lucide-react';
 
 type ItemDraft = { name: string; cost: string; phase: 'before' | 'after' };
@@ -15,11 +16,23 @@ type Celebration = {
   place?: string | null;
   details?: string | null;
   items?: string;
+  imageUrl?: string | null;
+  audienceType?: string;
+  audienceIds?: string;
 };
 
 function calendarYear(now = new Date()) {
   const start = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
   return `${start}-${start + 1}`;
+}
+
+function parseIds(raw?: string): string[] {
+  try {
+    const parsed = JSON.parse(raw || '[]');
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
 }
 
 function parseItems(raw?: string): ItemDraft[] {
@@ -45,6 +58,9 @@ const emptyForm = (year: string) => ({
   place: '',
   details: '',
   items: [] as ItemDraft[],
+  audienceType: 'all' as AudienceValue['audienceType'],
+  audienceIds: [] as string[],
+  imageUrl: '',
 });
 
 export default function CelebrationsPage() {
@@ -57,6 +73,9 @@ export default function CelebrationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [form, setForm] = useState<ReturnType<typeof emptyForm> | null>(null);
+  const [poster, setPoster] = useState<File | null>(null);
+  const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
+  const [levels, setLevels] = useState<{ id: string; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -68,6 +87,10 @@ export default function CelebrationsPage() {
       setYears(sorted);
       const current = sorted.find(label => label === calendarYear()) ?? sorted[0];
       setYear(current);
+    }).catch(() => undefined);
+    Promise.all([classesApi.list(schoolId), levelsApi.list(schoolId)]).then(([classRows, levelRows]) => {
+      setClasses(Array.isArray(classRows) ? classRows.map((row: any) => ({ id: row.id, name: row.name })) : []);
+      setLevels(Array.isArray(levelRows) ? levelRows.map((row: any) => ({ id: row.id, name: row.name })) : []);
     }).catch(() => undefined);
   }, [schoolId]);
 
@@ -106,10 +129,16 @@ export default function CelebrationsPage() {
         items: form.items
           .map(item => ({ name: item.name.trim(), cost: item.cost === '' ? null : Number(item.cost), phase: item.phase }))
           .filter(item => item.name),
+        audienceType: form.audienceType,
+        audienceIds: form.audienceIds,
       };
-      if (form.id) await celebrationsApi.update(schoolId, form.id, payload);
-      else await celebrationsApi.create(schoolId, payload);
+      const saved = form.id
+        ? await celebrationsApi.update(schoolId, form.id, payload)
+        : await celebrationsApi.create(schoolId, payload);
+      const id = (saved as any)?.id || form.id;
+      if (poster && id) await celebrationsApi.uploadImage(schoolId, id, poster);
       setForm(null);
+      setPoster(null);
       await load(year);
     } catch (err: any) {
       const message = err?.message;
@@ -133,7 +162,7 @@ export default function CelebrationsPage() {
           <p className="text-sm text-gray-500 mt-1">Ανά σχολική χρονιά: πότε, πού, ώρα προσέλευσης, στολή και USB.</p>
         </div>
         {isAdmin && (
-          <button onClick={() => setForm(emptyForm(year))}
+          <button onClick={() => { setPoster(null); setForm(emptyForm(year)); }}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">
             <Plus className="w-4 h-4" /> Νέα γιορτή
           </button>
@@ -167,8 +196,12 @@ export default function CelebrationsPage() {
             return (
               <div key={row.id} className="bg-white rounded-xl border border-gray-200 p-5">
                 <div className="flex items-start justify-between gap-3">
-                  <div>
+                  <div className="min-w-0 flex-1">
+                    {row.imageUrl && (
+                      <img src={row.imageUrl} alt="" className="mb-3 h-40 w-full rounded-lg object-cover" />
+                    )}
                     <h2 className="font-semibold text-gray-900">{row.title}</h2>
+                    <p className="text-xs font-medium text-indigo-700 mt-1">{audienceLabel(row.audienceType || 'all', row.audienceIds || '[]', classes, levels)}</p>
                     <p className="text-sm text-gray-500 mt-1">
                       {row.eventDate ? new Date(row.eventDate).toLocaleDateString('el-GR', { timeZone: 'UTC' }) : 'Χωρίς ημερομηνία'}
                       {row.arrivalTime ? ` · προσέλευση ${row.arrivalTime}` : ''}
@@ -186,7 +219,10 @@ export default function CelebrationsPage() {
                         place: row.place ?? '',
                         details: row.details ?? '',
                         items: parseItems(row.items),
-                      })} className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50"><Pencil className="w-4 h-4 text-gray-500" /></button>
+                        audienceType: (row.audienceType || 'all') as AudienceValue['audienceType'],
+                        audienceIds: parseIds(row.audienceIds),
+                        imageUrl: row.imageUrl ?? '',
+                      }); setPoster(null); }} className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50"><Pencil className="w-4 h-4 text-gray-500" /></button>
                       <button onClick={() => remove(row.id)} className="p-2 rounded-lg border border-red-200 hover:bg-red-50"><Trash2 className="w-4 h-4 text-red-500" /></button>
                     </div>
                   )}
@@ -205,10 +241,27 @@ export default function CelebrationsPage() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
               <h2 className="font-semibold text-gray-900">{form.id ? 'Επεξεργασία γιορτής' : 'Νέα γιορτή'}</h2>
-              <button onClick={() => setForm(null)} className="p-2 rounded-lg hover:bg-gray-100"><X className="w-4 h-4" /></button>
+              <button onClick={() => { setForm(null); setPoster(null); }} className="p-2 rounded-lg hover:bg-gray-100"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-5 space-y-3">
               <p className="text-xs text-gray-500">Σχολική χρονιά {year}</p>
+              <AudienceSelector
+                value={{ audienceType: form.audienceType, audienceIds: form.audienceIds }}
+                classes={classes}
+                levels={levels}
+                onChange={(value) => setForm({ ...form, audienceType: value.audienceType, audienceIds: value.audienceIds })}
+              />
+              <label className="block text-sm">
+                <span className="block text-xs font-medium text-gray-600 mb-1">Πόστερ</span>
+                {(poster || form.imageUrl) && (
+                  <img
+                    src={poster ? URL.createObjectURL(poster) : form.imageUrl}
+                    alt=""
+                    className="mb-2 h-36 w-full rounded-lg object-cover"
+                  />
+                )}
+                <input type="file" accept="image/*" className="block w-full text-sm" onChange={e => setPoster(e.target.files?.[0] ?? null)} />
+              </label>
               <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Τίτλος, π.χ. Καλοκαιρινή γιορτή"
                 value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
               <div className="grid grid-cols-2 gap-3">
@@ -242,7 +295,7 @@ export default function CelebrationsPage() {
               ))}
             </div>
             <div className="p-5 border-t border-gray-100 flex justify-end gap-3">
-              <button onClick={() => setForm(null)} className="px-4 py-2 text-sm border border-gray-200 rounded-lg">Ακύρωση</button>
+              <button onClick={() => { setForm(null); setPoster(null); }} className="px-4 py-2 text-sm border border-gray-200 rounded-lg">Ακύρωση</button>
               <button onClick={save} disabled={saving || !form.title.trim()} className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg disabled:opacity-50">
                 {saving ? 'Αποθήκευση...' : 'Αποθήκευση'}
               </button>

@@ -427,6 +427,13 @@ export const celebrationsApi = {
     api.get(`/schools/${schoolId}/celebrations`, { params: academicYear ? { academicYear } : {} }),
   create: (schoolId: string, data: any) => api.post(`/schools/${schoolId}/celebrations`, data),
   update: (schoolId: string, id: string, data: any) => api.patch(`/schools/${schoolId}/celebrations/${id}`, data),
+  uploadImage: (schoolId: string, id: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.post(`/schools/${schoolId}/celebrations/${id}/image`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
   remove: (schoolId: string, id: string) => api.delete(`/schools/${schoolId}/celebrations/${id}`),
 };
 

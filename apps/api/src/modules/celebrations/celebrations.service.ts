@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 
 @Injectable()
 export class CelebrationsService implements OnModuleInit {
@@ -30,6 +31,9 @@ export class CelebrationsService implements OnModuleInit {
           CONSTRAINT "school_celebrations_pkey" PRIMARY KEY ("id")
         )
       `);
+      await this.prisma.$executeRawUnsafe(`ALTER TABLE "school_celebrations" ADD COLUMN IF NOT EXISTS "image_url" TEXT`);
+      await this.prisma.$executeRawUnsafe(`ALTER TABLE "school_celebrations" ADD COLUMN IF NOT EXISTS "audience_type" TEXT NOT NULL DEFAULT 'all'`);
+      await this.prisma.$executeRawUnsafe(`ALTER TABLE "school_celebrations" ADD COLUMN IF NOT EXISTS "audience_ids" TEXT NOT NULL DEFAULT '[]'`);
       await this.prisma.$executeRawUnsafe(`
         CREATE INDEX IF NOT EXISTS "school_celebrations_school_id_academic_year_idx"
         ON "school_celebrations"("school_id", "academic_year")
@@ -39,12 +43,21 @@ export class CelebrationsService implements OnModuleInit {
     }
   }
 
-  async findAll(schoolId: string, academicYear?: string) {
+  async findAll(schoolId: string, user: JwtPayload, academicYear?: string) {
     await this.ensureTable();
-    return this.prisma.schoolCelebration.findMany({
+    const rows = await this.prisma.schoolCelebration.findMany({
       where: { schoolId, ...(academicYear ? { academicYear } : {}) },
       orderBy: [{ eventDate: 'asc' }, { createdAt: 'desc' }],
     });
+    if (user.isSuperAdmin || user.role === 'school_admin' || user.role === 'teacher') return rows;
+    const scope = await this.parentScope(schoolId, user.sub);
+    return rows.filter((row) => this.visibleToParent(row.audienceType, row.audienceIds, scope));
+  }
+
+  async setImage(id: string, schoolId: string, imageUrl: string) {
+    const existing = await this.prisma.schoolCelebration.findFirst({ where: { id, schoolId } });
+    if (!existing) throw new NotFoundException('Η γιορτή δεν βρέθηκε.');
+    return this.prisma.schoolCelebration.update({ where: { id }, data: { imageUrl } });
   }
 
   async create(schoolId: string, data: any) {
@@ -87,7 +100,53 @@ export class CelebrationsService implements OnModuleInit {
       place: this.textOrNull(data.place),
       details: this.textOrNull(data.details),
       items: JSON.stringify(this.cleanItems(data.items)),
+      ...this.audienceData(data),
     };
+  }
+
+  private audienceData(data: any) {
+    const audienceType = ['all', 'class', 'level', 'teachers'].includes(data.audienceType) ? data.audienceType : 'all';
+    let ids: string[] = [];
+    if (audienceType === 'class' || audienceType === 'level') {
+      const raw = typeof data.audienceIds === 'string' ? this.parseIds(data.audienceIds) : data.audienceIds;
+      ids = Array.isArray(raw) ? raw.map((id: unknown) => String(id)).filter(Boolean) : [];
+      if (!ids.length) throw new BadRequestException(audienceType === 'class' ? 'Διάλεξε τουλάχιστον μία τάξη.' : 'Διάλεξε τουλάχιστον μία βαθμίδα.');
+    }
+    return { audienceType, audienceIds: JSON.stringify(ids) };
+  }
+
+  private async parentScope(schoolId: string, userId: string) {
+    const students = await this.prisma.student.findMany({
+      where: { schoolId, isActive: true, parents: { some: { userId } } },
+      select: { enrollments: { select: { class: { select: { id: true, levelId: true } } } } },
+    });
+    const classIds = new Set<string>();
+    const levelIds = new Set<string>();
+    for (const student of students) {
+      for (const enrollment of student.enrollments) {
+        classIds.add(enrollment.class.id);
+        if (enrollment.class.levelId) levelIds.add(enrollment.class.levelId);
+      }
+    }
+    return { classIds, levelIds };
+  }
+
+  private visibleToParent(audienceType: string, audienceIds: string, scope: { classIds: Set<string>; levelIds: Set<string> }) {
+    if (!audienceType || audienceType === 'all') return true;
+    if (audienceType === 'teachers') return false;
+    const ids = this.parseIds(audienceIds);
+    if (audienceType === 'class') return ids.some((id) => scope.classIds.has(id));
+    if (audienceType === 'level') return ids.some((id) => scope.levelIds.has(id));
+    return false;
+  }
+
+  private parseIds(value: string) {
+    try {
+      const parsed = JSON.parse(value || '[]');
+      return Array.isArray(parsed) ? parsed.map((id) => String(id)) : [];
+    } catch {
+      return [];
+    }
   }
 
   private currentSchoolYear() {
