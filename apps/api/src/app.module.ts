@@ -24,6 +24,7 @@ import { QuestionnairesModule } from './modules/questionnaires/questionnaires.mo
 import { SchoolPostsModule } from './modules/school-posts/school-posts.module';
 import { SchoolEventsModule } from './modules/school-events/school-events.module';
 import { ThematicPlansModule } from './modules/thematic-plans/thematic-plans.module';
+import { CelebrationsModule } from './modules/celebrations/celebrations.module';
 import { StorageModule } from './common/storage/storage.module';
 import { HealthController } from './modules/health/health.controller';
 
@@ -54,6 +55,7 @@ import { HealthController } from './modules/health/health.controller';
     SchoolPostsModule,
     SchoolEventsModule,
     ThematicPlansModule,
+    CelebrationsModule,
     StorageModule,
   ],
 })

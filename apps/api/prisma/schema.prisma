@@ -60,8 +60,28 @@ model School {
   questionnaires       Questionnaire[]
   thematicPlans        ThematicPlan[]
   regulations          SchoolRegulation[]
+  celebrations         SchoolCelebration[]
 
   @@map("schools")
+}
+
+model SchoolCelebration {
+  id           String    @id @default(uuid())
+  schoolId     String    @map("school_id")
+  academicYear String    @map("academic_year")
+  title        String
+  eventDate    DateTime? @map("event_date") @db.Date
+  arrivalTime  String?   @map("arrival_time")
+  place        String?
+  details      String?   @db.Text
+  items        String    @default("[]")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, academicYear])
+  @@map("school_celebrations")
 }
 
 model SchoolRegulation {

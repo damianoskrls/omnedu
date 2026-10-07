@@ -422,6 +422,14 @@ export const staffApi = {
     api.patch(`/schools/${schoolId}/staff/${memberId}/leaves/${leaveId}`, { status }),
 };
 
+export const celebrationsApi = {
+  list: (schoolId: string, academicYear?: string) =>
+    api.get(`/schools/${schoolId}/celebrations`, { params: academicYear ? { academicYear } : {} }),
+  create: (schoolId: string, data: any) => api.post(`/schools/${schoolId}/celebrations`, data),
+  update: (schoolId: string, id: string, data: any) => api.patch(`/schools/${schoolId}/celebrations/${id}`, data),
+  remove: (schoolId: string, id: string) => api.delete(`/schools/${schoolId}/celebrations/${id}`),
+};
+
 export const schoolEventsApi = {
   list: (schoolId: string, status?: string) =>
     api.get(`/schools/${schoolId}/events`, { params: status ? { status } : {} }),

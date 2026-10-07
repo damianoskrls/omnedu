@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
@@ -15,6 +17,13 @@ final _parentEventsProvider = FutureProvider.family<List<dynamic>, String>(
     return data is List ? data : [];
   },
 );
+
+final _celebrationsProvider = FutureProvider.family<List<dynamic>, String>((ref, schoolId) async {
+  final dio = ref.read(dioProvider);
+  final resp = await dio.get('/schools/$schoolId/celebrations');
+  final data = resp.data;
+  return data is List ? data : [];
+});
 
 const _statusMeta = {
   'pending_consent': ('Αναμονή Συναίνεσης', Color(0xFFF59E0B), Color(0xFFFFFBEB)),
@@ -66,6 +75,7 @@ class _ParentEventsScreenState extends ConsumerState<ParentEventsScreen> {
   @override
   Widget build(BuildContext context) {
     final eventsAsync = ref.watch(_parentEventsProvider(widget.schoolId));
+    final celebrations = ref.watch(_celebrationsProvider(widget.schoolId)).asData?.value ?? const [];
 
     return Scaffold(
       backgroundColor: const Color(0xFFF6F3FA),
@@ -76,7 +86,10 @@ class _ParentEventsScreenState extends ConsumerState<ParentEventsScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_outlined, color: Color(0xFF77328D)),
-            onPressed: () => ref.invalidate(_parentEventsProvider(widget.schoolId)),
+            onPressed: () {
+              ref.invalidate(_parentEventsProvider(widget.schoolId));
+              ref.invalidate(_celebrationsProvider(widget.schoolId));
+            },
           ),
         ],
       ),
@@ -84,7 +97,8 @@ class _ParentEventsScreenState extends ConsumerState<ParentEventsScreen> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Σφάλμα: $e')),
         data: (enrollments) {
-          if (enrollments.isEmpty) {
+          final celebrationCards = _celebrationSections(celebrations);
+          if (enrollments.isEmpty && celebrationCards.isEmpty) {
             return const Center(
               child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                 Icon(Icons.event_outlined, size: 64, color: Color(0xFFD1D5DB)),
@@ -104,22 +118,148 @@ class _ParentEventsScreenState extends ConsumerState<ParentEventsScreen> {
           }
 
           return RefreshIndicator(
-            onRefresh: () => ref.refresh(_parentEventsProvider(widget.schoolId).future),
+            onRefresh: () async {
+              ref.invalidate(_parentEventsProvider(widget.schoolId));
+              ref.invalidate(_celebrationsProvider(widget.schoolId));
+              await ref.read(_parentEventsProvider(widget.schoolId).future);
+            },
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
-              children: byChild.values.map((group) {
-                final student = group['student'] as Map<String, dynamic>;
-                final childEnrollments = group['enrollments'] as List<dynamic>;
-                return _ChildEventGroup(
-                  student: student,
-                  enrollments: childEnrollments,
-                  giving: _giving,
-                  onConsent: _giveConsent,
-                );
-              }).toList(),
+              children: [
+                ...celebrationCards,
+                if (enrollments.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 24),
+                    child: Text('Δεν υπάρχουν εκδρομές ή θέατρο.', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF9CA3AF))),
+                  ),
+                ...byChild.values.map((group) {
+                  final student = group['student'] as Map<String, dynamic>;
+                  final childEnrollments = group['enrollments'] as List<dynamic>;
+                  return _ChildEventGroup(
+                    student: student,
+                    enrollments: childEnrollments,
+                    giving: _giving,
+                    onConsent: _giveConsent,
+                  );
+                }),
+              ],
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+List<Widget> _celebrationSections(List<dynamic> rows) {
+  final grouped = <String, List<Map<String, dynamic>>>{};
+  for (final row in rows) {
+    if (row is! Map) continue;
+    final item = Map<String, dynamic>.from(row);
+    final year = item['academicYear']?.toString() ?? '';
+    grouped.putIfAbsent(year, () => []).add(item);
+  }
+  final years = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
+  return [
+    for (final year in years) ...[
+      Padding(
+        padding: const EdgeInsets.only(bottom: 8, top: 4),
+        child: Text('Γιορτές $year', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
+      ),
+      ...grouped[year]!.map((item) => _CelebrationCard(celebration: item)),
+      const SizedBox(height: 12),
+    ],
+  ];
+}
+
+class _CelebrationCard extends StatelessWidget {
+  final Map<String, dynamic> celebration;
+  const _CelebrationCard({required this.celebration});
+
+  @override
+  Widget build(BuildContext context) {
+    final title = celebration['title']?.toString() ?? '';
+    final place = celebration['place']?.toString() ?? '';
+    final details = celebration['details']?.toString() ?? '';
+    final arrival = celebration['arrivalTime']?.toString() ?? '';
+    final date = _formatDate(celebration['eventDate']?.toString());
+    final items = _items(celebration['items']);
+    final before = items.where((item) => item['phase'] != 'after').toList();
+    final after = items.where((item) => item['phase'] == 'after').toList();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE9D5FF)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF111827))),
+          if (date.isNotEmpty || arrival.isNotEmpty || place.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              [date, if (arrival.isNotEmpty) 'προσέλευση $arrival', place].where((part) => part.isNotEmpty).join(' · '),
+              style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+            ),
+          ],
+          if (details.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(details, style: const TextStyle(fontSize: 13, height: 1.4, color: Color(0xFF374151))),
+          ],
+          _ItemBlock(title: 'Πριν τη γιορτή', items: before),
+          _ItemBlock(title: 'Μετά τη γιορτή', items: after),
+        ],
+      ),
+    );
+  }
+
+  String _formatDate(String? iso) {
+    if (iso == null || iso.isEmpty) return '';
+    final date = DateTime.tryParse(iso);
+    if (date == null) return '';
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+
+  List<Map<String, dynamic>> _items(dynamic raw) {
+    dynamic parsed = raw;
+    if (raw is String && raw.isNotEmpty) {
+      try {
+        parsed = jsonDecode(raw);
+      } catch (_) {
+        return [];
+      }
+    }
+    if (parsed is! List) return [];
+    return parsed.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+}
+
+class _ItemBlock extends StatelessWidget {
+  final String title;
+  final List<Map<String, dynamic>> items;
+  const _ItemBlock({required this.title, required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF77328D))),
+          const SizedBox(height: 4),
+          ...items.map((item) {
+            final name = item['name']?.toString() ?? '';
+            final cost = item['cost'];
+            final price = cost == null || cost.toString().isEmpty ? '' : ' · $cost€';
+            return Text('$name$price', style: const TextStyle(fontSize: 13, color: Color(0xFF374151)));
+          }),
+        ],
       ),
     );
   }
