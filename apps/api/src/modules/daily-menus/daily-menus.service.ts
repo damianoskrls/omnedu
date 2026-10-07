@@ -15,7 +15,7 @@ type MenuInput = {
   audienceIds?: unknown;
 };
 
-const require = createRequire(__filename);
+const nodeRequire = createRequire(__filename);
 
 const AI_PROMPT = `Είσαι βοηθός παιδικού σταθμού. Διάβασε το διατροφολόγιο και επέστρεψε ΜΟΝΟ JSON:
 {"month":"yyyy-MM","days":[{"date":"yyyy-MM-dd","breakfast":"","midMorning":"","lunch":"","afternoon":"","notes":""}]}
@@ -158,7 +158,7 @@ export class DailyMenusService {
 
   private async extractPdfText(buffer: Buffer) {
     try {
-      const pdfParse = require('pdf-parse/lib/pdf-parse.js');
+      const pdfParse = nodeRequire('pdf-parse/lib/pdf-parse.js');
       const result = await pdfParse(buffer);
       return String(result?.text || '');
     } catch {
