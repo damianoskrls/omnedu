@@ -1,4 +1,4 @@
-import { IsArray, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsArray, IsIn, IsOptional, IsString } from 'class-validator';
 
 export class OpenConversationDto {
   @IsOptional()
@@ -16,9 +16,9 @@ export class OpenConversationDto {
 }
 
 export class SendMessageDto {
+  @IsOptional()
   @IsString()
-  @MinLength(1)
-  body: string;
+  body?: string;
 
   @IsOptional()
   @IsString()

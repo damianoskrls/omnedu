@@ -1,15 +1,21 @@
-import { Controller, Get, Post, Delete, Body, Param, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, HttpException, Param, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { MessagesService } from './messages.service';
 import { OpenConversationDto, SendMessageDto } from './dto/conversation.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { StorageService } from '../../common/storage/storage.service';
 
 @ApiTags('messages')
 @ApiBearerAuth('access-token')
 @Controller('schools/:schoolId/conversations')
 export class MessagesController {
-  constructor(private messages: MessagesService) {}
+  constructor(
+    private messages: MessagesService,
+    private storage: StorageService,
+  ) {}
 
   @Get()
   myConversations(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
@@ -42,6 +48,31 @@ export class MessagesController {
     @Query('take') take?: number,
   ) {
     return this.messages.getMessages(conversationId, user.sub, cursor, take);
+  }
+
+  @Post(':conversationId/messages/image')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: memoryStorage(),
+    fileFilter: (_req, file, cb) => {
+      if (!file.mimetype.startsWith('image/')) return cb(new BadRequestException('Μόνο εικόνα επιτρέπεται.'), false);
+      cb(null, true);
+    },
+    limits: { fileSize: 8 * 1024 * 1024 },
+  }))
+  async sendImage(
+    @Param('conversationId') conversationId: string,
+    @CurrentUser() user: JwtPayload,
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: { body?: string },
+  ) {
+    if (!file) throw new BadRequestException('Διάλεξε εικόνα.');
+    try {
+      const mediaUrl = await this.storage.upload(file, 'messages');
+      return await this.messages.sendMessage(conversationId, user.sub, body?.body, mediaUrl);
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new BadRequestException('Η εικόνα δεν ανέβηκε. Δοκίμασε μια μικρότερη JPG ή PNG.');
+    }
   }
 
   @Post(':conversationId/messages')

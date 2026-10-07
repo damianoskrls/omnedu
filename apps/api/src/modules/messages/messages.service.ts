@@ -63,7 +63,9 @@ export class MessagesService {
   async contacts(userId: string, schoolId: string, role?: string | null) {
     if (role === 'parent') return this.parentContacts(userId, schoolId);
     if (role === 'teacher') return { admins: [], teachers: [], parents: await this.parentsOfTeacher(userId, schoolId) };
-    if (role === 'school_admin') return { admins: [], teachers: [], parents: await this.schoolParents(schoolId) };
+    if (role === 'school_admin') {
+      return { admins: [], teachers: await this.schoolTeachers(schoolId), parents: await this.schoolParents(schoolId) };
+    }
     return { admins: [], teachers: [], parents: [] };
   }
 
@@ -71,10 +73,17 @@ export class MessagesService {
     if (kind === 'admin') {
       const admins = await this.adminUserIds(schoolId);
       if (!admins.length) throw new NotFoundException('Δεν υπάρχει διαχειριστής');
-      const parentId = role === 'school_admin' ? withUserId : userId;
-      if (!parentId || !(await this.isParent(schoolId, parentId))) throw new ForbiddenException();
-      if (role !== 'school_admin' && role !== 'parent') throw new ForbiddenException();
-      return this.findOrCreate(schoolId, [parentId, ...admins]);
+      if (role === 'school_admin') {
+        if (!withUserId) throw new ForbiddenException();
+        const [parent, teacher] = await Promise.all([
+          this.isParent(schoolId, withUserId),
+          this.isTeacher(schoolId, withUserId),
+        ]);
+        if (!parent && !teacher) throw new ForbiddenException('Μπορείς να στείλεις σε γονέα ή εκπαιδευτικό');
+        return this.findOrCreate(schoolId, [withUserId, ...admins]);
+      }
+      if (role !== 'parent' && role !== 'teacher') throw new ForbiddenException();
+      return this.findOrCreate(schoolId, [userId, ...admins]);
     }
 
     if (kind === 'teacher') {
@@ -120,16 +129,17 @@ export class MessagesService {
     return messages.reverse();
   }
 
-  async sendMessage(conversationId: string, senderId: string, body: string, mediaUrl?: string) {
+  async sendMessage(conversationId: string, senderId: string, body?: string, mediaUrl?: string) {
     await this.assertParticipant(conversationId, senderId);
     const text = (body ?? '').trim();
-    if (!text) throw new BadRequestException('Το μήνυμα είναι κενό');
+    const image = mediaUrl?.trim() || '';
+    if (!text && !image) throw new BadRequestException('Το μήνυμα είναι κενό');
     const created = await this.prisma.message.create({
       data: {
         conversationId,
         senderId,
-        body: text,
-        ...(mediaUrl ? { mediaUrl } : {}),
+        body: text || null,
+        ...(image ? { mediaUrl: image } : {}),
       },
       include: { sender: { select: userCard } },
     });
@@ -146,7 +156,7 @@ export class MessagesService {
           event: 'new_message',
           type: 'message',
           title: senderName,
-          body: text,
+          body: text || 'Σου έστειλε μια εικόνα',
           data: { screen: 'message', conversationId, title: senderName },
         },
       );
@@ -169,20 +179,20 @@ export class MessagesService {
     if (!others.length) return false;
     return others.every((person) => {
       const roles = person.user.schoolMemberships.map((row) => row.role);
-      if (roles.includes('parent')) return true;
+      if (roles.includes('parent') || roles.includes('school_admin')) return true;
       if (!roles.length) return true;
-      return !roles.includes('school_admin') && !roles.includes('teacher');
+      return !roles.includes('teacher');
     });
   }
 
   private visibleToAdmin(participants: { user: { schoolMemberships: { role: string }[] } }[]) {
     const rolesOf = (member: { schoolMemberships: { role: string }[] }) => member.schoolMemberships.map((row) => row.role);
-    const hasParent = participants.some((person) => rolesOf(person.user).includes('parent'));
-    const hasTeacherThread = participants.some((person) => {
+    const hasAdmin = participants.some((person) => rolesOf(person.user).includes('school_admin'));
+    const outsider = participants.some((person) => {
       const roles = rolesOf(person.user);
-      return roles.includes('teacher') && !roles.includes('school_admin');
+      return (roles.includes('parent') || roles.includes('teacher')) && !roles.includes('school_admin');
     });
-    return hasParent && !hasTeacherThread;
+    return hasAdmin && outsider;
   }
 
   private async parentContacts(userId: string, schoolId: string) {
@@ -293,6 +303,23 @@ export class MessagesService {
       select: { userId: true },
     });
     return [...new Set(admins.map((row) => row.userId))];
+  }
+
+  private async schoolTeachers(schoolId: string) {
+    const members = await this.prisma.schoolMember.findMany({
+      where: { schoolId, role: 'teacher', isActive: true },
+      include: { user: { select: userCard } },
+    });
+    return this.uniquePeople(members.map((row) => ({ id: row.user.id, name: row.user.fullName })))
+      .sort((a, b) => a.name.localeCompare(b.name, 'el'));
+  }
+
+  private async isTeacher(schoolId: string, userId: string) {
+    const member = await this.prisma.schoolMember.findFirst({
+      where: { schoolId, userId, role: 'teacher', isActive: true },
+      select: { userId: true },
+    });
+    return !!member;
   }
 
   private async isParent(schoolId: string, userId: string) {

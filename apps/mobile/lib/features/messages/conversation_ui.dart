@@ -1,9 +1,13 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../core/api/api_client.dart';
 import '../../core/utils/system_insets.dart';
+import '../../core/widgets/app_image.dart';
 import '../../core/widgets/person_face.dart';
+
+const _emojis = ['😀', '😁', '😂', '😊', '😍', '🤗', '👍', '👏', '🙏', '❤️', '🎉', '🌟', '✅', '📷'];
 
 const brandPurple = Color(0xFF77328D);
 
@@ -95,6 +99,14 @@ String conversationTitle(Map<String, dynamic> conv, String userId) {
   }
   if (others.isNotEmpty && others.every((person) => _hasRole(person, 'school_admin'))) {
     return 'Διαχείριση';
+  }
+  final staffTeachers = others.where((person) => _hasRole(person, 'teacher') && !_hasRole(person, 'school_admin')).toList();
+  if (staffTeachers.isNotEmpty && others.any((person) => _hasRole(person, 'school_admin'))) {
+    final names = staffTeachers
+        .map((person) => person['user']?['fullName'] as String? ?? '')
+        .where((name) => name.isNotEmpty)
+        .toList();
+    if (names.isNotEmpty) return names.join(', ');
   }
   final parents = others.where((person) => _hasRole(person, 'parent')).toList();
   final named = (parents.isEmpty ? others : parents)
@@ -224,7 +236,7 @@ class ConversationTile extends StatelessWidget {
                   if (subtitle.isNotEmpty)
                     Text(subtitle, style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 11)),
                   Text(
-                    lastMsg?['body'] as String? ?? 'Ξεκινήστε μια συνομιλία',
+                    _lastLine(lastMsg),
                     style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -259,9 +271,19 @@ class ChatScreen extends ConsumerStatefulWidget {
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
 }
 
+String _lastLine(Map<String, dynamic>? message) {
+  final text = message?['body']?.toString().trim() ?? '';
+  if (text.isNotEmpty) return text;
+  final media = message?['mediaUrl']?.toString() ?? '';
+  if (media.isNotEmpty) return 'Εικόνα';
+  return 'Ξεκινήστε μια συνομιλία';
+}
+
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _ctrl = TextEditingController();
+  final _picker = ImagePicker();
   bool _sending = false;
+  bool _emojisOpen = false;
   String? _error;
 
   @override
@@ -270,18 +292,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     super.dispose();
   }
 
-  Future<void> _send() async {
+  Future<void> _send({XFile? image}) async {
     final text = _ctrl.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty && image == null) return;
     setState(() => _sending = true);
     try {
       final dio = ref.read(dioProvider);
-      await dio.post(
-        '/schools/${widget.schoolId}/conversations/${widget.convId}/messages',
-        data: {'body': text},
-      );
+      if (image != null) {
+        final form = FormData.fromMap({
+          'file': await MultipartFile.fromFile(image.path, filename: image.name),
+          if (text.isNotEmpty) 'body': text,
+        });
+        await dio.post('/schools/${widget.schoolId}/conversations/${widget.convId}/messages/image', data: form);
+      } else {
+        await dio.post(
+          '/schools/${widget.schoolId}/conversations/${widget.convId}/messages',
+          data: {'body': text},
+        );
+      }
       _ctrl.clear();
       _error = null;
+      if (mounted) setState(() => _emojisOpen = false);
       ref.invalidate(messagesProvider(ConvKey(widget.schoolId, widget.convId)));
       ref.invalidate(conversationsProvider(widget.schoolId));
     } catch (error) {
@@ -289,6 +320,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     } finally {
       if (mounted) setState(() => _sending = false);
     }
+  }
+
+  void _insertEmoji(String emoji) {
+    final text = _ctrl.text;
+    final selection = _ctrl.selection;
+    final start = selection.start >= 0 ? selection.start : text.length;
+    final end = selection.end >= 0 ? selection.end : text.length;
+    final next = text.replaceRange(start, end, emoji);
+    _ctrl.value = TextEditingValue(text: next, selection: TextSelection.collapsed(offset: start + emoji.length));
   }
 
   @override
@@ -361,40 +401,71 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               child: Text(_error!, style: const TextStyle(color: Color(0xFFB91C1C), fontSize: 13)),
             ),
           Container(
-            padding: EdgeInsets.fromLTRB(12, 8, 12, 12 + systemBottomInset(context)),
+            padding: EdgeInsets.fromLTRB(8, 8, 8, 8 + systemBottomInset(context)),
             decoration: const BoxDecoration(
               color: Colors.white,
               border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
             ),
-            child: Row(
+            child: Column(
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _ctrl,
-                    decoration: InputDecoration(
-                      hintText: 'Γράψτε μήνυμα...',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(24),
-                        borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      isDense: true,
+                if (_emojisOpen)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Wrap(
+                      spacing: 4,
+                      children: [
+                        for (final emoji in _emojis)
+                          InkWell(
+                            onTap: () => _insertEmoji(emoji),
+                            child: Padding(padding: const EdgeInsets.all(6), child: Text(emoji, style: const TextStyle(fontSize: 24))),
+                          ),
+                      ],
                     ),
-                    maxLines: null,
-                    textCapitalization: TextCapitalization.sentences,
                   ),
-                ),
-                const SizedBox(width: 8),
-                FloatingActionButton.small(
-                  onPressed: _sending ? null : _send,
-                  backgroundColor: brandPurple,
-                  child: _sending
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Icon(Icons.send_rounded, color: Colors.white, size: 18),
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: _sending ? null : () => setState(() => _emojisOpen = !_emojisOpen),
+                      icon: const Icon(Icons.emoji_emotions_outlined, color: Color(0xFF77328D)),
+                    ),
+                    IconButton(
+                      onPressed: _sending
+                          ? null
+                          : () async {
+                              final file = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+                              if (file != null) await _send(image: file);
+                            },
+                      icon: const Icon(Icons.image_outlined, color: Color(0xFFE95926)),
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: _ctrl,
+                        decoration: InputDecoration(
+                          hintText: 'Γράψτε μήνυμα...',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          isDense: true,
+                        ),
+                        maxLines: null,
+                        textCapitalization: TextCapitalization.sentences,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FloatingActionButton.small(
+                      onPressed: _sending ? null : () => _send(),
+                      backgroundColor: brandPurple,
+                      child: _sending
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.send_rounded, color: Colors.white, size: 18),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -413,6 +484,7 @@ class _Bubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final body = message['body'] as String? ?? '';
+    final mediaUrl = message['mediaUrl'] as String? ?? '';
     final sender = message['sender'] as Map?;
     final senderName = sender?['fullName'] as String? ?? '';
 
@@ -440,7 +512,16 @@ class _Bubble extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 4),
                 child: Text(senderName, style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280), fontWeight: FontWeight.w600)),
               ),
-            Text(body, style: TextStyle(color: isMe ? Colors.white : const Color(0xFF111827), fontSize: 14)),
+            if (mediaUrl.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: AppImage(mediaUrl, width: 220, height: 180, fit: BoxFit.cover),
+                ),
+              ),
+            if (body.trim().isNotEmpty)
+              Text(body, style: TextStyle(color: isMe ? Colors.white : const Color(0xFF111827), fontSize: 14)),
           ],
         ),
       ),

@@ -247,7 +247,8 @@ export class NotificationsService implements OnModuleInit {
     try {
       const settings = await this.getSettings(schoolId);
       const rules = (settings.eventRules as Record<string, string[] | undefined>) ?? {};
-      const channels = Array.isArray(rules[input.event]) ? rules[input.event] : ['push'];
+      const channels = Array.isArray(rules[input.event]) ? [...rules[input.event]] : ['push'];
+      if (input.event === 'new_message' && !channels.includes('push')) channels.push('push');
       const data = { ...(input.data ?? {}), type: input.type, schoolId };
       await this.prisma.notification.createMany({
         data: ids.map((userId) => ({
