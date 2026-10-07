@@ -1498,9 +1498,7 @@ function ScheduleRow({ ss, direction }: {
           <span className={`text-[10px] font-medium mt-0.5 ${isPickup ? 'text-green-600' : 'text-blue-600'}`}>{meridiem}</span>
         )}
       </div>
-      <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 text-xs font-bold shrink-0">
-        {ss.student.fullName.charAt(0)}
-      </div>
+      <StudentAvatar student={ss.student} />
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-gray-900">{ss.student.fullName}</p>
         <div className="flex gap-3 text-xs text-gray-500 flex-wrap mt-0.5">

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
+import '../../../core/widgets/person_face.dart';
 
 final diaryFeedProvider = FutureProvider.family<List<dynamic>, String>(
   (ref, schoolId) async {
@@ -74,6 +75,7 @@ class _ReportCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final student = report['student'] as Map<String, dynamic>?;
     final name = student?['fullName'] as String? ?? 'Παιδί';
+    final photo = student?['avatarUrl'] as String?;
     final mood = report['mood'] as String?;
     final lunch = report['mealLunch'] as String?;
     final breakfast = report['mealBreakfast'] as String?;
@@ -105,14 +107,7 @@ class _ReportCard extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                CircleAvatar(
-                  radius: 20,
-                  backgroundColor: const Color(0xFFEEF2FF),
-                  child: Text(
-                    name.isNotEmpty ? name[0].toUpperCase() : '?',
-                    style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.bold),
-                  ),
-                ),
+                PersonFace(name: name, photoUrl: photo, size: 40, radius: 20),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(

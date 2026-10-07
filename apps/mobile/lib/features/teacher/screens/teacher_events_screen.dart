@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/utils/event_status.dart';
 import '../../../core/widgets/app_image.dart';
+import '../../../core/widgets/person_face.dart';
 
 final _teacherEventsProvider = FutureProvider.family<List<dynamic>, String>(
   (ref, schoolId) async {
@@ -363,17 +364,13 @@ class _TeacherEventCardState extends State<_TeacherEventCard> {
                 final e = enr as Map<String, dynamic>;
                 final s = e['student'] as Map<String, dynamic>? ?? {};
                 final sName = s['fullName'] as String? ?? '';
+                final sPhoto = s['avatarUrl'] as String?;
                 final sStatus = e['status'] as String? ?? '';
                 final meta = _statusMeta[sStatus];
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Row(children: [
-                    CircleAvatar(
-                      radius: 14,
-                      backgroundColor: const Color(0xFFEEF2FF),
-                      child: Text(sName.isNotEmpty ? sName[0].toUpperCase() : '?',
-                          style: const TextStyle(color: Color(0xFF4F46E5), fontSize: 11, fontWeight: FontWeight.w700)),
-                    ),
+                    PersonFace(name: sName, photoUrl: sPhoto, size: 28, radius: 14, fontSize: 11, foreground: const Color(0xFF4F46E5)),
                     const SizedBox(width: 10),
                     Expanded(child: Text(sName, style: const TextStyle(fontSize: 13, color: Color(0xFF374151)))),
                     Container(

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_client.dart';
 import '../../core/utils/system_insets.dart';
+import '../../core/widgets/person_face.dart';
 
 const brandPurple = Color(0xFF77328D);
 
@@ -163,6 +164,10 @@ class ConversationTile extends StatelessWidget {
         ? detail!
         : (fromApi.isNotEmpty ? fromApi : (detail ?? ''));
     final admin = title == 'Διαχείριση';
+    final others = otherParticipants(conv, userId);
+    final photoPerson = others.length == 1 ? others.first : null;
+    final photoName = photoPerson?['user']?['fullName'] as String? ?? title;
+    final photoUrl = photoPerson?['user']?['avatarUrl'] as String?;
 
     return InkWell(
       onTap: onTap,
@@ -176,11 +181,14 @@ class ConversationTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            CircleAvatar(
-              radius: 22,
-              backgroundColor: admin ? const Color(0xFFF3E8F7) : const Color(0xFFFFF1EC),
-              child: Icon(admin ? Icons.apartment_outlined : Icons.person_outline, color: admin ? brandPurple : const Color(0xFFE95926), size: 20),
-            ),
+            if (!admin && photoUrl != null && photoUrl.isNotEmpty)
+              PersonFace(name: photoName, photoUrl: photoUrl, size: 44, radius: 22, fontSize: 16)
+            else
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: admin ? const Color(0xFFF3E8F7) : const Color(0xFFFFF1EC),
+                child: Icon(admin ? Icons.apartment_outlined : Icons.person_outline, color: admin ? brandPurple : const Color(0xFFE95926), size: 20),
+              ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -260,17 +268,37 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final msgsAsync = ref.watch(messagesProvider(ConvKey(widget.schoolId, widget.convId)));
+    final conversations = ref.watch(conversationsProvider(widget.schoolId)).valueOrNull;
+    String? photoUrl;
+    if (conversations != null) {
+      for (final row in conversations) {
+        if (row is! Map || row['id'] != widget.convId) continue;
+        final others = otherParticipants(Map<String, dynamic>.from(row), widget.currentUserId);
+        if (others.length == 1) photoUrl = others.first['user']?['avatarUrl'] as String?;
+      }
+    }
+    final showPhoto = widget.title != 'Διαχείριση' && photoUrl != null && photoUrl.isNotEmpty;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAFB),
       appBar: AppBar(
         backgroundColor: Colors.white,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        title: Row(
           children: [
-            Text(widget.title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-            if (widget.subtitle.isNotEmpty)
-              Text(widget.subtitle, style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+            if (showPhoto) ...[
+              PersonFace(name: widget.title, photoUrl: photoUrl, size: 36, radius: 18, fontSize: 14),
+              const SizedBox(width: 10),
+            ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(widget.title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                  if (widget.subtitle.isNotEmpty)
+                    Text(widget.subtitle, style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+                ],
+              ),
+            ),
           ],
         ),
       ),

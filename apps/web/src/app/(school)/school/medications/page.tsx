@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { el } from 'date-fns/locale';
+import { PersonAvatar } from '@/components/PersonAvatar';
 
 const STATUS_META: Record<string, { label: string; color: string; icon: any }> = {
   pending:   { label: 'Εκκρεμεί',  color: 'text-amber-600 bg-amber-50 border-amber-200',  icon: Clock },
@@ -151,9 +152,7 @@ export default function MedicationsPage() {
               <div key={req.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start gap-3 min-w-0">
-                    <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-rose-400 to-pink-500 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
-                      {req.student?.fullName?.slice(0, 2).toUpperCase()}
-                    </div>
+                    <PersonAvatar name={req.student?.fullName} src={req.student?.avatarUrl} tone="rose" className="h-10 w-10 rounded-xl text-xs" />
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="text-sm font-semibold text-gray-900">{req.student?.fullName}</p>

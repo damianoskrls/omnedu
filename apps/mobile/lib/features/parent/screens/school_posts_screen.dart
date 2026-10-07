@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/widgets/app_image.dart';
+import '../../../core/widgets/person_face.dart';
 
 final schoolPostsProvider = FutureProvider.family<List<dynamic>, ({String schoolId, String? type})>(
   (ref, args) async {
@@ -132,6 +133,7 @@ class _PostCard extends StatelessWidget {
     final publishedAt = post['publishedAt'] as String?;
     final author = post['author'] as Map<String, dynamic>?;
     final authorName = author?['fullName'] as String? ?? '';
+    final authorPhoto = author?['avatarUrl'] as String?;
 
     final typeInfo = _typeColors[postType] ?? _typeColors['general']!;
 
@@ -191,14 +193,7 @@ class _PostCard extends StatelessWidget {
                     const SizedBox(height: 10),
                     Row(
                       children: [
-                        CircleAvatar(
-                          radius: 10,
-                          backgroundColor: const Color(0xFFEEF2FF),
-                          child: Text(
-                            authorName[0].toUpperCase(),
-                            style: const TextStyle(fontSize: 9, color: Color(0xFF77328D), fontWeight: FontWeight.bold),
-                          ),
-                        ),
+                        PersonFace(name: authorName, photoUrl: authorPhoto, size: 20, radius: 10, fontSize: 9),
                         const SizedBox(width: 6),
                         Text(authorName,
                             style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),

@@ -6,6 +6,7 @@ import { useStoredUser } from '@/lib/auth';
 import { Plus, Search, ChevronRight, X, UserPlus, Trash2, Archive, RotateCcw } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { PersonAvatar } from '@/components/PersonAvatar';
 
 function age(dob: string) {
   const diff = Date.now() - new Date(dob).getTime();
@@ -443,9 +444,7 @@ export default function StudentsPage() {
                 )}
                 {classTeachers.length > 0 && newStudent.classId && (
                   <div className="bg-emerald-50 rounded-xl px-4 py-2.5 flex items-center gap-2">
-                    <div className="h-7 w-7 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-700 text-xs font-bold flex-shrink-0">
-                      {classTeachers[0].user.fullName.slice(0, 2).toUpperCase()}
-                    </div>
+                    <PersonAvatar name={classTeachers[0].user.fullName} src={classTeachers[0].user.avatarUrl} tone="green" className="h-7 w-7 rounded-lg text-xs" />
                     <div>
                       <div className="text-xs text-emerald-700 font-medium">{classTeachers.map((t: any) => t.user.fullName).join(', ')}</div>
                       <div className="text-xs text-emerald-500">Εκπαιδευτικός τμήματος</div>

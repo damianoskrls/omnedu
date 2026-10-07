@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/widgets/app_image.dart';
+import '../../../core/widgets/person_face.dart';
 import 'child_hub_screen.dart';
 import 'school_posts_screen.dart';
 
@@ -607,6 +608,7 @@ class _DiaryMini extends StatelessWidget {
   Widget build(BuildContext context) {
     final student = report['student'] as Map<String, dynamic>?;
     final name = student?['fullName'] as String? ?? '';
+    final photo = student?['avatarUrl'] as String?;
     final mood = report['mood'] as String?;
     final notes = report['notes'] as String?;
     final date = report['reportDate'] as String?;
@@ -622,23 +624,14 @@ class _DiaryMini extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF77328D), Color(0xFFE95926)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Center(
-              child: Text(
-                name.isNotEmpty ? name[0].toUpperCase() : '?',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-            ),
+          PersonFace(
+            name: name,
+            photoUrl: photo,
+            size: 42,
+            radius: 14,
+            fontSize: 16,
+            background: const Color(0xFF77328D),
+            foreground: Colors.white,
           ),
           const SizedBox(width: 14),
           Expanded(

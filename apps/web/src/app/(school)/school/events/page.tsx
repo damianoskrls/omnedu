@@ -12,6 +12,7 @@ import { eventDisplayStatus } from '@/lib/event-status';
 import { payerOptions, paymentNote } from '@/lib/payment-note';
 import { PaymentConfirmModal, PaymentPrompt } from '@/components/PaymentConfirmModal';
 import { PaymentDetailsLink } from '@/components/PaymentDetailsLink';
+import { PersonAvatar } from '@/components/PersonAvatar';
 
 const EVENT_TYPES: Record<string, { label: string; color: string; bg: string }> = {
   excursion: { label: 'Εκδρομή', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
@@ -296,7 +297,8 @@ export default function EventsPage() {
                   {ev.teachers?.length > 0 && (
                     <div className="mt-3 flex flex-wrap gap-2">
                       {ev.teachers.map((t: any) => (
-                        <span key={t.userId} className="text-xs bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 text-gray-600">
+                        <span key={t.userId} className="inline-flex items-center gap-1.5 text-xs bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 text-gray-600">
+                          <PersonAvatar name={t.user.fullName} src={t.user.avatarUrl} tone="green" letters={1} className="h-5 w-5 rounded-md text-[10px]" />
                           {t.user.fullName}
                         </span>
                       ))}
@@ -347,9 +349,7 @@ export default function EventsPage() {
                           const consentStatus = Number(ev.costPerChild) > 0 ? 'pending_payment' : 'consent_given';
                           return (
                             <div key={en.id} className="flex items-center gap-3 bg-white rounded-xl border border-gray-100 px-4 py-2.5 flex-wrap">
-                              <div className="w-8 h-8 rounded-full bg-violet-100 flex items-center justify-center shrink-0">
-                                <span className="text-violet-600 font-bold text-xs">{en.student.fullName.charAt(0)}</span>
-                              </div>
+                              <PersonAvatar name={en.student.fullName} src={en.student.avatarUrl} tone="violet" letters={1} className="w-8 h-8 rounded-full text-xs" />
                               <span className="font-medium text-sm text-gray-800 flex-1 min-w-[8rem]">{en.student.fullName}</span>
                               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${stMeta.color}`}>{stMeta.label}</span>
                               {(en.status === 'pending_consent' || en.status === 'consent_declined') && (

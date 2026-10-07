@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/providers/auth_provider.dart';
+import '../../../core/widgets/person_face.dart';
 
 final _childReportsProvider =
     FutureProvider.family<List<dynamic>, ({String schoolId, String studentId})>(
@@ -55,6 +56,7 @@ class ChildDetailScreen extends ConsumerWidget {
     final schoolId = user.schoolId ?? '';
     final studentId = child['id'] as String? ?? '';
     final name = child['fullName'] as String? ?? '';
+    final photo = child['avatarUrl'] as String?;
     final firstName = name.split(' ').first;
     final enrollments = child['enrollments'] as List<dynamic>? ?? [];
     final className = enrollments.isNotEmpty
@@ -98,24 +100,14 @@ class ChildDetailScreen extends ConsumerWidget {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         const SizedBox(height: 40),
-                        Container(
-                          width: 80,
-                          height: 80,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.25),
-                            borderRadius: BorderRadius.circular(26),
-                            border: Border.all(color: Colors.white.withOpacity(0.5), width: 2),
-                          ),
-                          child: Center(
-                            child: Text(
-                              name.isNotEmpty ? name[0].toUpperCase() : '?',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 36,
-                              ),
-                            ),
-                          ),
+                        PersonFace(
+                          name: name,
+                          photoUrl: photo,
+                          size: 80,
+                          radius: 26,
+                          fontSize: 36,
+                          background: Colors.white.withOpacity(0.25),
+                          foreground: Colors.white,
                         ),
                         const SizedBox(height: 10),
                         Text(
@@ -488,6 +480,7 @@ class _DiaryCard extends StatelessWidget {
     final date = report['reportDate'] as String?;
     final teacher = report['teacher'] as Map<String, dynamic>?;
     final teacherName = teacher?['fullName'] as String? ?? '';
+    final teacherPhoto = teacher?['avatarUrl'] as String?;
     final emoji = mood != null ? (_moodEmojis[mood.toLowerCase()] ?? '😐') : '😐';
     final moodLabel = mood != null ? (_moodLabels[mood.toLowerCase()] ?? mood) : '';
 
@@ -599,7 +592,10 @@ class _DiaryCard extends StatelessWidget {
             if (hasDetails) const SizedBox(height: 6) else const SizedBox(height: 10),
             Row(
               children: [
-                Icon(Icons.person_outline_rounded, size: 14, color: colors[0].withOpacity(0.7)),
+                if (teacherPhoto != null && teacherPhoto.isNotEmpty)
+                  PersonFace(name: teacherName, photoUrl: teacherPhoto, size: 16, radius: 8, fontSize: 8, foreground: colors[0])
+                else
+                  Icon(Icons.person_outline_rounded, size: 14, color: colors[0].withOpacity(0.7)),
                 const SizedBox(width: 4),
                 Text(
                   teacherName,

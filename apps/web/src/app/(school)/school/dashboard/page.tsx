@@ -6,6 +6,7 @@ import { activitiesApi, billingApi, classesApi, extraServicesApi, schoolEventsAp
 import { useStoredUser } from '@/lib/auth';
 import { GraduationCap, BookOpen, CreditCard, UserPlus, ArrowUpRight, Bus, CalendarDays, Sparkles } from 'lucide-react';
 import { eventDisplayStatus } from '@/lib/event-status';
+import { PersonAvatar } from '@/components/PersonAvatar';
 
 const MONTHS = ['', 'Ιαν', 'Φεβ', 'Μαρ', 'Απρ', 'Μάι', 'Ιουν', 'Ιουλ', 'Αυγ', 'Σεπ', 'Οκτ', 'Νοε', 'Δεκ'];
 const LEVEL_COLORS = ['#77328D', '#E95926', '#8fbf63', '#c46a3a', '#642678', '#e0c2a4'];
@@ -109,9 +110,7 @@ export default function SchoolDashboard() {
             <div className="divide-y divide-gray-50">
               {data.recent.map((student) => (
                 <Link key={student.id} href={`/school/students/${student.id}`} className="flex items-center gap-3 py-2.5 hover:bg-[#faf5fc] rounded-lg px-1">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#f3e8f7] text-sm font-bold text-[#77328D]">
-                    {student.name.slice(0, 1)}
-                  </span>
+                  <PersonAvatar name={student.name} src={student.avatarUrl} tone="brand" letters={1} className="h-9 w-9 rounded-full text-sm" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold text-[#2c2422]">{student.name}</span>
                     <span className="block text-xs text-gray-500">{student.level}</span>
@@ -186,6 +185,7 @@ function buildView(students: any[], classes: any[], billing: any, activities: an
       return {
         id: student.id,
         name: student.fullName,
+        avatarUrl: student.avatarUrl,
         level: (classId && levelByClass.get(classId)) || enrollment?.class?.name || 'Χωρίς τάξη',
         when: student.createdAt ? new Date(student.createdAt).toLocaleDateString('el-GR') : '',
       };

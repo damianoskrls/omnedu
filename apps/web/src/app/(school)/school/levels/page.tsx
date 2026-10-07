@@ -7,6 +7,7 @@ import {
   Plus, Pencil, Trash2, X, ChevronRight, Users, GraduationCap, UserCheck,
 } from 'lucide-react';
 import Link from 'next/link';
+import { PersonAvatar } from '@/components/PersonAvatar';
 
 const LEVEL_COLORS: Record<string, { bg: string; border: string; dot: string; text: string }> = {
   βρεφικό:      { bg: 'bg-pink-50',   border: 'border-pink-200',   dot: 'bg-pink-400',   text: 'text-pink-700' },
@@ -188,14 +189,15 @@ export default function LevelsPage() {
 
                 <div className="mt-4 flex flex-wrap items-center gap-4 text-sm">
                   {(level.coordinatorLinks?.length > 0) && (
-                    <div className="flex items-center gap-1.5 text-gray-600">
+                    <div className="flex items-center gap-2 text-gray-600 flex-wrap">
                       <UserCheck size={14} className="text-gray-400" />
-                      <span>
-                        {level.coordinatorLinks.length === 1 ? 'Υπεύθυνη: ' : 'Υπεύθυνες: '}
-                        <span className="font-medium">
-                          {level.coordinatorLinks.map(c => c.user.fullName).join(', ')}
+                      <span>{level.coordinatorLinks.length === 1 ? 'Υπεύθυνη:' : 'Υπεύθυνες:'}</span>
+                      {level.coordinatorLinks.map(c => (
+                        <span key={c.userId} className="inline-flex items-center gap-1.5 font-medium">
+                          <PersonAvatar name={c.user.fullName} src={c.user.avatarUrl} tone="green" letters={1} className="h-5 w-5 rounded-md text-[10px]" />
+                          {c.user.fullName}
                         </span>
-                      </span>
+                      ))}
                     </div>
                   )}
                   <div className="flex items-center gap-1.5 text-gray-600">

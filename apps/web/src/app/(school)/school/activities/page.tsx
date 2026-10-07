@@ -10,6 +10,7 @@ import {
 import { AudienceSelector, AudienceValue, audienceLabel } from '@/components/AudienceSelector';
 import { format } from 'date-fns';
 import { el } from 'date-fns/locale';
+import { PersonAvatar } from '@/components/PersonAvatar';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -444,9 +445,7 @@ export default function ActivitiesPage() {
                           <div className="space-y-2">
                             {registrations[activity.id].map(reg => (
                               <div key={reg.id} className="flex items-center gap-3 bg-white rounded-lg p-3 border border-gray-200">
-                                <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 text-xs font-bold shrink-0">
-                                  {reg.student.fullName.charAt(0)}
-                                </div>
+                                <PersonAvatar name={reg.student.fullName} src={reg.student.avatarUrl} tone="soft" letters={1} className="w-8 h-8 rounded-full text-xs" />
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2">
                                     <p className="text-sm font-medium text-gray-900">{reg.student.fullName}</p>

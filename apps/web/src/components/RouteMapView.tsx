@@ -126,10 +126,13 @@ export default function RouteMapView({ students, stops, routeName }: Props) {
           : student.serviceMode === 'dropoff'
             ? '#2563eb'
             : '#7c3aed';
+        const photo = student.avatarUrl
+          ? `<img src="${student.avatarUrl.replace(/"/g, '')}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:6px" />`
+          : initials;
 
         const icon = L.divIcon({
           className: '',
-          html: `<div style="background:${modeColor};color:white;width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4)">${initials}</div>`,
+          html: `<div style="background:${modeColor};color:white;width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4);overflow:hidden">${photo}</div>`,
           iconSize: [30, 30],
           iconAnchor: [15, 15],
         });

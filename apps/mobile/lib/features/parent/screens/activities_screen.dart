@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/widgets/app_image.dart';
+import '../../../core/widgets/person_face.dart';
 
 final childrenWithServicesProvider = FutureProvider.family<List<dynamic>, String>(
   (ref, schoolId) async {
@@ -454,6 +455,7 @@ class _ChildServicesSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final name = child['fullName'] as String? ?? '';
+    final photo = child['avatarUrl'] as String?;
     final activities = child['activityRegistrations'] as List<dynamic>? ?? [];
     final services = child['studentServices'] as List<dynamic>? ?? [];
 
@@ -471,14 +473,7 @@ class _ChildServicesSection extends StatelessWidget {
         children: [
           Row(
             children: [
-              CircleAvatar(
-                radius: 12,
-                backgroundColor: const Color(0xFFEEF2FF),
-                child: Text(
-                  name.isNotEmpty ? name[0].toUpperCase() : '?',
-                  style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.bold, fontSize: 10),
-                ),
-              ),
+              PersonFace(name: name, photoUrl: photo, size: 24, radius: 12, fontSize: 10),
               const SizedBox(width: 8),
               Text(name,
                   style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF374151))),

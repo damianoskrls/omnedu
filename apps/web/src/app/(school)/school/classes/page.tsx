@@ -5,6 +5,7 @@ import { classesApi, levelsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
 import { Plus, Users, BookOpen, ChevronRight, GraduationCap, X } from 'lucide-react';
 import Link from 'next/link';
+import { PersonAvatar } from '@/components/PersonAvatar';
 
 // Ordered levels for Greek kindergartens
 const LEVEL_ORDER = ['βρεφικό', 'μεταβρεφικό', 'βρεφονηπιακό', 'νηπιακό', 'νηπιαγωγείο'];
@@ -221,9 +222,7 @@ export default function ClassesPage() {
                         {/* Primary teacher */}
                         {primaryTeacher && (
                           <div className="mt-3 flex items-center gap-2 pt-3 border-t border-gray-50">
-                            <div className="h-6 w-6 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white font-bold text-xs shadow-sm flex-shrink-0">
-                              {primaryTeacher.user.fullName.slice(0, 1)}
-                            </div>
+                            <PersonAvatar name={primaryTeacher.user.fullName} src={primaryTeacher.user.avatarUrl} tone="green" letters={1} className="h-6 w-6 rounded-lg text-xs shadow-sm" />
                             <span className="text-xs text-gray-500 truncate">{primaryTeacher.user.fullName}</span>
                           </div>
                         )}

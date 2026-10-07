@@ -10,6 +10,7 @@ import { noteWithoutPayment, payerOptions, paymentNote, PaymentInfo } from '@/li
 import { PaymentConfirmModal, PaymentPrompt } from '@/components/PaymentConfirmModal';
 import { PaymentDetailsLink } from '@/components/PaymentDetailsLink';
 import { useStoredUser } from '@/lib/auth';
+import { PersonAvatar } from '@/components/PersonAvatar';
 import {
   ArrowLeft, Phone, Mail, MapPin, Droplets,
   BookOpen, ClipboardList, Users, AlertCircle,
@@ -1115,9 +1116,7 @@ export default function StudentProfilePage() {
                 {student.siblings.map((s: any) => (
                   <div key={s.id} className="flex items-center gap-2 bg-indigo-50 px-3 py-2 rounded-xl">
                     <a href={`/school/students/${s.id}`} className="flex items-center gap-2 hover:opacity-80">
-                      <div className="h-7 w-7 rounded-full bg-indigo-200 flex items-center justify-center text-indigo-700 text-xs font-bold">
-                        {s.fullName.slice(0, 2).toUpperCase()}
-                      </div>
+                      <PersonAvatar name={s.fullName} src={s.avatarUrl} tone="soft" className="h-7 w-7 rounded-full text-xs" />
                       <span className="text-sm font-medium text-indigo-800">{s.fullName}</span>
                       {s.dob && <span className="text-xs text-indigo-500">{age(s.dob)}</span>}
                     </a>
@@ -2800,9 +2799,7 @@ export default function StudentProfilePage() {
                 const alreadySibling = student.siblings?.some((sib: any) => sib.id === s.id);
                 return (
                   <div key={s.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50">
-                    <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white text-xs font-bold">
-                      {s.fullName.slice(0, 2).toUpperCase()}
-                    </div>
+                    <PersonAvatar name={s.fullName} src={s.avatarUrl} className="h-9 w-9 rounded-xl text-xs" />
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-sm text-gray-900">{s.fullName}</div>
                       {s.dob && <div className="text-xs text-gray-500">{age(s.dob)}</div>}
@@ -3045,9 +3042,7 @@ export default function StudentProfilePage() {
                     )}
                     {classTeachers.length > 0 && infoForm.classId && (
                       <div className="bg-emerald-50 rounded-xl px-4 py-2.5 flex items-center gap-2">
-                        <div className="h-7 w-7 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-700 text-xs font-bold flex-shrink-0">
-                          {classTeachers[0].user.fullName.slice(0, 2).toUpperCase()}
-                        </div>
+                        <PersonAvatar name={classTeachers[0].user.fullName} src={classTeachers[0].user.avatarUrl} tone="green" className="h-7 w-7 rounded-lg text-xs" />
                         <div>
                           <div className="text-xs text-emerald-700 font-medium">{classTeachers.map((t: any) => t.user.fullName).join(', ')}</div>
                           <div className="text-xs text-emerald-500">Εκπαιδευτικός τμήματος</div>

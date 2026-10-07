@@ -13,6 +13,7 @@ import {
   Bus, Plus, X, ChevronDown, ChevronUp, Pencil, Trash2,
   MapPin, Clock, User, Euro, Users,
 } from 'lucide-react';
+import { PersonAvatar } from '@/components/PersonAvatar';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -477,9 +478,7 @@ export default function ServicesPage() {
                           <div className="divide-y divide-gray-100">
                             {studentServiceData[service.id].map(ss => (
                               <div key={ss.id} className="flex items-center gap-3 py-2.5">
-                                <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 text-xs font-bold shrink-0">
-                                  {ss.student.fullName.charAt(0)}
-                                </div>
+                                <PersonAvatar name={ss.student.fullName} src={ss.student.avatarUrl} tone="soft" letters={1} className="w-8 h-8 rounded-full text-xs" />
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm font-medium text-gray-900">{ss.student.fullName}</p>
                                   <div className="flex gap-3 text-xs text-gray-500 flex-wrap">

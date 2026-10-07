@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { el } from 'date-fns/locale';
+import { PersonAvatar } from '@/components/PersonAvatar';
 
 const LEVEL_COLORS: Record<string, string> = {
   βρεφικό:       'bg-pink-100 text-pink-700',
@@ -208,9 +209,7 @@ export default function ClassDetailPage() {
               <div className="space-y-3">
                 {cls.teachers.map((t: any) => (
                   <div key={t.userId} className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white font-bold text-xs shadow-sm flex-shrink-0">
-                      {t.user.fullName.slice(0, 2).toUpperCase()}
-                    </div>
+                    <PersonAvatar name={t.user.fullName} src={t.user.avatarUrl} tone="green" className="h-9 w-9 rounded-xl text-xs shadow-sm" />
                     <div className="min-w-0">
                       <div className="text-sm font-medium text-gray-900 truncate">{t.user.fullName}</div>
                       {t.isPrimary && (
@@ -336,9 +335,7 @@ export default function ClassDetailPage() {
                 return (
                   <div key={s.id} className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 transition-colors">
                     <div className="flex items-center gap-3">
-                      <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white font-bold text-xs shadow-sm flex-shrink-0">
-                        {s.fullName.slice(0, 2).toUpperCase()}
-                      </div>
+                      <PersonAvatar name={s.fullName} src={s.avatarUrl} className="h-9 w-9 rounded-xl text-xs shadow-sm" />
                       <div>
                         <div className="text-sm font-medium text-gray-900">{s.fullName}</div>
                         <div className="text-xs text-gray-400">{s.dob ? age(s.dob) : '—'}{parentNames ? ` · ${parentNames}` : ''}</div>

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
+import '../../../core/widgets/person_face.dart';
 
 class DailyReportScreen extends ConsumerStatefulWidget {
   final String schoolId;
@@ -115,6 +116,7 @@ class _StudentReportTileState extends State<_StudentReportTile> {
   @override
   Widget build(BuildContext context) {
     final name = widget.student['fullName'] as String;
+    final avatarUrl = widget.student['avatarUrl'] as String?;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -128,11 +130,7 @@ class _StudentReportTileState extends State<_StudentReportTile> {
         children: [
           Row(
             children: [
-              CircleAvatar(
-                radius: 20,
-                backgroundColor: const Color(0xFFEEF2FF),
-                child: Text(name[0], style: const TextStyle(color: Color(0xFF4F46E5), fontWeight: FontWeight.bold)),
-              ),
+              PersonFace(name: name, photoUrl: avatarUrl, size: 40, radius: 20, foreground: const Color(0xFF4F46E5)),
               const SizedBox(width: 12),
               Text(name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
               if (_submitted) ...[

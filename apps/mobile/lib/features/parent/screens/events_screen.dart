@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/utils/event_status.dart';
 import '../../../core/widgets/app_image.dart';
+import '../../../core/widgets/person_face.dart';
 import 'event_gallery_screen.dart';
 
 // Returns list of enrollments (each has `event` + `student` + status)
@@ -140,6 +141,7 @@ class _ChildEventGroup extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final name = student['fullName'] as String? ?? '';
+    final photo = student['avatarUrl'] as String?;
     final pendingConsent = enrollments.where((e) => e['status'] == 'pending_consent').length;
 
     return Column(
@@ -149,12 +151,7 @@ class _ChildEventGroup extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: Row(children: [
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: const Color(0xFFEEF2FF),
-              child: Text(name.isNotEmpty ? name[0].toUpperCase() : '?',
-                  style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.bold, fontSize: 13)),
-            ),
+            PersonFace(name: name, photoUrl: photo, size: 32, radius: 16, fontSize: 13),
             const SizedBox(width: 8),
             Text(name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: Color(0xFF111827))),
             if (pendingConsent > 0) ...[
