@@ -227,7 +227,8 @@ Future<void> openNotification(BuildContext context, WidgetRef ref, Map<String, d
 
 class InboxScreen extends ConsumerWidget {
   final String schoolId;
-  const InboxScreen({super.key, required this.schoolId});
+  final bool embedded;
+  const InboxScreen({super.key, required this.schoolId, this.embedded = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -235,6 +236,7 @@ class InboxScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFF6F3FA),
       appBar: AppBar(
+        automaticallyImplyLeading: !embedded,
         title: const Text('Ειδοποιήσεις'),
         actions: [
           IconButton(onPressed: () => ref.invalidate(inboxProvider(schoolId)), icon: const Icon(Icons.refresh_rounded)),

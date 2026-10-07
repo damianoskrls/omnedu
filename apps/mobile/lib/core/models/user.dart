@@ -46,6 +46,19 @@ class AuthUser extends Equatable {
     required this.memberships,
   });
 
+  AuthUser copyWith({String? email, String? fullName}) => AuthUser(
+        id: id,
+        email: email ?? this.email,
+        fullName: fullName ?? this.fullName,
+        avatarUrl: avatarUrl,
+        isSuperAdmin: isSuperAdmin,
+        schoolId: schoolId,
+        role: role,
+        schoolLogoUrl: schoolLogoUrl,
+        schoolPrimaryColor: schoolPrimaryColor,
+        memberships: memberships,
+      );
+
   bool get isTeacher => role == 'teacher';
   bool get isParent => role == 'parent';
   bool get isSchoolAdmin => role == 'school_admin';
@@ -66,5 +79,5 @@ class AuthUser extends Equatable {
       );
 
   @override
-  List<Object?> get props => [id, schoolId, role];
+  List<Object?> get props => [id, schoolId, role, email, fullName];
 }

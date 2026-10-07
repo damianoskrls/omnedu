@@ -4,6 +4,7 @@ import '../../../core/api/api_client.dart';
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/widgets/app_image.dart';
 import '../../../core/widgets/person_face.dart';
+import 'account_settings_screen.dart';
 import 'child_hub_screen.dart';
 import 'school_posts_screen.dart';
 
@@ -16,14 +17,31 @@ final myChildrenProvider = FutureProvider.family<List<dynamic>, String>(
   },
 );
 
-final diaryFeedHomeProvider = FutureProvider.family<List<dynamic>, String>(
-  (ref, schoolId) async {
-    final dio = ref.read(dioProvider);
-    final resp = await dio.get('/schools/$schoolId/daily-reports/feed');
+final todayReportsProvider = FutureProvider.family<List<dynamic>, String>((ref, schoolId) async {
+  final dio = ref.read(dioProvider);
+  final resp = await dio.get('/schools/$schoolId/daily-reports/feed', queryParameters: {'limit': 40});
+  final data = resp.data;
+  return data is List ? data : [];
+});
+
+final todayMenuProvider = FutureProvider.family<Map<String, dynamic>?, String>((ref, schoolId) async {
+  final day = _dayKey(DateTime.now());
+  final dio = ref.read(dioProvider);
+  try {
+    final resp = await dio.get('/schools/$schoolId/daily-menus', queryParameters: {'from': day, 'to': day});
     final data = resp.data;
-    return data is List ? data.take(5).toList() : [];
-  },
-);
+    if (data is List && data.isNotEmpty && data.first is Map) {
+      return Map<String, dynamic>.from(data.first as Map);
+    }
+  } catch (_) {}
+  return null;
+});
+
+String _dayKey(DateTime date) {
+  final month = date.month.toString().padLeft(2, '0');
+  final day = date.day.toString().padLeft(2, '0');
+  return '${date.year}-$month-$day';
+}
 
 final _recentPostsProvider = FutureProvider.family<List<dynamic>, String>(
   (ref, schoolId) async {
@@ -32,31 +50,6 @@ final _recentPostsProvider = FutureProvider.family<List<dynamic>, String>(
       final resp = await dio.get('/schools/$schoolId/posts');
       final data = resp.data;
       return data is List ? data.take(3).toList() : [];
-    } catch (_) {
-      return [];
-    }
-  },
-);
-
-final _upcomingActivitiesProvider = FutureProvider.family<List<dynamic>, String>(
-  (ref, schoolId) async {
-    final dio = ref.read(dioProvider);
-    try {
-      final resp = await dio.get('/schools/$schoolId/activities');
-      final data = resp.data;
-      if (data is List) {
-        final now = DateTime.now();
-        return data.where((a) {
-          final endsOn = a['endsOn'] as String?;
-          if (endsOn == null) return true;
-          try {
-            return DateTime.parse(endsOn).isAfter(now);
-          } catch (_) {
-            return true;
-          }
-        }).take(5).toList();
-      }
-      return [];
     } catch (_) {
       return [];
     }
@@ -85,6 +78,14 @@ void _showLogout(BuildContext context, WidgetRef ref) {
             ),
             const SizedBox(height: 20),
             ListTile(
+              leading: const Icon(Icons.manage_accounts_rounded, color: Color(0xFF77328D)),
+              title: const Text('Ρυθμίσεις λογαριασμού', style: TextStyle(fontWeight: FontWeight.w600)),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AccountSettingsScreen()));
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.logout_rounded, color: Color(0xFFDC2626)),
               title: const Text(
                 'Αποσύνδεση',
@@ -109,8 +110,8 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final childrenAsync = ref.watch(myChildrenProvider(schoolId));
-    final diaryAsync = ref.watch(diaryFeedHomeProvider(schoolId));
-    final activitiesAsync = ref.watch(_upcomingActivitiesProvider(schoolId));
+    final reportsAsync = ref.watch(todayReportsProvider(schoolId));
+    final menuAsync = ref.watch(todayMenuProvider(schoolId));
     final postsAsync = ref.watch(_recentPostsProvider(schoolId));
     final user = ref.watch(authProvider).user;
     final firstName = user?.fullName.split(' ').first ?? '';
@@ -123,8 +124,8 @@ class HomeScreen extends ConsumerWidget {
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(myChildrenProvider(schoolId));
-          ref.invalidate(diaryFeedHomeProvider(schoolId));
-          ref.invalidate(_upcomingActivitiesProvider(schoolId));
+          ref.invalidate(todayReportsProvider(schoolId));
+          ref.invalidate(todayMenuProvider(schoolId));
           ref.invalidate(_recentPostsProvider(schoolId));
         },
         child: CustomScrollView(
@@ -222,84 +223,54 @@ class HomeScreen extends ConsumerWidget {
               ),
             ),
 
-            // Children section label
-            const SliverToBoxAdapter(
+            SliverToBoxAdapter(
               child: Padding(
-                padding: EdgeInsets.fromLTRB(20, 28, 20, 12),
+                padding: const EdgeInsets.fromLTRB(20, 28, 20, 12),
                 child: Text(
-                  'Παιδιά μου',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF2C2422)),
+                  'Σήμερα, ${_dayKey(DateTime.now()).split('-').reversed.join('/')}',
+                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF2C2422)),
                 ),
               ),
             ),
-
-            // Children horizontal list
             SliverToBoxAdapter(
               child: childrenAsync.when(
-                loading: () => const SizedBox(
-                  height: 130,
+                loading: () => const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
                   child: Center(child: CircularProgressIndicator()),
                 ),
                 error: (e, _) => Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Text('Σφάλμα: $e', style: const TextStyle(color: Colors.red)),
                 ),
-                data: (children) => children.isEmpty
-                    ? const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 20),
-                        child: Text('Δεν βρέθηκαν παιδιά.', style: TextStyle(color: Color(0xFF9CA3AF))),
-                      )
-                    : SizedBox(
-                        height: 130,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          separatorBuilder: (_, __) => const SizedBox(width: 12),
-                          itemCount: children.length,
-                          itemBuilder: (_, i) => _ChildCard(
-                            child: children[i],
+                data: (children) {
+                  if (children.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 20),
+                      child: Text('Δεν βρέθηκαν παιδιά.', style: TextStyle(color: Color(0xFF9CA3AF))),
+                    );
+                  }
+                  final reports = reportsAsync.asData?.value ?? const [];
+                  final menu = menuAsync.asData?.value;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      children: children.map((raw) {
+                        final child = Map<String, dynamic>.from(raw as Map);
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _TodayChildCard(
+                            child: child,
+                            report: _reportFor(reports, child['id']?.toString(), _dayKey(DateTime.now())),
+                            menu: menu,
                             onTap: () => Navigator.of(context).push(
                               MaterialPageRoute(
-                                builder: (_) => ChildHubScreen(
-                                  schoolId: schoolId,
-                                  child: Map<String, dynamic>.from(children[i] as Map),
-                                ),
+                                builder: (_) => ChildHubScreen(schoolId: schoolId, child: child),
                               ),
                             ),
                           ),
-                        ),
-                      ),
-              ),
-            ),
-
-            // Upcoming activities section
-            SliverToBoxAdapter(
-              child: activitiesAsync.when(
-                loading: () => const SizedBox.shrink(),
-                error: (_, __) => const SizedBox.shrink(),
-                data: (activities) {
-                  if (activities.isEmpty) return const SizedBox.shrink();
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Padding(
-                        padding: EdgeInsets.fromLTRB(20, 28, 20, 12),
-                        child: Text(
-                          'Δραστηριότητες & Εκδρομές',
-                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF2C2422)),
-                        ),
-                      ),
-                      SizedBox(
-                        height: 90,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          separatorBuilder: (_, __) => const SizedBox(width: 10),
-                          itemCount: activities.length,
-                          itemBuilder: (_, i) => _ActivityCard(activity: activities[i]),
-                        ),
-                      ),
-                    ],
+                        );
+                      }).toList(),
+                    ),
                   );
                 },
               ),
@@ -349,53 +320,6 @@ class HomeScreen extends ConsumerWidget {
               ),
             ),
 
-            // Recent diary label
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(20, 28, 20, 12),
-                child: Text(
-                  'Πρόσφατο Ημερολόγιο',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF2C2422)),
-                ),
-              ),
-            ),
-
-            // Diary feed
-            SliverToBoxAdapter(
-              child: diaryAsync.when(
-                loading: () => const SizedBox(height: 80, child: Center(child: CircularProgressIndicator())),
-                error: (_, __) => const SizedBox.shrink(),
-                data: (reports) => reports.isEmpty
-                    ? Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 20),
-                        padding: const EdgeInsets.all(28),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Column(
-                          children: [
-                            Icon(Icons.auto_stories_rounded, size: 40, color: Color(0xFFDDD9FF)),
-                            SizedBox(height: 8),
-                            Text('Καμία καταχώρηση ακόμα',
-                                style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 14)),
-                          ],
-                        ),
-                      )
-                    : Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Column(
-                          children: reports
-                              .map((r) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 10),
-                                    child: _DiaryMini(report: r),
-                                  ))
-                              .toList(),
-                        ),
-                      ),
-              ),
-            ),
-
             const SliverToBoxAdapter(child: SizedBox(height: 110)),
           ],
         ),
@@ -404,269 +328,155 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-class _ChildCard extends StatelessWidget {
-  final Map<String, dynamic> child;
-  final VoidCallback? onTap;
-  const _ChildCard({required this.child, this.onTap});
+Map<String, dynamic>? _reportFor(List<dynamic> reports, String? studentId, String day) {
+  for (final raw in reports) {
+    if (raw is! Map) continue;
+    final report = Map<String, dynamic>.from(raw);
+    final student = report['student'];
+    final id = student is Map ? student['id']?.toString() : null;
+    final date = report['reportDate']?.toString() ?? '';
+    if (id == studentId && date.startsWith(day)) return report;
+  }
+  return null;
+}
 
-  static const _gradients = [
-    [Color(0xFF77328D), Color(0xFFE95926)],
-    [Color(0xFF0EA5E9), Color(0xFF6366F1)],
-    [Color(0xFFEC4899), Color(0xFFF43F5E)],
-    [Color(0xFF10B981), Color(0xFF059669)],
-  ];
+class _TodayChildCard extends StatelessWidget {
+  final Map<String, dynamic> child;
+  final Map<String, dynamic>? report;
+  final Map<String, dynamic>? menu;
+  final VoidCallback onTap;
+  const _TodayChildCard({required this.child, required this.report, required this.menu, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final name = child['fullName'] as String? ?? '';
-    final firstName = name.split(' ').first;
-    final avatarUrl = child['avatarUrl'] as String?;
-    final enrollments = child['enrollments'] as List<dynamic>? ?? [];
-    final className = enrollments.isNotEmpty
-        ? (enrollments.first['class']?['name'] as String? ?? '')
-        : '';
-    final colorIndex = name.isNotEmpty ? name.codeUnitAt(0) % _gradients.length : 0;
-    final colors = _gradients[colorIndex];
+    final name = child['fullName']?.toString() ?? '';
+    final photo = child['avatarUrl']?.toString();
+    final enrollments = child['enrollments'] as List? ?? [];
+    final klass = enrollments.isNotEmpty && enrollments.first is Map ? enrollments.first['class'] : null;
+    final className = klass is Map ? klass['name']?.toString() ?? '' : '';
+    final bulletin = _bulletinLines(report);
+    final meals = _mealLines(report, menu);
+    final events = _eventLines(child);
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 120,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-          boxShadow: [
-            BoxShadow(
-              color: colors[0].withOpacity(0.15),
-              blurRadius: 16,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const SizedBox(height: 16),
-            if (avatarUrl != null && avatarUrl.isNotEmpty)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(18),
-                child: AppImage(
-                  avatarUrl,
-                  width: 56,
-                  height: 56,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _letterAvatar(name, colors),
-                ),
-              )
-            else
-              _letterAvatar(name, colors),
-            const SizedBox(height: 10),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Text(
-                firstName,
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF2C2422)),
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(22),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(22),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  PersonFace(name: name, photoUrl: photo, size: 52, radius: 16, fontSize: 18, background: const Color(0xFF77328D), foreground: Colors.white),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF2C2422))),
+                        if (className.isNotEmpty)
+                          Text(className, style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right, color: Color(0xFFD1D5DB)),
+                ],
               ),
-            ),
-            if (className.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Container(
-                margin: const EdgeInsets.symmetric(horizontal: 10),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: colors[0].withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  className,
-                  style: TextStyle(color: colors[0], fontSize: 10, fontWeight: FontWeight.w600),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
+              const SizedBox(height: 12),
+              _LineBlock(title: 'Ενημέρωση', lines: bulletin.isEmpty ? const ['Δεν έχει ανέβει δελτίο σήμερα.'] : bulletin),
+              _LineBlock(title: 'Τι έφαγε', lines: meals.isEmpty ? const ['Δεν έχει καταχωρηθεί φαγητό για σήμερα.'] : meals),
+              if (events.isNotEmpty) _LineBlock(title: 'Εκδηλώσεις', lines: events),
             ],
-            const SizedBox(height: 14),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _letterAvatar(String name, List<Color> colors) {
-    return Container(
-      width: 56,
-      height: 56,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(colors: colors, begin: Alignment.topLeft, end: Alignment.bottomRight),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Center(
-        child: Text(
-          name.isNotEmpty ? name[0].toUpperCase() : '?',
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 24),
-        ),
-      ),
-    );
+  List<String> _bulletinLines(Map<String, dynamic>? report) {
+    if (report == null) return [];
+    final lines = <String>[];
+    final mood = report['mood']?.toString() ?? '';
+    final notes = report['notes']?.toString() ?? '';
+    if (mood.isNotEmpty) lines.add('Διάθεση: $mood');
+    if (notes.isNotEmpty) lines.add(notes);
+    final nap = report['napDurationMinutes'];
+    if (nap is num && nap > 0) lines.add('Ύπνος: ${nap.toInt()} λεπτά');
+    return lines;
+  }
+
+  List<String> _mealLines(Map<String, dynamic>? report, Map<String, dynamic>? menu) {
+    final lines = <String>[];
+    void add(String label, dynamic value) {
+      final text = value?.toString().trim() ?? '';
+      if (text.isNotEmpty) lines.add('$label: $text');
+    }
+    add('Πρωινό', report?['mealBreakfast']);
+    add('Μεσημεριανό', report?['mealLunch']);
+    add('Σνακ', report?['mealSnack']);
+    if (lines.isNotEmpty) return lines;
+    add('Πρωινό', menu?['breakfast']);
+    add('Δεκατιανό', menu?['midMorning']);
+    add('Μεσημεριανό', menu?['lunch']);
+    add('Απογευματινό', menu?['afternoon']);
+    return lines;
+  }
+
+  List<String> _eventLines(Map<String, dynamic> child) {
+    final lines = <String>[];
+    final events = child['eventEnrollments'] as List? ?? [];
+    final today = DateTime.now();
+    for (final raw in events) {
+      if (raw is! Map) continue;
+      final event = raw['event'];
+      if (event is! Map) continue;
+      final title = event['title']?.toString() ?? '';
+      final when = event['eventDate']?.toString();
+      if (title.isEmpty) continue;
+      if (when != null && when.isNotEmpty) {
+        final date = DateTime.tryParse(when);
+        if (date != null && date.isBefore(DateTime(today.year, today.month, today.day))) continue;
+        lines.add(date == null ? title : '$title · ${date.day}/${date.month}');
+      } else {
+        lines.add(title);
+      }
+      if (lines.length == 3) break;
+    }
+    final activities = child['activityRegistrations'] as List? ?? [];
+    for (final raw in activities) {
+      if (lines.length == 3) break;
+      if (raw is! Map) continue;
+      final activity = raw['activity'];
+      if (activity is! Map) continue;
+      final title = activity['title']?.toString() ?? '';
+      if (title.isNotEmpty) lines.add(title);
+    }
+    return lines;
   }
 }
 
-class _ActivityCard extends StatelessWidget {
-  final Map<String, dynamic> activity;
-  const _ActivityCard({required this.activity});
-
-  static const _typeIcons = {
-    'excursion': (Icons.directions_bus_rounded, Color(0xFF0EA5E9)),
-    'sport': (Icons.sports_soccer_rounded, Color(0xFF10B981)),
-    'art': (Icons.palette_rounded, Color(0xFFEC4899)),
-    'music': (Icons.music_note_rounded, Color(0xFF8B5CF6)),
-    'language': (Icons.translate_rounded, Color(0xFFF59E0B)),
-    'other': (Icons.star_rounded, Color(0xFF6366F1)),
-  };
+class _LineBlock extends StatelessWidget {
+  final String title;
+  final List<String> lines;
+  const _LineBlock({required this.title, required this.lines});
 
   @override
   Widget build(BuildContext context) {
-    final title = activity['title'] as String? ?? '';
-    final type = activity['activityType'] as String? ?? 'other';
-    final startsOn = activity['startsOn'] as String?;
-    final (icon, color) = _typeIcons[type] ?? _typeIcons['other']!;
-
-    String dateLabel = '';
-    if (startsOn != null) {
-      try {
-        final d = DateTime.parse(startsOn);
-        const months = ['Ιαν', 'Φεβ', 'Μαρ', 'Απρ', 'Μαϊ', 'Ιουν', 'Ιουλ', 'Αυγ', 'Σεπ', 'Οκτ', 'Νοε', 'Δεκ'];
-        dateLabel = '${d.day} ${months[d.month - 1]}';
-      } catch (_) {}
-    }
-
-    return Container(
-      width: 160,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: color.withOpacity(0.12),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, color: color, size: 16),
-              ),
-              if (dateLabel.isNotEmpty) ...[
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                  child: Text(dateLabel, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w700)),
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            title,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF2C2422)),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
+          Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF77328D))),
+          const SizedBox(height: 2),
+          ...lines.map((line) => Text(line, style: const TextStyle(fontSize: 13, height: 1.35, color: Color(0xFF374151)))),
         ],
       ),
     );
-  }
-}
-
-class _DiaryMini extends StatelessWidget {
-  final Map<String, dynamic> report;
-  const _DiaryMini({required this.report});
-
-  static const _moodEmojis = {
-    'χαρούμενος': '😊', 'happy': '😊', 'ήρεμος': '😌', 'calm': '😌',
-    'κουρασμένος': '😴', 'tired': '😴', 'λυπημένος': '😢', 'sad': '😢',
-    'αγχωμένος': '😰', 'ενθουσιασμένος': '🤩',
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    final student = report['student'] as Map<String, dynamic>?;
-    final name = student?['fullName'] as String? ?? '';
-    final photo = student?['avatarUrl'] as String?;
-    final mood = report['mood'] as String?;
-    final notes = report['notes'] as String?;
-    final date = report['reportDate'] as String?;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4)),
-        ],
-      ),
-      child: Row(
-        children: [
-          PersonFace(
-            name: name,
-            photoUrl: photo,
-            size: 42,
-            radius: 14,
-            fontSize: 16,
-            background: const Color(0xFF77328D),
-            foreground: Colors.white,
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name.split(' ').first,
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF2C2422)),
-                ),
-                const SizedBox(height: 2),
-                if (notes != null && notes.isNotEmpty)
-                  Text(notes,
-                      style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis)
-                else if (date != null)
-                  Text(_formatDate(date), style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
-              ],
-            ),
-          ),
-          if (mood != null)
-            Text(_moodEmojis[mood.toLowerCase()] ?? '😐', style: const TextStyle(fontSize: 22)),
-        ],
-      ),
-    );
-  }
-
-  String _formatDate(String iso) {
-    try {
-      final d = DateTime.parse(iso);
-      return '${d.day}/${d.month}/${d.year}';
-    } catch (_) {
-      return iso;
-    }
   }
 }
 

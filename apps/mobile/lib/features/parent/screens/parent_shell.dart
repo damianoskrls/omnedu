@@ -5,7 +5,6 @@ import '../../../core/notifications/notification_center.dart';
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/utils/system_insets.dart';
 import 'home_screen.dart';
-import 'diary_feed_screen.dart';
 import 'activities_screen.dart';
 import 'events_screen.dart';
 import 'billing_screen.dart';
@@ -28,7 +27,7 @@ class _ParentShellState extends ConsumerState<ParentShell> {
 
     final pages = [
       HomeScreen(schoolId: schoolId),
-      DiaryFeedScreen(schoolId: schoolId, parentId: user.id),
+      InboxScreen(schoolId: schoolId, embedded: true),
       ActivitiesScreen(schoolId: schoolId),
       ParentEventsScreen(schoolId: schoolId),
       BillingScreen(schoolId: schoolId),
@@ -70,7 +69,7 @@ class _FloatingNavBar extends StatelessWidget {
 
   static const _items = [
     _NavItem(icon: Icons.home_outlined, activeIcon: Icons.home_rounded, label: 'Αρχική'),
-    _NavItem(icon: Icons.menu_book_outlined, activeIcon: Icons.menu_book_rounded, label: 'Ημερολόγιο'),
+    _NavItem(icon: Icons.notifications_outlined, activeIcon: Icons.notifications_rounded, label: 'Ειδοποιήσεις'),
     _NavItem(icon: Icons.sports_soccer_outlined, activeIcon: Icons.sports_soccer_rounded, label: 'Δραστηριότητες'),
     _NavItem(icon: Icons.event_outlined, activeIcon: Icons.event_rounded, label: 'Εκδηλώσεις'),
     _NavItem(icon: Icons.account_balance_wallet_outlined, activeIcon: Icons.account_balance_wallet_rounded, label: 'Πληρωμές'),

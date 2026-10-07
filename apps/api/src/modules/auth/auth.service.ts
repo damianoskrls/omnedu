@@ -239,6 +239,43 @@ export class AuthService {
     }
   }
 
+  async issueForUser(userId: string, schoolId?: string | null, role?: string | null) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        schoolMemberships: {
+          where: { isActive: true },
+          include: { school: { select: { id: true, name: true, logoUrl: true, primaryColor: true } } },
+        },
+      },
+    });
+    if (!user || !user.isActive) throw new UnauthorizedException('Ο λογαριασμός δεν είναι ενεργός');
+    const memberships = user.schoolMemberships.map((m) => ({
+      schoolId: m.schoolId,
+      schoolName: m.school.name,
+      role: m.role,
+    }));
+    const preferred = user.schoolMemberships.find((m) => m.schoolId === schoolId && (!role || m.role === role))
+      ?? user.schoolMemberships[0]
+      ?? null;
+    const payload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      isSuperAdmin: user.isSuperAdmin,
+      schoolId: preferred?.schoolId ?? null,
+      role: preferred?.role ?? null,
+      schoolLogoUrl: preferred?.school?.logoUrl ?? null,
+      schoolPrimaryColor: preferred?.school?.primaryColor ?? null,
+      memberships,
+    };
+    const tokens = await this.generateTokens(payload);
+    return {
+      ...tokens,
+      user: { id: user.id, email: user.email, fullName: user.fullName, phone: user.phone, avatarUrl: user.avatarUrl },
+    };
+  }
+
   private async generateTokens(payload: JwtPayload) {
     const refreshExpires = this.config.get<string>('jwt.refreshExpires', '7d');
     const expiresAt = new Date();

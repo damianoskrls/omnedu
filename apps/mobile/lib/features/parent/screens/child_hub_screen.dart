@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/widgets/person_face.dart';
 import 'bulletin_screen.dart';
 import 'child_detail_screen.dart';
 import 'parent_child_pages.dart';
@@ -11,8 +12,20 @@ class ChildHubScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final name = child['fullName'] as String? ?? 'Παιδί';
+    final photo = child['avatarUrl'] as String?;
     final enrollments = child['enrollments'] as List<dynamic>? ?? [];
-    final className = enrollments.isNotEmpty ? (enrollments.first['class']?['name'] as String? ?? '') : '';
+    final klass = enrollments.isNotEmpty ? enrollments.first['class'] : null;
+    final className = klass is Map ? (klass['name'] as String? ?? '') : '';
+    final teachers = <String>[];
+    if (klass is Map) {
+      final list = klass['teachers'] as List? ?? [];
+      for (final teacher in list) {
+        if (teacher is! Map) continue;
+        final user = teacher['user'];
+        final teacherName = user is Map ? user['fullName']?.toString() ?? '' : '';
+        if (teacherName.isNotEmpty && !teachers.contains(teacherName)) teachers.add(teacherName);
+      }
+    }
 
     final tiles = <_Tile>[
       _Tile('Ημερήσιο Δελτίο', Icons.menu_book_rounded, const Color(0xFF77328D), () {
@@ -55,27 +68,40 @@ class ChildHubScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: const Color(0xFF77328D),
         foregroundColor: Colors.white,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-            if (className.isNotEmpty)
-              Text(className, style: const TextStyle(fontSize: 12, color: Colors.white70)),
-          ],
-        ),
+        title: const Text('Παιδί'),
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: [
           Container(
+            width: double.infinity,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [Color(0xFF77328D), Color(0xFFE95926)]),
-              borderRadius: BorderRadius.circular(20),
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(22),
             ),
-            child: const Text(
-              'Ό,τι αφορά το παιδί σας: δελτίο ημέρας, φαγητό, σχολικό, οφειλές, δραστηριότητες και κανονισμοί.',
-              style: TextStyle(color: Colors.white, height: 1.4),
+            child: Column(
+              children: [
+                PersonFace(
+                  name: name,
+                  photoUrl: photo,
+                  size: 84,
+                  radius: 28,
+                  fontSize: 28,
+                  background: const Color(0xFF77328D),
+                  foreground: Colors.white,
+                ),
+                const SizedBox(height: 12),
+                Text(name, textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF2C2422))),
+                if (className.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(className, style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w700)),
+                ],
+                if (teachers.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(teachers.join(', '), textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF6B7280))),
+                ],
+              ],
             ),
           ),
           const SizedBox(height: 16),

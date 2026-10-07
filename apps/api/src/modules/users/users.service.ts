@@ -1,9 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { AuthService } from '../auth/auth.service';
+import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private auth: AuthService) {}
 
   async findById(id: string) {
     const user = await this.prisma.user.findUnique({
@@ -27,8 +29,51 @@ export class UsersService {
     });
   }
 
-  async updateProfile(id: string, data: { fullName?: string; phone?: string; avatarUrl?: string }) {
-    return this.prisma.user.update({ where: { id }, data });
+  async updateProfile(id: string, data: { fullName?: string; phone?: string; avatarUrl?: string; email?: string }, current?: JwtPayload) {
+    const fullName = data.fullName?.trim();
+    const email = data.email?.trim().toLowerCase();
+    if (fullName !== undefined && fullName.length < 2) {
+      throw new ConflictException('Το όνομα είναι πολύ μικρό.');
+    }
+    if (email !== undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new ConflictException('Το email δεν είναι έγκυρο.');
+    }
+    if (email) {
+      const taken = await this.prisma.user.findFirst({ where: { email, NOT: { id } } });
+      if (taken) throw new ConflictException('Αυτό το email χρησιμοποιείται ήδη.');
+    }
+    await this.prisma.user.update({
+      where: { id },
+      data: {
+        ...(fullName !== undefined ? { fullName } : {}),
+        ...(email !== undefined ? { email } : {}),
+        ...(data.phone !== undefined ? { phone: data.phone } : {}),
+        ...(data.avatarUrl !== undefined ? { avatarUrl: data.avatarUrl } : {}),
+      },
+    });
+    return this.auth.issueForUser(id, current?.schoolId, current?.role);
+  }
+
+  async deleteAccount(id: string) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException('Ο λογαριασμός δεν βρέθηκε.');
+    if (user.isSuperAdmin) throw new ForbiddenException('Αυτός ο λογαριασμός δεν διαγράφεται από το κινητό.');
+    await this.prisma.$transaction([
+      this.prisma.refreshToken.deleteMany({ where: { userId: id } }),
+      this.prisma.fcmToken.deleteMany({ where: { userId: id } }),
+      this.prisma.schoolMember.updateMany({ where: { userId: id }, data: { isActive: false } }),
+      this.prisma.user.update({
+        where: { id },
+        data: {
+          isActive: false,
+          email: `deleted-${id}@removed.invalid`,
+          fullName: 'Διαγραμμένος λογαριασμός',
+          phone: null,
+          avatarUrl: null,
+        },
+      }),
+    ]);
+    return { deleted: true };
   }
 
   async saveFcmToken(userId: string, token: string, platform: 'android' | 'ios') {

@@ -104,6 +104,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = AuthState(user: AuthUser.fromTokenPayload(payload));
   }
 
+  Future<void> applySession(String accessToken, String refreshToken) async {
+    await _storage.storeTokens(accessToken: accessToken, refreshToken: refreshToken);
+    state = AuthState(user: AuthUser.fromTokenPayload(_decodeJwt(accessToken)));
+  }
+
   Future<void> logout() async {
     final refreshToken = await _storage.getRefreshToken();
     if (refreshToken != null) {

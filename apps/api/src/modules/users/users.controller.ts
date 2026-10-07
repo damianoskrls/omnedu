@@ -18,9 +18,14 @@ export class UsersController {
   @Patch('me')
   updateMe(
     @CurrentUser() user: JwtPayload,
-    @Body() body: { fullName?: string; phone?: string; avatarUrl?: string },
+    @Body() body: { fullName?: string; phone?: string; avatarUrl?: string; email?: string },
   ) {
-    return this.users.updateProfile(user.sub, body);
+    return this.users.updateProfile(user.sub, body, user);
+  }
+
+  @Delete('me')
+  deleteMe(@CurrentUser() user: JwtPayload) {
+    return this.users.deleteAccount(user.sub);
   }
 
   @Get(':id')
