@@ -70,6 +70,19 @@ export class UsersService {
     return { updated: true };
   }
 
+  async acceptTerms(userId: string, schoolId: string | null, current: JwtPayload) {
+    if (!schoolId) throw new BadRequestException('Δεν βρέθηκε σχολείο για την αποδοχή.');
+    const member = await this.prisma.schoolMember.findFirst({
+      where: { userId, schoolId, role: 'parent', isActive: true },
+    });
+    if (!member) throw new BadRequestException('Η αποδοχή αφορά τον λογαριασμό γονέα.');
+    await this.prisma.schoolMember.update({
+      where: { id: member.id },
+      data: { termsAcceptedAt: new Date() },
+    });
+    return this.auth.issueForUser(userId, schoolId, current.role ?? 'parent');
+  }
+
   async deleteAccount(id: string) {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('Ο λογαριασμός δεν βρέθηκε.');

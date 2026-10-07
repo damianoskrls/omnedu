@@ -7,5 +7,6 @@ export interface JwtPayload {
   role: string | null;
   schoolLogoUrl?: string | null;
   schoolPrimaryColor?: string | null;
+  termsAccepted?: boolean;
   memberships: { schoolId: string; schoolName: string; role: string }[];
 }

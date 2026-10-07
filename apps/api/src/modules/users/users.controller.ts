@@ -23,6 +23,11 @@ export class UsersController {
     return this.users.updateProfile(user.sub, body, user);
   }
 
+  @Post('me/terms')
+  acceptTerms(@CurrentUser() user: JwtPayload) {
+    return this.users.acceptTerms(user.sub, user.schoolId, user);
+  }
+
   @Post('me/password')
   changePassword(
     @CurrentUser() user: JwtPayload,

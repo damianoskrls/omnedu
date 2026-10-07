@@ -104,6 +104,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = AuthState(user: AuthUser.fromTokenPayload(payload));
   }
 
+  Future<void> acceptTerms() async {
+    final dio = _ref.read(dioProvider);
+    final resp = await dio.post('/users/me/terms');
+    final data = resp.data as Map<String, dynamic>;
+    await applySession(data['accessToken'] as String, data['refreshToken'] as String);
+  }
+
   Future<void> applySession(String accessToken, String refreshToken) async {
     await _storage.storeTokens(accessToken: accessToken, refreshToken: refreshToken);
     state = AuthState(user: AuthUser.fromTokenPayload(_decodeJwt(accessToken)));

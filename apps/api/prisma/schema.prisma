@@ -163,6 +163,7 @@ model SchoolMember {
   role     Role
   isActive Boolean @default(true) @map("is_active")
   joinedAt DateTime @default(now()) @map("joined_at")
+  termsAcceptedAt DateTime? @map("terms_accepted_at")
 
   school         School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)

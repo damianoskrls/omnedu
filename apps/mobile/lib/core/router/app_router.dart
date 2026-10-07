@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
 import '../../features/auth/screens/login_screen.dart';
+import '../../features/auth/screens/terms_screen.dart';
 import '../../features/teacher/screens/teacher_shell.dart';
 import '../../features/parent/screens/parent_shell.dart';
 
@@ -22,11 +23,16 @@ class _RouterNotifier extends ChangeNotifier {
 
     final loggedIn = _authState.isAuthenticated;
     final onAuth = state.matchedLocation.startsWith('/login');
+    final onTerms = state.matchedLocation.startsWith('/terms');
+    final user = _authState.user;
 
     if (!loggedIn && !onAuth) return '/login';
+    if (loggedIn && user?.isParent == true && user?.termsAccepted != true) {
+      return onTerms ? null : '/terms';
+    }
+    if (loggedIn && onTerms) return user?.isParent == true ? '/parent' : '/teacher';
     if (loggedIn && onAuth) {
-      final user = _authState.user!;
-      if (user.isTeacher || user.isSchoolAdmin) return '/teacher';
+      if (user!.isTeacher || user.isSchoolAdmin) return '/teacher';
       if (user.isParent) return '/parent';
       return '/teacher';
     }
@@ -43,6 +49,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: notifier.redirect,
     routes: [
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
+      GoRoute(path: '/terms', builder: (_, __) => const TermsScreen()),
 
       ShellRoute(
         builder: (context, state, child) => child,

@@ -277,6 +277,7 @@ export class AuthService {
   }
 
   private async generateTokens(payload: JwtPayload) {
+    const full = await this.withTerms(payload);
     const refreshExpires = this.config.get<string>('jwt.refreshExpires', '7d');
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
@@ -286,10 +287,23 @@ export class AuthService {
       data: { userId: payload.sub, token: refreshToken, expiresAt },
     });
 
-    const accessToken = this.jwt.sign(payload, {
+    const accessToken = this.jwt.sign(full, {
       expiresIn: this.config.get<string>('jwt.accessExpires', '15m'),
     });
 
     return { accessToken, refreshToken };
+  }
+
+  private async withTerms(payload: JwtPayload): Promise<JwtPayload> {
+    if (payload.role !== 'parent' || !payload.schoolId) return { ...payload, termsAccepted: true };
+    try {
+      const member = await this.prisma.schoolMember.findFirst({
+        where: { userId: payload.sub, schoolId: payload.schoolId, role: 'parent', isActive: true },
+        select: { termsAcceptedAt: true },
+      });
+      return { ...payload, termsAccepted: Boolean(member?.termsAcceptedAt) };
+    } catch {
+      return { ...payload, termsAccepted: false };
+    }
   }
 }

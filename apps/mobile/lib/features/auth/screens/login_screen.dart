@@ -209,23 +209,78 @@ class _OtpInput extends ConsumerStatefulWidget {
 class _OtpInputState extends ConsumerState<_OtpInput> {
   final _controllers = List.generate(6, (_) => TextEditingController());
   final _focuses = List.generate(6, (_) => FocusNode());
+  bool _syncing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    for (var i = 0; i < _focuses.length; i++) {
+      final index = i;
+      _focuses[i].onKeyEvent = (node, event) {
+        if (event is! KeyDownEvent || event.logicalKey != LogicalKeyboardKey.backspace) {
+          return KeyEventResult.ignored;
+        }
+        _onBackspace(index);
+        return KeyEventResult.handled;
+      };
+    }
+  }
 
   @override
   void dispose() {
-    for (final c in _controllers) c.dispose();
-    for (final f in _focuses) f.dispose();
+    for (final c in _controllers) {
+      c.dispose();
+    }
+    for (final f in _focuses) {
+      f.dispose();
+    }
     super.dispose();
   }
 
   String get _otp => _controllers.map((c) => c.text).join();
 
+  void _fillFrom(int start, String raw) {
+    final digits = raw.replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) return;
+    _syncing = true;
+    for (var offset = 0; offset < digits.length && start + offset < 6; offset++) {
+      _controllers[start + offset].text = digits[offset];
+    }
+    _syncing = false;
+    final next = (start + digits.length).clamp(0, 5);
+    _focuses[next].requestFocus();
+    if (_otp.length == 6) _submit();
+  }
+
   void _onChanged(int i, String val) {
-    if (val.length == 1 && i < 5) {
-      _focuses[i + 1].requestFocus();
-    } else if (val.isEmpty && i > 0) {
+    if (_syncing) return;
+    final digits = val.replaceAll(RegExp(r'\D'), '');
+    if (digits.length > 1) {
+      _fillFrom(i, digits);
+      return;
+    }
+    if (digits.length == 1) {
+      if (_controllers[i].text != digits) {
+        _syncing = true;
+        _controllers[i].text = digits;
+        _controllers[i].selection = const TextSelection.collapsed(offset: 1);
+        _syncing = false;
+      }
+      if (i < 5) _focuses[i + 1].requestFocus();
+      if (_otp.length == 6) _submit();
+    }
+  }
+
+  void _onBackspace(int i) {
+    if (_controllers[i].text.isNotEmpty) {
+      _controllers[i].clear();
+      if (i > 0) _focuses[i - 1].requestFocus();
+      return;
+    }
+    if (i > 0) {
+      _controllers[i - 1].clear();
       _focuses[i - 1].requestFocus();
     }
-    if (_otp.length == 6) _submit();
   }
 
   Future<void> _submit() async {
@@ -233,7 +288,9 @@ class _OtpInputState extends ConsumerState<_OtpInput> {
     await ref.read(authProvider.notifier).verifyOtp(widget.phone, _otp);
     final error = ref.read(authProvider).error;
     if (error != null && mounted) {
-      for (final c in _controllers) c.clear();
+      for (final c in _controllers) {
+        c.clear();
+      }
       _focuses[0].requestFocus();
     }
   }
@@ -267,14 +324,20 @@ class _OtpInputState extends ConsumerState<_OtpInput> {
           ),
         ),
         const SizedBox(height: 24),
-        // OTP boxes
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: List.generate(6, (i) => _OtpBox(
-            controller: _controllers[i],
-            focusNode: _focuses[i],
-            onChanged: (v) => _onChanged(i, v),
-          )),
+          children: [
+            for (var i = 0; i < 6; i++) ...[
+              if (i > 0) const SizedBox(width: 8),
+              Expanded(
+                child: _OtpBox(
+                  controller: _controllers[i],
+                  focusNode: _focuses[i],
+                  autofocus: i == 0,
+                  onChanged: (value) => _onChanged(i, value),
+                ),
+              ),
+            ],
+          ],
         ),
         if (widget.error != null) ...[
           const SizedBox(height: 16),
@@ -321,30 +384,41 @@ class _OtpInputState extends ConsumerState<_OtpInput> {
 class _OtpBox extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
+  final bool autofocus;
   final ValueChanged<String> onChanged;
-  const _OtpBox({required this.controller, required this.focusNode, required this.onChanged});
+  const _OtpBox({
+    required this.controller,
+    required this.focusNode,
+    required this.onChanged,
+    this.autofocus = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 44,
-      height: 56,
+      height: 58,
       child: TextField(
         controller: controller,
         focusNode: focusNode,
+        autofocus: autofocus,
         keyboardType: TextInputType.number,
         textAlign: TextAlign.center,
-        maxLength: 1,
         inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF3D1152)),
+        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xFF3D1152), height: 1.1),
+        cursorColor: const Color(0xFF702E8C),
         decoration: InputDecoration(
           counterText: '',
+          contentPadding: const EdgeInsets.symmetric(vertical: 14),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: Color(0xFFE5E7EB), width: 1.5),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
             borderSide: const BorderSide(color: Color(0xFFE5E7EB), width: 1.5),
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
             borderSide: const BorderSide(color: Color(0xFF702E8C), width: 2),
           ),
           fillColor: const Color(0xFFF9FAFB),

@@ -18,6 +18,7 @@ export class SchoolsService implements OnModuleInit {
 
   private async ensureRegulationSchema() {
     const statements = [
+      `ALTER TABLE "school_members" ADD COLUMN IF NOT EXISTS "terms_accepted_at" TIMESTAMP(3)`,
       `ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "operating_regulation" TEXT`,
       `ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "financial_regulation" TEXT`,
       `CREATE TABLE IF NOT EXISTS "school_regulations" (

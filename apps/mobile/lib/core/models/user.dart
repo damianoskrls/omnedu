@@ -31,6 +31,7 @@ class AuthUser extends Equatable {
   final String? role;
   final String? schoolLogoUrl;
   final String? schoolPrimaryColor;
+  final bool termsAccepted;
   final List<Membership> memberships;
 
   const AuthUser({
@@ -43,6 +44,7 @@ class AuthUser extends Equatable {
     this.role,
     this.schoolLogoUrl,
     this.schoolPrimaryColor,
+    this.termsAccepted = false,
     required this.memberships,
   });
 
@@ -56,6 +58,7 @@ class AuthUser extends Equatable {
         role: role,
         schoolLogoUrl: schoolLogoUrl,
         schoolPrimaryColor: schoolPrimaryColor,
+        termsAccepted: termsAccepted,
         memberships: memberships,
       );
 
@@ -72,6 +75,7 @@ class AuthUser extends Equatable {
         role: payload['role'] as String?,
         schoolLogoUrl: payload['schoolLogoUrl'] as String?,
         schoolPrimaryColor: payload['schoolPrimaryColor'] as String?,
+        termsAccepted: payload['termsAccepted'] == true,
         memberships: (payload['memberships'] as List?)
                 ?.map((m) => Membership.fromJson(m as Map<String, dynamic>))
                 .toList() ??
@@ -79,5 +83,5 @@ class AuthUser extends Equatable {
       );
 
   @override
-  List<Object?> get props => [id, schoolId, role, email, fullName];
+  List<Object?> get props => [id, schoolId, role, email, fullName, termsAccepted];
 }
