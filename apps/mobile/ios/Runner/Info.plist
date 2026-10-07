@@ -26,6 +26,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Η Ονειροχώρα αποθηκεύει φωτογραφίες και βίντεο εκδρομών στη συλλογή του κινητού.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Η Ονειροχώρα αποθηκεύει φωτογραφίες και βίντεο εκδρομών στη συλλογή του κινητού.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

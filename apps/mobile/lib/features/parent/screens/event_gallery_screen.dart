@@ -1,0 +1,295 @@
+import 'dart:io';
+
+import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
+import 'package:gal/gal.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:video_player/video_player.dart';
+
+import '../../../core/api/api_client.dart';
+import '../../../core/utils/event_status.dart';
+import '../../../core/utils/system_insets.dart';
+import '../../../core/widgets/app_image.dart';
+
+List<Map<String, dynamic>> eventMediaList(dynamic raw) {
+  if (raw is! List) return [];
+  return [
+    for (final item in raw)
+      if (item is Map) Map<String, dynamic>.from(item),
+  ];
+}
+
+void openEventGallery(BuildContext context, Map event) {
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => EventGalleryScreen(
+        title: event['title'] as String? ?? 'Εκδήλωση',
+        eventDate: event['eventDate'] as String?,
+        status: event['status'] as String?,
+        description: event['description'] as String?,
+        media: eventMediaList(event['postMedia']),
+      ),
+    ),
+  );
+}
+
+class EventGalleryScreen extends StatelessWidget {
+  final String title;
+  final String? eventDate;
+  final String? status;
+  final String? description;
+  final List<Map<String, dynamic>> media;
+
+  const EventGalleryScreen({
+    super.key,
+    required this.title,
+    required this.media,
+    this.eventDate,
+    this.status,
+    this.description,
+  });
+
+  bool get completed => eventDisplayStatus(status, eventDate) == 'completed';
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF6F3FA),
+      appBar: AppBar(title: Text(title)),
+      body: ListView(
+        padding: EdgeInsets.fromLTRB(16, 16, 16, 24 + systemBottomInset(context)),
+        children: [
+          if ((description ?? '').trim().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Text(description!.trim(), style: const TextStyle(height: 1.4, color: Color(0xFF2C2422))),
+            ),
+          if (!completed)
+            const _GalleryNotice(
+              icon: Icons.photo_library_outlined,
+              title: 'Το υλικό δεν είναι ακόμα διαθέσιμο',
+              message: 'Φωτογραφίες και βίντεο εμφανίζονται όταν η εκδρομή έχει ολοκληρωθεί.',
+            )
+          else if (media.isEmpty)
+            const _GalleryNotice(
+              icon: Icons.photo_camera_outlined,
+              title: 'Χωρίς υλικό',
+              message: 'Ο εκπαιδευτικός δεν έχει ανεβάσει ακόμα φωτογραφίες ή βίντεο.',
+            )
+          else ...[
+            const Text('Φωτογραφίες & βίντεο', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF77328D))),
+            const SizedBox(height: 6),
+            const Text('Πάτα ένα αρχείο για να το δεις και να το αποθηκεύσεις στο κινητό.', style: TextStyle(color: Color(0xFF6B7280), height: 1.3)),
+            const SizedBox(height: 12),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: media.length,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+              ),
+              itemBuilder: (_, index) {
+                final item = media[index];
+                final url = item['url'] as String? ?? '';
+                final isVideo = item['mediaType'] == 'video';
+                return GestureDetector(
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => EventMediaViewer(url: url, isVideo: isVideo),
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: isVideo
+                        ? const ColoredBox(
+                            color: Color(0xFF2C2422),
+                            child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 36),
+                          )
+                        : AppImage(url, fit: BoxFit.cover),
+                  ),
+                );
+              },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _GalleryNotice extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String message;
+  const _GalleryNotice({required this.icon, required this.title, required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 48),
+      child: Column(
+        children: [
+          Container(
+            width: 84,
+            height: 84,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(colors: [Color(0xFF77328D), Color(0xFFE95926)]),
+            ),
+            child: Icon(icon, color: Colors.white, size: 40),
+          ),
+          const SizedBox(height: 16),
+          Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF6B7280), height: 1.4)),
+        ],
+      ),
+    );
+  }
+}
+
+class EventMediaViewer extends StatefulWidget {
+  final String url;
+  final bool isVideo;
+  const EventMediaViewer({super.key, required this.url, required this.isVideo});
+
+  @override
+  State<EventMediaViewer> createState() => _EventMediaViewerState();
+}
+
+class _EventMediaViewerState extends State<EventMediaViewer> {
+  VideoPlayerController? _video;
+  bool _saving = false;
+  String? _notice;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.isVideo) {
+      final controller = VideoPlayerController.networkUrl(Uri.parse(fixMediaUrl(widget.url)));
+      _video = controller;
+      controller.initialize().then((_) {
+        if (mounted) {
+          setState(() {});
+          controller.play();
+        }
+      }).catchError((_) {
+        if (mounted) setState(() => _notice = 'Το βίντεο δεν άνοιξε. Μπορείς να το αποθηκεύσεις στο κινητό.');
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _video?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() {
+      _saving = true;
+      _notice = null;
+    });
+    try {
+      final access = await Gal.hasAccess(toAlbum: true);
+      if (!access) {
+        final granted = await Gal.requestAccess(toAlbum: true);
+        if (!granted) {
+          setState(() => _notice = 'Χρειάζεται άδεια για να αποθηκευτεί στη συλλογή.');
+          return;
+        }
+      }
+      final resolved = fixMediaUrl(widget.url);
+      final dir = await getTemporaryDirectory();
+      final uri = Uri.parse(resolved);
+      var name = uri.pathSegments.isEmpty ? 'oneirochora' : uri.pathSegments.last;
+      name = name.split('?').first;
+      if (!name.contains('.')) name = '$name.${widget.isVideo ? 'mp4' : 'jpg'}';
+      final path = '${dir.path}/${DateTime.now().millisecondsSinceEpoch}_$name';
+      await Dio().download(resolved, path);
+      if (widget.isVideo) {
+        await Gal.putVideo(path, album: 'Ονειροχώρα');
+      } else {
+        await Gal.putImage(path, album: 'Ονειροχώρα');
+      }
+      try {
+        await File(path).delete();
+      } catch (_) {}
+      if (mounted) setState(() => _notice = 'Αποθηκεύτηκε στη συλλογή του κινητού.');
+    } on GalException {
+      if (mounted) setState(() => _notice = 'Δεν αποθηκεύτηκε. Έλεγξε την άδεια της συλλογής.');
+    } catch (_) {
+      if (mounted) setState(() => _notice = 'Η αποθήκευση δεν ολοκληρώθηκε.');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final video = _video;
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: Text(widget.isVideo ? 'Βίντεο' : 'Φωτογραφία'),
+        actions: [
+          IconButton(
+            onPressed: _saving ? null : _save,
+            icon: _saving
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.download_rounded),
+            tooltip: 'Αποθήκευση',
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: Center(
+              child: widget.isVideo
+                  ? (video != null && video.value.isInitialized
+                      ? AspectRatio(
+                          aspectRatio: video.value.aspectRatio == 0 ? 16 / 9 : video.value.aspectRatio,
+                          child: VideoPlayer(video),
+                        )
+                      : const CircularProgressIndicator(color: Colors.white))
+                  : InteractiveViewer(child: AppImage(widget.url, fit: BoxFit.contain)),
+            ),
+          ),
+          if (widget.isVideo && video != null && video.value.isInitialized)
+            IconButton(
+              onPressed: () => setState(() => video.value.isPlaying ? video.pause() : video.play()),
+              icon: Icon(video.value.isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill, color: Colors.white, size: 42),
+            ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + systemBottomInset(context)),
+            child: Column(
+              children: [
+                if (_notice != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(_notice!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white)),
+                  ),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(backgroundColor: const Color(0xFFE95926), minimumSize: const Size.fromHeight(48)),
+                    onPressed: _saving ? null : _save,
+                    icon: const Icon(Icons.download_rounded),
+                    label: Text(_saving ? 'Αποθήκευση...' : 'Αποθήκευση στο κινητό'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

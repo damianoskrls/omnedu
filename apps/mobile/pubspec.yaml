@@ -39,6 +39,9 @@ dependencies:
   timeago: ^3.7.0
 
   cupertino_icons: ^1.0.8
+  gal: ^2.3.3
+  video_player: ^2.14.1
+  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_test:

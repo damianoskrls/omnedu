@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/providers/auth_provider.dart';
+import '../../../core/utils/event_status.dart';
 import '../../../core/widgets/app_image.dart';
 import '../../messages/conversation_ui.dart';
+import 'event_gallery_screen.dart';
 
 String _iso(DateTime d) =>
     '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -516,29 +518,54 @@ class _ChildEventCard extends StatelessWidget {
     final cost = event['costPerChild'];
     final teachers = event['teachers'] as List<dynamic>? ?? [];
     final names = teachers.map((t) => (t as Map)['user']?['fullName']).whereType<String>().join(', ');
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    final completed = eventDisplayStatus(event['status'] as String?, event['eventDate'] as String?) == 'completed';
+    final media = eventMediaList(event['postMedia']);
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => openEventGallery(context, event),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.hiking_rounded, color: Color(0xFFE95926)),
-              const SizedBox(width: 8),
-              Expanded(child: Text(event['title'] as String? ?? 'Εκδήλωση', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+              Row(
+                children: [
+                  const Icon(Icons.hiking_rounded, color: Color(0xFFE95926)),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(event['title'] as String? ?? 'Εκδήλωση', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+                  const Icon(Icons.chevron_right_rounded, color: Color(0xFF77328D)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(types[type] ?? 'Εκδήλωση', style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w700)),
+              if (date != null) Text(_grDate(date)),
+              if (cost != null) Text('Κόστος: $cost €'),
+              if (names.isNotEmpty) Text('Εκπαιδευτικοί: $names'),
+              if (description.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(description, style: const TextStyle(height: 1.4)),
+              ],
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Icon(completed ? Icons.photo_library_rounded : Icons.lock_clock_rounded, size: 18, color: const Color(0xFF77328D)),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      completed
+                          ? (media.isEmpty ? 'Ολοκληρώθηκε · χωρίς υλικό ακόμα' : 'Φωτογραφίες & βίντεο (${media.length})')
+                          : 'Οι φωτογραφίες εμφανίζονται μετά την ολοκλήρωση',
+                      style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w700, fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
-          const SizedBox(height: 8),
-          Text(types[type] ?? 'Εκδήλωση', style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w700)),
-          if (date != null) Text(_grDate(date)),
-          if (cost != null) Text('Κόστος: $cost €'),
-          if (names.isNotEmpty) Text('Εκπαιδευτικοί: $names'),
-          if (description.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(description, style: const TextStyle(height: 1.4)),
-          ],
-        ],
+        ),
       ),
     );
   }

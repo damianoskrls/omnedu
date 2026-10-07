@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
-import '../../../core/providers/auth_provider.dart';
 import '../../../core/utils/event_status.dart';
 import '../../../core/widgets/app_image.dart';
+import 'event_gallery_screen.dart';
 
 // Returns list of enrollments (each has `event` + `student` + status)
 final _parentEventsProvider = FutureProvider.family<List<dynamic>, String>(
@@ -193,7 +193,8 @@ class _EventCard extends StatelessWidget {
     final eventDate = event['eventDate'] as String?;
     final cost = double.tryParse(event['costPerChild']?.toString() ?? '0') ?? 0;
     final description = event['description'] as String?;
-    final media = event['postMedia'] as List<dynamic>? ?? [];
+    final media = eventMediaList(event['postMedia']);
+    final completed = eventDisplayStatus(event['status'] as String?, eventDate) == 'completed';
 
     final meta = _statusMeta[status];
     final statusLabel = meta?.$1 ?? status;
@@ -215,10 +216,11 @@ class _EventCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Event header
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-            child: Row(
+            child: InkWell(
+              onTap: () => openEventGallery(context, event),
+              child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
@@ -257,6 +259,7 @@ class _EventCard extends StatelessWidget {
                 ),
               ],
             ),
+            ),
           ),
 
           if (description != null && description.isNotEmpty)
@@ -283,64 +286,82 @@ class _EventCard extends StatelessWidget {
               ]),
             ),
 
-          if (media.isNotEmpty || eventDayReached(eventDate)) ...[
-            const Divider(height: 1, color: Color(0xFFF3F4F6)),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Υλικό από την εκδήλωση',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF6B7280))),
-                  if (media.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 8, bottom: 4),
-                      child: Text(
-                        'Ο εκπαιδευτικός δεν έχει ανεβάσει ακόμα φωτογραφίες ή βίντεο.',
-                        style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF)),
+          const Divider(height: 1, color: Color(0xFFF3F4F6)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                InkWell(
+                  onTap: () => openEventGallery(context, event),
+                  child: Row(
+                    children: [
+                      Icon(completed ? Icons.photo_library_rounded : Icons.lock_clock_rounded, size: 16, color: const Color(0xFF77328D)),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          completed ? 'Φωτογραφίες & βίντεο' : 'Οι φωτογραφίες εμφανίζονται μετά την ολοκλήρωση',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF77328D)),
+                        ),
                       ),
+                      const Icon(Icons.chevron_right_rounded, color: Color(0xFF77328D), size: 20),
+                    ],
+                  ),
+                ),
+                if (completed && media.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8, bottom: 4),
+                    child: Text(
+                      'Ο εκπαιδευτικός δεν έχει ανεβάσει ακόμα φωτογραφίες ή βίντεο.',
+                      style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF)),
                     ),
-                  if (media.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    SizedBox(
+                  ),
+                if (completed && media.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  SizedBox(
                     height: 80,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
                       itemCount: media.length,
                       separatorBuilder: (_, __) => const SizedBox(width: 8),
                       itemBuilder: (_, i) {
-                        final m = media[i] as Map<String, dynamic>;
+                        final m = media[i];
                         final url = m['url'] as String? ?? '';
                         final isVideo = m['mediaType'] == 'video';
                         return GestureDetector(
-                          onTap: () => _openMedia(context, url, isVideo),
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => EventMediaViewer(url: url, isVideo: isVideo)),
+                          ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(10),
                             child: Stack(
                               children: [
-                                AppImage(url, width: 80, height: 80, fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) => Container(
-                                      width: 80, height: 80,
-                                      color: const Color(0xFFF3F4F6),
-                                      child: const Icon(Icons.broken_image_outlined, color: Color(0xFF9CA3AF)),
-                                    )),
                                 if (isVideo)
-                                  Positioned.fill(child: Container(
-                                    color: Colors.black26,
+                                  Container(
+                                    width: 80,
+                                    height: 80,
+                                    color: const Color(0xFF2C2422),
                                     child: const Icon(Icons.play_circle_outline_rounded, color: Colors.white, size: 28),
-                                  )),
+                                  )
+                                else
+                                  AppImage(url, width: 80, height: 80, fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => Container(
+                                        width: 80, height: 80,
+                                        color: const Color(0xFFF3F4F6),
+                                        child: const Icon(Icons.broken_image_outlined, color: Color(0xFF9CA3AF)),
+                                      )),
                               ],
                             ),
                           ),
                         );
                       },
                     ),
-                    ),
-                  ],
+                  ),
                 ],
-              ),
+              ],
             ),
-          ],
+          ),
 
           // Consent buttons
           if (status == 'pending_consent')
@@ -381,35 +402,6 @@ class _EventCard extends StatelessWidget {
           else
             const SizedBox(height: 4),
         ],
-      ),
-    );
-  }
-
-  void _openMedia(BuildContext context, String url, bool isVideo) {
-    showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        backgroundColor: Colors.black,
-        insetPadding: const EdgeInsets.all(12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Align(
-              alignment: Alignment.topRight,
-              child: IconButton(
-                icon: const Icon(Icons.close_rounded, color: Colors.white),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ),
-            if (!isVideo)
-              AppImage(url, fit: BoxFit.contain)
-            else
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(url, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-              ),
-          ],
-        ),
       ),
     );
   }
