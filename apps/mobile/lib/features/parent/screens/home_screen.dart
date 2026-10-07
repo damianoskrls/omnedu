@@ -105,13 +105,6 @@ class HomeScreen extends ConsumerWidget {
   final String schoolId;
   const HomeScreen({super.key, required this.schoolId});
 
-  static const _gradients = [
-    [Color(0xFF4F46E5), Color(0xFF7C3AED)],
-    [Color(0xFF0EA5E9), Color(0xFF6366F1)],
-    [Color(0xFFEC4899), Color(0xFFF43F5E)],
-    [Color(0xFF10B981), Color(0xFF059669)],
-  ];
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final childrenAsync = ref.watch(myChildrenProvider(schoolId));
@@ -125,7 +118,7 @@ class HomeScreen extends ConsumerWidget {
         : 'Ονειροχώρα';
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F5FF),
+      backgroundColor: const Color(0xFFF6F3FA),
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(myChildrenProvider(schoolId));
@@ -141,34 +134,9 @@ class HomeScreen extends ConsumerWidget {
                 padding: const EdgeInsets.fromLTRB(20, 56, 20, 0),
                 child: Row(
                   children: [
-                    Container(
-                      width: 38,
-                      height: 38,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF4F46E5).withOpacity(0.35),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: const Center(
-                        child: Text(
-                          'Ο',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18,
-                          ),
-                        ),
-                      ),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.asset('assets/images/school_logo.png', width: 42, height: 42, fit: BoxFit.contain),
                     ),
                     const SizedBox(width: 10),
                     Text(
@@ -176,7 +144,7 @@ class HomeScreen extends ConsumerWidget {
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF1E1B4B),
+                        color: Color(0xFF2C2422),
                         letterSpacing: -0.3,
                       ),
                     ),
@@ -192,14 +160,14 @@ class HomeScreen extends ConsumerWidget {
                 padding: const EdgeInsets.all(22),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                    colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
+                    colors: [Color(0xFF77328D), Color(0xFFE95926)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(28),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF4F46E5).withOpacity(0.4),
+                      color: const Color(0xFF77328D).withOpacity(0.4),
                       blurRadius: 28,
                       offset: const Offset(0, 10),
                     ),
@@ -259,7 +227,7 @@ class HomeScreen extends ConsumerWidget {
                 padding: EdgeInsets.fromLTRB(20, 28, 20, 12),
                 child: Text(
                   'Παιδιά μου',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF1E1B4B)),
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF2C2422)),
                 ),
               ),
             ),
@@ -317,7 +285,7 @@ class HomeScreen extends ConsumerWidget {
                         padding: EdgeInsets.fromLTRB(20, 28, 20, 12),
                         child: Text(
                           'Δραστηριότητες & Εκδρομές',
-                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF1E1B4B)),
+                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF2C2422)),
                         ),
                       ),
                       SizedBox(
@@ -352,7 +320,7 @@ class HomeScreen extends ConsumerWidget {
                           children: [
                             const Text(
                               'Νέα & Εκδηλώσεις',
-                              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF1E1B4B)),
+                              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF2C2422)),
                             ),
                             const Spacer(),
                             GestureDetector(
@@ -360,7 +328,7 @@ class HomeScreen extends ConsumerWidget {
                                 builder: (_) => SchoolPostsScreen(schoolId: schoolId),
                               )),
                               child: const Text('Όλα',
-                                  style: TextStyle(fontSize: 13, color: Color(0xFF4F46E5), fontWeight: FontWeight.w600)),
+                                  style: TextStyle(fontSize: 13, color: Color(0xFF77328D), fontWeight: FontWeight.w600)),
                             ),
                           ],
                         ),
@@ -386,7 +354,7 @@ class HomeScreen extends ConsumerWidget {
                 padding: EdgeInsets.fromLTRB(20, 28, 20, 12),
                 child: Text(
                   'Πρόσφατο Ημερολόγιο',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF1E1B4B)),
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF2C2422)),
                 ),
               ),
             ),
@@ -441,7 +409,7 @@ class _ChildCard extends StatelessWidget {
   const _ChildCard({required this.child, this.onTap});
 
   static const _gradients = [
-    [Color(0xFF4F46E5), Color(0xFF7C3AED)],
+    [Color(0xFF77328D), Color(0xFFE95926)],
     [Color(0xFF0EA5E9), Color(0xFF6366F1)],
     [Color(0xFFEC4899), Color(0xFFF43F5E)],
     [Color(0xFF10B981), Color(0xFF059669)],
@@ -496,7 +464,7 @@ class _ChildCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Text(
                 firstName,
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF1E1B4B)),
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF2C2422)),
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
               ),
@@ -615,7 +583,7 @@ class _ActivityCard extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             title,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF1E1B4B)),
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF2C2422)),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
@@ -659,7 +627,7 @@ class _DiaryMini extends StatelessWidget {
             height: 42,
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
+                colors: [Color(0xFF77328D), Color(0xFFE95926)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -679,7 +647,7 @@ class _DiaryMini extends StatelessWidget {
               children: [
                 Text(
                   name.split(' ').first,
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF1E1B4B)),
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF2C2422)),
                 ),
                 const SizedBox(height: 2),
                 if (notes != null && notes.isNotEmpty)
@@ -766,7 +734,7 @@ class _PostMini extends StatelessWidget {
                   Text(title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E1B4B))),
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF2C2422))),
                 ],
               ),
             ),

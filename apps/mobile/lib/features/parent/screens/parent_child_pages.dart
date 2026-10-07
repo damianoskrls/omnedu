@@ -355,6 +355,11 @@ class RegulationsScreen extends ConsumerWidget {
         data: (data) => ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            if ((data['academicYear'] as String?)?.isNotEmpty == true)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text('Σχολικό έτος ${data['academicYear']}', style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF77328D))),
+              ),
             _RegulationBlock(title: 'Κανονισμός λειτουργίας', body: data['operatingRegulation'] as String?),
             const SizedBox(height: 12),
             _RegulationBlock(title: 'Οικονομικός κανονισμός', body: data['financialRegulation'] as String?),
@@ -367,7 +372,7 @@ class RegulationsScreen extends ConsumerWidget {
 
 final _schoolProvider = FutureProvider.family<Map<String, dynamic>, String>((ref, schoolId) async {
   final dio = ref.read(dioProvider);
-  final resp = await dio.get('/schools/$schoolId');
+  final resp = await dio.get('/schools/$schoolId/regulations');
   return Map<String, dynamic>.from(resp.data as Map);
 });
 

@@ -36,7 +36,7 @@ class _ParentShellState extends ConsumerState<ParentShell> {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.dark,
       child: Scaffold(
-        backgroundColor: const Color(0xFFF6F5FF),
+        backgroundColor: const Color(0xFFF6F3FA),
         extendBody: true,
         body: IndexedStack(index: _index, children: pages),
         bottomNavigationBar: _FloatingNavBar(
@@ -82,7 +82,7 @@ class _FloatingNavBar extends StatelessWidget {
           borderRadius: BorderRadius.circular(36),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF4F46E5).withOpacity(0.18),
+              color: const Color(0xFF77328D).withOpacity(0.18),
               blurRadius: 32,
               offset: const Offset(0, 10),
             ),
@@ -115,14 +115,14 @@ class _FloatingNavBar extends StatelessWidget {
                   decoration: selected
                       ? BoxDecoration(
                           gradient: const LinearGradient(
-                            colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
+                            colors: [Color(0xFF77328D), Color(0xFFE95926)],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
                           borderRadius: BorderRadius.circular(28),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF4F46E5).withOpacity(0.35),
+                              color: const Color(0xFF77328D).withOpacity(0.35),
                               blurRadius: 12,
                               offset: const Offset(0, 4),
                             ),

@@ -10,9 +10,9 @@ class OmneduApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
     return MaterialApp.router(
-      title: 'omnedu',
+      title: 'Ονειροχώρα',
       theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
+      themeMode: ThemeMode.light,
       routerConfig: router,
       debugShowCheckedModeBanner: false,
     );

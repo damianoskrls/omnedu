@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { normalizePhone } from '../auth/phone';
 import { CreateStudentDto } from './dto/create-student.dto';
 
 @Injectable()
@@ -208,7 +209,7 @@ export class StudentsService {
               data: {
                 email,
                 fullName: p.fullName,
-                phone: p.phone || null,
+                phone: normalizePhone(p.phone),
                 passwordHash: randomBytes(32).toString('hex'),
               },
             });
@@ -295,8 +296,10 @@ export class StudentsService {
       let user = data.email?.trim() ? await tx.user.findUnique({ where: { email: data.email.trim() } }) : null;
       if (!user) {
         user = await tx.user.create({
-          data: { email, fullName: data.fullName, phone: data.phone || null, passwordHash: randomBytes(32).toString('hex') },
+          data: { email, fullName: data.fullName, phone: normalizePhone(data.phone), passwordHash: randomBytes(32).toString('hex') },
         });
+      } else if (data.phone) {
+        user = await tx.user.update({ where: { id: user.id }, data: { phone: normalizePhone(data.phone), fullName: data.fullName || user.fullName } });
       }
       const existing = await tx.schoolMember.findFirst({ where: { schoolId, userId: user.id } });
       if (!existing) await tx.schoolMember.create({ data: { schoolId, userId: user.id, role: 'parent' } });
@@ -325,7 +328,7 @@ export class StudentsService {
           where: { id: parentUserId },
           data: {
             ...(data.fullName !== undefined ? { fullName: data.fullName } : {}),
-            ...(data.phone !== undefined ? { phone: data.phone || null } : {}),
+            ...(data.phone !== undefined ? { phone: normalizePhone(data.phone) } : {}),
           },
         });
       }

@@ -4,7 +4,7 @@ import '../storage/secure_storage.dart';
 
 const _baseUrl = String.fromEnvironment(
   'API_URL',
-  defaultValue: 'http://10.0.2.2:3001/api/v1', // Android emulator → localhost
+  defaultValue: 'https://omneduapi-production.up.railway.app/api/v1',
 );
 
 // The API host (scheme + host + port) derived from _baseUrl.

@@ -110,7 +110,7 @@ class _ReportCard extends StatelessWidget {
                   backgroundColor: const Color(0xFFEEF2FF),
                   child: Text(
                     name.isNotEmpty ? name[0].toUpperCase() : '?',
-                    style: const TextStyle(color: Color(0xFF4F46E5), fontWeight: FontWeight.bold),
+                    style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.bold),
                   ),
                 ),
                 const SizedBox(width: 12),

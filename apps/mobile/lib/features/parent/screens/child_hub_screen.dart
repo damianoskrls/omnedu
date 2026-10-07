@@ -36,7 +36,7 @@ class ChildHubScreen extends StatelessWidget {
       _Tile('Κανονισμοί', Icons.gavel_rounded, const Color(0xFF642678), () {
         Navigator.push(context, MaterialPageRoute(builder: (_) => RegulationsScreen(schoolId: schoolId)));
       }),
-      _Tile('Εκπαιδευτικοί', Icons.groups_rounded, const Color(0xFF7C3AED), () {
+      _Tile('Εκπαιδευτικοί', Icons.groups_rounded, const Color(0xFF77328D), () {
         Navigator.push(context, MaterialPageRoute(builder: (_) => TeachersScreen(child: child)));
       }),
       _Tile('Ειδοποιήσεις', Icons.notifications_rounded, const Color(0xFFDB2777), () {

@@ -134,14 +134,14 @@ class _SummaryCard extends StatelessWidget {
         gradient: LinearGradient(
           colors: allPaid
               ? [const Color(0xFF059669), const Color(0xFF10B981)]
-              : [const Color(0xFF4F46E5), const Color(0xFF6366F1)],
+              : [const Color(0xFF77328D), const Color(0xFFE95926)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: (allPaid ? const Color(0xFF059669) : const Color(0xFF4F46E5)).withOpacity(0.3),
+            color: (allPaid ? const Color(0xFF059669) : const Color(0xFF77328D)).withOpacity(0.3),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),
@@ -503,7 +503,7 @@ class _StudentBillingSectionState extends State<_StudentBillingSection> {
       backgroundColor: const Color(0xFFEEF2FF),
       child: Text(
         name.isNotEmpty ? name[0].toUpperCase() : '?',
-        style: const TextStyle(color: Color(0xFF4F46E5), fontWeight: FontWeight.bold, fontSize: 13),
+        style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.bold, fontSize: 13),
       ),
     );
   }

@@ -54,9 +54,9 @@ class _SchoolPostsScreenState extends ConsumerState<SchoolPostsScreen>
         bottom: TabBar(
           controller: _tabCtrl,
           isScrollable: true,
-          labelColor: const Color(0xFF4F46E5),
+          labelColor: const Color(0xFF77328D),
           unselectedLabelColor: const Color(0xFF9CA3AF),
-          indicatorColor: const Color(0xFF4F46E5),
+          indicatorColor: const Color(0xFF77328D),
           labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
           tabs: _tabs.map((t) => Tab(text: t.label)).toList(),
         ),
@@ -196,7 +196,7 @@ class _PostCard extends StatelessWidget {
                           backgroundColor: const Color(0xFFEEF2FF),
                           child: Text(
                             authorName[0].toUpperCase(),
-                            style: const TextStyle(fontSize: 9, color: Color(0xFF4F46E5), fontWeight: FontWeight.bold),
+                            style: const TextStyle(fontSize: 9, color: Color(0xFF77328D), fontWeight: FontWeight.bold),
                           ),
                         ),
                         const SizedBox(width: 6),

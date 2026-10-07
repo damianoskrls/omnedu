@@ -186,7 +186,7 @@ class _PhoneInput extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         const Text(
-          'Test: 6944000003  •  OTP: 000000',
+          'Ο κωδικός επιβεβαίωσης είναι 000000',
           textAlign: TextAlign.center,
           style: TextStyle(color: Color(0xFF702E8C), fontSize: 12, fontWeight: FontWeight.w600),
         ),

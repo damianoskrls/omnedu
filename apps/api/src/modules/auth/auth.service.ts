@@ -13,6 +13,7 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { SwitchContextDto } from './dto/switch-context.dto';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
+import { phoneKey } from './phone';
 
 @Injectable()
 export class AuthService {
@@ -161,43 +162,27 @@ export class AuthService {
   }
 
   async requestOtp(phone: string) {
-    const normalized = phone.replace(/\s+/g, '');
-    const user = await this.prisma.user.findFirst({
-      where: {
-        phone: normalized,
-        isActive: true,
-        schoolMemberships: { some: { isActive: true } },
-      },
-    });
+    const user = await this.findByPhone(phone);
     if (!user) throw new UnauthorizedException('Δεν βρέθηκε λογαριασμός με αυτό το κινητό');
-    console.log(`[OTP] ${normalized} → 000000`);
+    console.log(`[OTP] ${phoneKey(phone)} → 000000`);
     return { message: 'OTP sent' };
   }
 
   async verifyOtp(phone: string, otp: string) {
     if (otp !== '000000') throw new UnauthorizedException('Λάθος κωδικός');
-    const normalized = phone.replace(/\s+/g, '');
-    const user = await this.prisma.user.findFirst({
-      where: {
-        phone: normalized,
-        isActive: true,
-        schoolMemberships: { some: { isActive: true } },
-      },
-      include: {
-        schoolMemberships: {
-          where: { isActive: true },
-          include: { school: { select: { id: true, name: true, logoUrl: true, primaryColor: true } } },
-        },
-      },
-    });
+    const user = await this.findByPhone(phone);
     if (!user) throw new UnauthorizedException('Δεν βρέθηκε λογαριασμός');
+    await this.ensureParentMemberships(user.id);
+    const refreshed = await this.findByPhone(phone);
+    if (!refreshed?.schoolMemberships.length) throw new UnauthorizedException('Δεν βρέθηκε λογαριασμός');
 
-    const memberships = user.schoolMemberships.map((m) => ({
+    const ordered = [...refreshed.schoolMemberships].sort((a, b) => Number(b.role === 'parent') - Number(a.role === 'parent'));
+    const memberships = ordered.map((m) => ({
       schoolId: m.schoolId,
       schoolName: m.school.name,
       role: m.role,
     }));
-    const primary = user.schoolMemberships[0] ?? null;
+    const primary = ordered[0];
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
@@ -213,12 +198,45 @@ export class AuthService {
     return {
       accessToken,
       refreshToken,
-      user: { id: user.id, email: user.email, fullName: user.fullName, avatarUrl: user.avatarUrl, isSuperAdmin: user.isSuperAdmin, memberships },
+      user: { id: refreshed.id, email: refreshed.email, fullName: refreshed.fullName, avatarUrl: refreshed.avatarUrl, isSuperAdmin: refreshed.isSuperAdmin, memberships },
     };
   }
 
   async logout(token: string) {
     await this.prisma.refreshToken.deleteMany({ where: { token } });
+  }
+
+  private async findByPhone(phone: string) {
+    const key = phoneKey(phone);
+    if (!key) return null;
+    const users = await this.prisma.user.findMany({
+      where: { isActive: true, phone: { not: null } },
+      include: {
+        schoolMemberships: {
+          where: { isActive: true },
+          include: { school: { select: { id: true, name: true, logoUrl: true, primaryColor: true } } },
+        },
+      },
+    });
+    return users.find((row) => phoneKey(row.phone) === key) ?? null;
+  }
+
+  private async ensureParentMemberships(userId: string) {
+    const links = await this.prisma.studentParent.findMany({
+      where: { userId, student: { isActive: true } },
+      select: { student: { select: { schoolId: true } } },
+    });
+    const schoolIds = [...new Set(links.map((link) => link.student.schoolId))];
+    for (const schoolId of schoolIds) {
+      const existing = await this.prisma.schoolMember.findFirst({
+        where: { schoolId, userId, role: 'parent' },
+      });
+      if (!existing) {
+        await this.prisma.schoolMember.create({ data: { schoolId, userId, role: 'parent', isActive: true } });
+      } else if (!existing.isActive) {
+        await this.prisma.schoolMember.update({ where: { id: existing.id }, data: { isActive: true } });
+      }
+    }
   }
 
   private async generateTokens(payload: JwtPayload) {

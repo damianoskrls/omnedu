@@ -354,7 +354,7 @@ class _InstructorAvatar extends StatelessWidget {
         name.isNotEmpty ? name[0].toUpperCase() : '?',
         style: TextStyle(
           fontSize: radius * 0.7,
-          color: const Color(0xFF4F46E5),
+          color: const Color(0xFF77328D),
           fontWeight: FontWeight.bold,
         ),
       ),
@@ -398,7 +398,7 @@ class _InstructorSheet extends StatelessWidget {
           if (title.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(title,
-                style: const TextStyle(fontSize: 14, color: Color(0xFF4F46E5), fontWeight: FontWeight.w500)),
+                style: const TextStyle(fontSize: 14, color: Color(0xFF77328D), fontWeight: FontWeight.w500)),
           ],
           if (bio.isNotEmpty) ...[
             const SizedBox(height: 16),
@@ -453,7 +453,7 @@ class _ChildServicesSection extends StatelessWidget {
                 backgroundColor: const Color(0xFFEEF2FF),
                 child: Text(
                   name.isNotEmpty ? name[0].toUpperCase() : '?',
-                  style: const TextStyle(color: Color(0xFF4F46E5), fontWeight: FontWeight.bold, fontSize: 10),
+                  style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.bold, fontSize: 10),
                 ),
               ),
               const SizedBox(width: 8),
@@ -508,7 +508,7 @@ class _ActivityTile extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.sports_soccer_outlined, size: 16, color: Color(0xFF4F46E5)),
+          const Icon(Icons.sports_soccer_outlined, size: 16, color: Color(0xFF77328D)),
           const SizedBox(width: 10),
           Expanded(
             child: Column(

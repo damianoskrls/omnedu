@@ -67,14 +67,14 @@ class _ParentEventsScreenState extends ConsumerState<ParentEventsScreen> {
     final eventsAsync = ref.watch(_parentEventsProvider(widget.schoolId));
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F5FF),
+      backgroundColor: const Color(0xFFF6F3FA),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text('Εκδηλώσεις', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF111827))),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh_outlined, color: Color(0xFF4F46E5)),
+            icon: const Icon(Icons.refresh_outlined, color: Color(0xFF77328D)),
             onPressed: () => ref.invalidate(_parentEventsProvider(widget.schoolId)),
           ),
         ],
@@ -153,7 +153,7 @@ class _ChildEventGroup extends StatelessWidget {
               radius: 16,
               backgroundColor: const Color(0xFFEEF2FF),
               child: Text(name.isNotEmpty ? name[0].toUpperCase() : '?',
-                  style: const TextStyle(color: Color(0xFF4F46E5), fontWeight: FontWeight.bold, fontSize: 13)),
+                  style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.bold, fontSize: 13)),
             ),
             const SizedBox(width: 8),
             Text(name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: Color(0xFF111827))),
@@ -225,7 +225,7 @@ class _EventCard extends StatelessWidget {
                   width: 44, height: 44,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
+                      colors: [Color(0xFF77328D), Color(0xFFE95926)],
                       begin: Alignment.topLeft, end: Alignment.bottomRight,
                     ),
                     borderRadius: BorderRadius.circular(12),
@@ -367,7 +367,7 @@ class _EventCard extends StatelessWidget {
                         child: ElevatedButton(
                           onPressed: () => onConsent(enrollmentId, true),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF4F46E5),
+                            backgroundColor: const Color(0xFF77328D),
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                             padding: const EdgeInsets.symmetric(vertical: 10),
