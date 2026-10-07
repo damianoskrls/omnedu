@@ -5,10 +5,10 @@ import 'package:flutter/widgets.dart';
 /// Public Firebase app values. Closed-app notifications stay off until these
 /// match the school's Firebase Android app.
 class PhonePushConfig {
-  static const projectId = '';
-  static const apiKey = '';
-  static const appId = '';
-  static const messagingSenderId = '';
+  static const projectId = 'omnedu';
+  static const apiKey = 'AIzaSyDvo-iDhEqne6Eo5DPZO1AjbjggSzhkzCw';
+  static const appId = '1:668958037429:android:57a1f64fb0a64b698335fc';
+  static const messagingSenderId = '668958037429';
 
   static bool get ready =>
       projectId.isNotEmpty && apiKey.isNotEmpty && appId.isNotEmpty && messagingSenderId.isNotEmpty;
@@ -18,13 +18,16 @@ class PhonePushConfig {
     appId: appId,
     messagingSenderId: messagingSenderId,
     projectId: projectId,
+    storageBucket: 'omnedu.firebasestorage.app',
   );
 }
 
 @pragma('vm:entry-point')
 Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
   if (!PhonePushConfig.ready) return;
-  await Firebase.initializeApp(options: PhonePushConfig.options);
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp(options: PhonePushConfig.options);
+  }
 }
 
 /// Registers this phone with Firebase so a message, bulletin, payment or
@@ -34,7 +37,9 @@ Future<void> startPhonePush({
   required void Function(Map<String, dynamic> data) onOpened,
 }) async {
   if (!PhonePushConfig.ready) return;
-  await Firebase.initializeApp(options: PhonePushConfig.options);
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp(options: PhonePushConfig.options);
+  }
   FirebaseMessaging.onBackgroundMessage(firebaseBackgroundHandler);
   await FirebaseMessaging.instance.requestPermission(alert: true, badge: true, sound: true);
   FirebaseMessaging.onMessageOpenedApp.listen((message) => onOpened(message.data));
