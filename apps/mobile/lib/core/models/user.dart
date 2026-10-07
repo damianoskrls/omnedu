@@ -75,7 +75,7 @@ class AuthUser extends Equatable {
         role: payload['role'] as String?,
         schoolLogoUrl: payload['schoolLogoUrl'] as String?,
         schoolPrimaryColor: payload['schoolPrimaryColor'] as String?,
-        termsAccepted: payload['termsAccepted'] == true,
+        termsAccepted: payload.containsKey('termsAccepted') ? payload['termsAccepted'] == true : true,
         memberships: (payload['memberships'] as List?)
                 ?.map((m) => Membership.fromJson(m as Map<String, dynamic>))
                 .toList() ??
