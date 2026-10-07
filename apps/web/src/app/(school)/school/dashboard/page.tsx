@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { activitiesApi, billingApi, classesApi, extraServicesApi, schoolEventsApi, staffApi, studentsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
 import { GraduationCap, BookOpen, CreditCard, UserPlus, ArrowUpRight, Bus, CalendarDays, Sparkles } from 'lucide-react';
+import { eventDisplayStatus } from '@/lib/event-status';
 
 const MONTHS = ['', 'Ιαν', 'Φεβ', 'Μαρ', 'Απρ', 'Μάι', 'Ιουν', 'Ιουλ', 'Αυγ', 'Σεπ', 'Οκτ', 'Νοε', 'Δεκ'];
 const LEVEL_COLORS = ['#77328D', '#E95926', '#8fbf63', '#c46a3a', '#642678', '#e0c2a4'];
@@ -73,7 +74,7 @@ export default function SchoolDashboard() {
             {firstName ? `Καλώς ήρθες, ${firstName}` : 'Επισκόπηση'}
           </h1>
           <p className="mt-1 text-sm font-medium text-[#6b625c]">
-            Νέοι μαθητές, βαθμίδες και οικονομικά του σχολικού έτους {data?.schoolYear ?? ''}
+            Εκδρομές, βαθμίδες και οικονομικά του σχολικού έτους {data?.schoolYear ?? ''}
           </p>
         </div>
       </div>
@@ -86,8 +87,8 @@ export default function SchoolDashboard() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <Panel title="Νέοι μαθητές" subtitle="Εγγραφές ανά μήνα στο σχολικό έτος">
-          <ColumnChart rows={data?.newByMonth ?? []} color="#E95926" empty="Δεν υπάρχουν νέοι μαθητές ακόμη." />
+        <Panel title="Επερχόμενες εκδρομές" subtitle="Οι επόμενες εκδηλώσεις του σχολείου">
+          <UpcomingEvents events={data?.upcoming ?? []} />
         </Panel>
         <Panel title="Μαθητές ανά βαθμίδα" subtitle="Πού βρίσκονται τα παιδιά">
           <DonutChart slices={data?.byLevel ?? []} empty="Δεν έχουν οριστεί τάξεις ακόμη." />
@@ -190,21 +191,30 @@ function buildView(students: any[], classes: any[], billing: any, activities: an
       };
     });
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const upcomingEvents = events.filter((event) => event.eventDate && new Date(event.eventDate) >= today).length;
+  const upcoming = events
+    .filter((event) => event.status !== 'draft' && event.eventDate && eventDisplayStatus(event.status, event.eventDate) !== 'completed')
+    .sort((a, b) => new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime())
+    .slice(0, 6)
+    .map((event) => ({
+      id: event.id,
+      title: event.title,
+      when: new Date(event.eventDate).toLocaleDateString('el-GR', { day: 'numeric', month: 'long' }),
+      type: event.eventType === 'excursion' ? 'Εκδρομή' : event.eventType === 'theater' ? 'Θέατρο' : 'Εκδήλωση',
+    }));
+  const upcomingEvents = upcoming.length;
   const busStudents = services
     .filter((service) => service.serviceType === 'bus')
     .reduce((sum, service) => sum + Number(service._count?.studentServices ?? 0), 0);
 
   return {
-    schoolYear: billing?.schoolYear ?? `${months[0]?.year ?? today.getFullYear()}-${(months[0]?.year ?? today.getFullYear()) + 1}`,
+    schoolYear: billing?.schoolYear ?? `${months[0]?.year ?? now.getFullYear()}-${(months[0]?.year ?? now.getFullYear()) + 1}`,
     students: students.length,
     newThisMonth,
     classes: currentClasses.length,
     owing: Number(billing?.studentsOwingThisMonth ?? billing?.unpaid ?? 0),
     outstanding: Math.max(0, Number(billing?.totalDue ?? 0) - Number(billing?.totalPaid ?? 0)),
     newByMonth,
+    upcoming,
     byLevel: Array.from(levelCounts.entries()).map(([label, value], index) => ({
       label,
       value,
@@ -263,19 +273,22 @@ function Panel({ title, subtitle, children, className = '' }: { title: string; s
   );
 }
 
-function ColumnChart({ rows, color, empty }: { rows: { label: string; value: number }[]; color: string; empty: string }) {
-  const max = Math.max(1, ...rows.map((row) => row.value));
-  if (rows.every((row) => row.value === 0)) return <p className="py-10 text-center text-sm text-gray-400">{empty}</p>;
+function UpcomingEvents({ events }: { events: { id: string; title: string; when: string; type: string }[] }) {
+  if (!events.length) {
+    return <p className="py-10 text-center text-sm text-gray-400">Δεν υπάρχουν επερχόμενες εκδρομές.</p>;
+  }
   return (
-    <div className="flex h-48 items-end gap-2">
-      {rows.map((row) => (
-        <div key={row.label} className="flex h-full min-w-0 flex-1 flex-col items-center">
-          <span className="text-[11px] font-bold text-[#2c2422]">{row.value}</span>
-          <div className="flex w-full flex-1 items-end">
-            <div className="w-full rounded-t-lg" style={{ height: `${Math.max(6, (row.value / max) * 100)}%`, background: color }} />
-          </div>
-          <span className="mt-1 text-[11px] text-gray-500">{row.label}</span>
-        </div>
+    <div className="divide-y divide-gray-50">
+      {events.map((event) => (
+        <Link key={event.id} href="/school/events" className="flex items-center gap-3 py-2.5">
+          <span className="flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-xl bg-[#fff1ec] text-[#E95926]">
+            <CalendarDays className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-semibold text-[#2c2422]">{event.title}</span>
+            <span className="block text-xs text-gray-500">{event.type} · {event.when}</span>
+          </span>
+        </Link>
       ))}
     </div>
   );

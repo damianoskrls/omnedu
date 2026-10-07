@@ -12,15 +12,25 @@ export class MessagesController {
 
   @Get()
   myConversations(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
-    return this.messages.getConversations(user.sub, schoolId);
+    return this.messages.getConversations(user.sub, schoolId, user.role);
+  }
+
+  @Get('contacts')
+  contacts(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
+    return this.messages.contacts(user.sub, schoolId, user.role);
   }
 
   @Post()
   getOrCreate(
     @Param('schoolId') schoolId: string,
-    @Body() body: { participantIds: string[] },
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { participantIds?: string[]; kind?: string; withUserId?: string },
   ) {
-    return this.messages.getOrCreateConversation(schoolId, body.participantIds);
+    if (body.kind === 'admin' || body.kind === 'teacher') {
+      return this.messages.openScoped(schoolId, user.sub, user.role, body.kind, body.withUserId);
+    }
+    const ids = [...new Set([...(body.participantIds ?? []), user.sub])];
+    return this.messages.getOrCreateConversation(schoolId, ids);
   }
 
   @Get(':conversationId/messages')

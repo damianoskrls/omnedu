@@ -1,64 +1,99 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
+const userCard = {
+  id: true,
+  fullName: true,
+  avatarUrl: true,
+} as const;
+
 @Injectable()
 export class MessagesService {
   constructor(private prisma: PrismaService) {}
 
-  async getConversations(userId: string, schoolId: string) {
-    return this.prisma.conversation.findMany({
+  async getConversations(userId: string, schoolId: string, role?: string | null) {
+    const rows = await this.prisma.conversation.findMany({
       where: {
         schoolId,
         participants: { some: { userId } },
       },
       include: {
         participants: {
-          include: { user: { select: { id: true, fullName: true, avatarUrl: true } } },
+          include: {
+            user: {
+              select: {
+                ...userCard,
+                schoolMemberships: {
+                  where: { schoolId, isActive: true },
+                  select: { role: true },
+                },
+              },
+            },
+          },
         },
         messages: {
+          where: { isDeleted: false },
           orderBy: { sentAt: 'desc' },
           take: 1,
         },
         _count: { select: { messages: true } },
       },
-      orderBy: { createdAt: 'desc' },
     });
+
+    const visible = role === 'school_admin'
+      ? rows.filter((row) => this.visibleToAdmin(row.participants))
+      : role === 'teacher'
+        ? rows.filter((row) => this.visibleToTeacher(row.participants, userId))
+        : rows;
+
+    return visible.sort((a, b) => {
+      const aTime = a.messages[0]?.sentAt?.getTime() ?? a.createdAt.getTime();
+      const bTime = b.messages[0]?.sentAt?.getTime() ?? b.createdAt.getTime();
+      return bTime - aTime;
+    });
+  }
+
+  async contacts(userId: string, schoolId: string, role?: string | null) {
+    if (role === 'parent') return this.parentContacts(userId, schoolId);
+    if (role === 'teacher') return { admins: [], teachers: [], parents: await this.parentsOfTeacher(userId, schoolId) };
+    if (role === 'school_admin') return { admins: [], teachers: [], parents: await this.schoolParents(schoolId) };
+    return { admins: [], teachers: [], parents: [] };
+  }
+
+  async openScoped(schoolId: string, userId: string, role: string | null, kind: string, withUserId?: string) {
+    if (kind === 'admin') {
+      const admins = await this.adminUserIds(schoolId);
+      if (!admins.length) throw new NotFoundException('Δεν υπάρχει διαχειριστής');
+      const parentId = role === 'school_admin' ? withUserId : userId;
+      if (!parentId || !(await this.isParent(schoolId, parentId))) throw new ForbiddenException();
+      if (role !== 'school_admin' && role !== 'parent') throw new ForbiddenException();
+      return this.findOrCreate(schoolId, [parentId, ...admins]);
+    }
+
+    if (kind === 'teacher') {
+      if (!withUserId) throw new ForbiddenException();
+      const parentId = role === 'teacher' ? withUserId : userId;
+      const teacherId = role === 'teacher' ? userId : withUserId;
+      if (role !== 'teacher' && role !== 'parent') throw new ForbiddenException();
+      const allowed = await this.teacherTeachesParentChild(schoolId, teacherId, parentId);
+      if (!allowed) throw new ForbiddenException('Η συνομιλία είναι μόνο με τη δασκάλα του παιδιού');
+      return this.findOrCreate(schoolId, [parentId, teacherId]);
+    }
+
+    throw new ForbiddenException();
   }
 
   async getOrCreateConversation(schoolId: string, participantIds: string[]) {
-    const unique = [...new Set(participantIds)].sort();
-
-    const existing = await this.prisma.conversation.findFirst({
-      where: {
-        schoolId,
-        participants: { every: { userId: { in: unique } } },
-        AND: [{ participants: { some: { userId: unique[0] } } }],
-      },
-      include: { participants: true },
-    });
-
-    if (existing && existing.participants.length === unique.length) return existing;
-
-    return this.prisma.conversation.create({
-      data: {
-        schoolId,
-        participants: {
-          create: unique.map((userId) => ({ userId })),
-        },
-      },
-      include: { participants: { include: { user: { select: { id: true, fullName: true, avatarUrl: true } } } } },
-    });
+    const unique = [...new Set(participantIds)].filter(Boolean);
+    if (unique.length < 2) throw new ForbiddenException();
+    return this.findOrCreate(schoolId, unique);
   }
 
   async getMessages(conversationId: string, userId: string, cursor?: string, take = 30) {
-    const participant = await this.prisma.conversationParticipant.findUnique({
-      where: { conversationId_userId: { conversationId, userId } },
-    });
-    if (!participant) throw new ForbiddenException('Not a participant');
-
+    await this.assertParticipant(conversationId, userId);
     const messages = await this.prisma.message.findMany({
       where: { conversationId, isDeleted: false },
-      include: { sender: { select: { id: true, fullName: true, avatarUrl: true } } },
+      include: { sender: { select: userCard } },
       orderBy: { sentAt: 'desc' },
       take,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
@@ -73,14 +108,10 @@ export class MessagesService {
   }
 
   async sendMessage(conversationId: string, senderId: string, body: string, mediaUrl?: string) {
-    const participant = await this.prisma.conversationParticipant.findUnique({
-      where: { conversationId_userId: { conversationId, userId: senderId } },
-    });
-    if (!participant) throw new ForbiddenException('Not a participant');
-
+    await this.assertParticipant(conversationId, senderId);
     return this.prisma.message.create({
       data: { conversationId, senderId, body, mediaUrl },
-      include: { sender: { select: { id: true, fullName: true, avatarUrl: true } } },
+      include: { sender: { select: userCard } },
     });
   }
 
@@ -89,5 +120,202 @@ export class MessagesService {
     if (!msg) throw new NotFoundException();
     if (msg.senderId !== userId) throw new ForbiddenException();
     return this.prisma.message.update({ where: { id: messageId }, data: { isDeleted: true } });
+  }
+
+  private visibleToTeacher(
+    participants: { userId: string; user: { schoolMemberships: { role: string }[] } }[],
+    userId: string,
+  ) {
+    const others = participants.filter((person) => person.userId !== userId);
+    if (!others.length) return false;
+    return others.every((person) => {
+      const roles = person.user.schoolMemberships.map((row) => row.role);
+      return roles.includes('parent') && !roles.includes('school_admin') && !roles.includes('teacher');
+    });
+  }
+
+  private visibleToAdmin(participants: { user: { schoolMemberships: { role: string }[] } }[]) {
+    const rolesOf = (member: { schoolMemberships: { role: string }[] }) => member.schoolMemberships.map((row) => row.role);
+    const hasParent = participants.some((person) => rolesOf(person.user).includes('parent'));
+    const hasTeacherThread = participants.some((person) => {
+      const roles = rolesOf(person.user);
+      return roles.includes('teacher') && !roles.includes('school_admin');
+    });
+    return hasParent && !hasTeacherThread;
+  }
+
+  private async parentContacts(userId: string, schoolId: string) {
+    const children = await this.prisma.student.findMany({
+      where: { schoolId, isActive: true, parents: { some: { userId } } },
+      select: {
+        id: true,
+        fullName: true,
+        enrollments: {
+          include: {
+            academicYear: { select: { isCurrent: true } },
+            class: {
+              select: {
+                name: true,
+                teachers: { include: { user: { select: userCard } } },
+              },
+            },
+          },
+        },
+      },
+    });
+    const admins = await this.prisma.schoolMember.findMany({
+      where: { schoolId, role: 'school_admin', isActive: true },
+      include: { user: { select: userCard } },
+    });
+    const teachers: { id: string; name: string; studentId: string; studentName: string; className: string }[] = [];
+    const seen = new Set<string>();
+    for (const child of children) {
+      const current = child.enrollments.filter((row) => row.academicYear?.isCurrent);
+      const enrollments = current.length ? current : child.enrollments;
+      for (const enrollment of enrollments) {
+        for (const teacher of enrollment.class?.teachers ?? []) {
+          const key = `${teacher.user.id}:${child.id}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          teachers.push({
+            id: teacher.user.id,
+            name: teacher.user.fullName,
+            studentId: child.id,
+            studentName: child.fullName,
+            className: enrollment.class?.name ?? '',
+          });
+        }
+      }
+    }
+    return {
+      admins: this.uniquePeople(admins.map((row) => ({ id: row.user.id, name: row.user.fullName }))),
+      teachers,
+      parents: [],
+    };
+  }
+
+  private async schoolParents(schoolId: string) {
+    const links = await this.prisma.studentParent.findMany({
+      where: { student: { schoolId, isActive: true } },
+      include: {
+        user: { select: userCard },
+        student: { select: { fullName: true } },
+      },
+    });
+    const grouped = new Map<string, { id: string; name: string; students: string[] }>();
+    for (const link of links) {
+      const current = grouped.get(link.userId) ?? { id: link.userId, name: link.user.fullName, students: [] };
+      if (!current.students.includes(link.student.fullName)) current.students.push(link.student.fullName);
+      grouped.set(link.userId, current);
+    }
+    return [...grouped.values()].sort((a, b) => a.name.localeCompare(b.name, 'el'));
+  }
+
+  private async parentsOfTeacher(teacherId: string, schoolId: string) {
+    const classes = await this.prisma.class.findMany({
+      where: {
+        schoolId,
+        teachers: { some: { userId: teacherId } },
+        academicYear: { isCurrent: true },
+      },
+      select: {
+        name: true,
+        enrollments: {
+          select: {
+            student: {
+              select: {
+                fullName: true,
+                parents: { include: { user: { select: userCard } } },
+              },
+            },
+          },
+        },
+      },
+    });
+    const grouped = new Map<string, { id: string; name: string; students: string[] }>();
+    for (const klass of classes) {
+      for (const enrollment of klass.enrollments) {
+        for (const parent of enrollment.student.parents) {
+          const current = grouped.get(parent.userId) ?? { id: parent.userId, name: parent.user.fullName, students: [] };
+          const label = `${enrollment.student.fullName}${klass.name ? ` · ${klass.name}` : ''}`;
+          if (!current.students.includes(label)) current.students.push(label);
+          grouped.set(parent.userId, current);
+        }
+      }
+    }
+    return [...grouped.values()].sort((a, b) => a.name.localeCompare(b.name, 'el'));
+  }
+
+  private async adminUserIds(schoolId: string) {
+    const admins = await this.prisma.schoolMember.findMany({
+      where: { schoolId, role: 'school_admin', isActive: true },
+      select: { userId: true },
+    });
+    return [...new Set(admins.map((row) => row.userId))];
+  }
+
+  private async isParent(schoolId: string, userId: string) {
+    const link = await this.prisma.studentParent.findFirst({
+      where: { userId, student: { schoolId } },
+      select: { userId: true },
+    });
+    return !!link;
+  }
+
+  private async teacherTeachesParentChild(schoolId: string, teacherId: string, parentId: string) {
+    const match = await this.prisma.classEnrollment.findFirst({
+      where: {
+        student: { schoolId, isActive: true, parents: { some: { userId: parentId } } },
+        class: { teachers: { some: { userId: teacherId } } },
+      },
+      select: { id: true },
+    });
+    return !!match;
+  }
+
+  private async findOrCreate(schoolId: string, userIds: string[]) {
+    const unique = [...new Set(userIds)].filter(Boolean).sort();
+    const candidates = await this.prisma.conversation.findMany({
+      where: {
+        schoolId,
+        AND: unique.map((id) => ({ participants: { some: { userId: id } } })),
+      },
+      include: {
+        participants: {
+          include: { user: { select: userCard } },
+        },
+      },
+    });
+    const exact = candidates.find((row) => {
+      const ids = row.participants.map((person) => person.userId).sort();
+      return ids.length === unique.length && ids.every((id, index) => id === unique[index]);
+    });
+    if (exact) return exact;
+
+    return this.prisma.conversation.create({
+      data: {
+        schoolId,
+        participants: { create: unique.map((id) => ({ userId: id })) },
+      },
+      include: {
+        participants: { include: { user: { select: userCard } } },
+      },
+    });
+  }
+
+  private async assertParticipant(conversationId: string, userId: string) {
+    const participant = await this.prisma.conversationParticipant.findUnique({
+      where: { conversationId_userId: { conversationId, userId } },
+    });
+    if (!participant) throw new ForbiddenException('Not a participant');
+  }
+
+  private uniquePeople(people: { id: string; name: string }[]) {
+    const seen = new Set<string>();
+    return people.filter((person) => {
+      if (seen.has(person.id)) return false;
+      seen.add(person.id);
+      return true;
+    });
   }
 }
