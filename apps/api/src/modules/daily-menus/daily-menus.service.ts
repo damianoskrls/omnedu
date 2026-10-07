@@ -1,5 +1,4 @@
-import { createRequire } from 'module';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { dateOnly, menuUnique, normalizeAudience, weekdaysOfMonth } from './menu-audience';
 import { parseMenuJson, parseMenuText, ParsedMenu } from './menu-text.parser';
@@ -15,8 +14,6 @@ type MenuInput = {
   audienceIds?: unknown;
 };
 
-const nodeRequire = createRequire(__filename);
-
 const AI_PROMPT = `Είσαι βοηθός παιδικού σταθμού. Διάβασε το διατροφολόγιο και επέστρεψε ΜΟΝΟ JSON:
 {"month":"yyyy-MM","days":[{"date":"yyyy-MM-dd","breakfast":"","midMorning":"","lunch":"","afternoon":"","notes":""}]}
 Κανόνες:
@@ -27,6 +24,8 @@ const AI_PROMPT = `Είσαι βοηθός παιδικού σταθμού. Δι
 
 @Injectable()
 export class DailyMenusService {
+  private readonly logger = new Logger(DailyMenusService.name);
+
   constructor(private prisma: PrismaService) {}
 
   async findAll(schoolId: string, from?: string, to?: string, audienceType?: string, audienceIds?: string) {
@@ -124,30 +123,52 @@ export class DailyMenusService {
   }
 
   async importFile(file?: Express.Multer.File, month?: string) {
-    if (!file) throw new BadRequestException('Διάλεξε αρχείο JPG, PNG ή PDF.');
-    const mime = file.mimetype;
-    const isPdf = mime === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf');
-    const isImage = /^image\/(jpeg|png|webp)$/.test(mime);
+    try {
+      return await this.readUpload(file, month);
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      this.logger.error(error);
+      throw new BadRequestException('Το διατροφολόγιο δεν διαβάστηκε. Δοκίμασε JPG ή PDF μέχρι 20 MB.');
+    }
+  }
+
+  private async readUpload(file?: Express.Multer.File, month?: string) {
+    if (!file?.buffer?.length) throw new BadRequestException('Διάλεξε αρχείο JPG, PNG ή PDF.');
+    const name = (file.originalname || '').toLowerCase();
+    const mime = file.mimetype || '';
+    const isPdf = mime === 'application/pdf' || name.endsWith('.pdf');
+    const isImage = /^image\/(jpeg|png|webp|jpg)$/.test(mime) || /\.(jpe?g|png|webp)$/.test(name);
     if (!isPdf && !isImage) throw new BadRequestException('Γίνονται δεκτά μόνο JPG, PNG, WEBP ή PDF.');
 
-    let parsed: ParsedMenu | null = null;
-    if (isPdf) {
-      const text = await this.extractPdfText(file.buffer);
-      if (text.trim().length > 40) {
-        const heuristic = parseMenuText(text, month);
-        if (heuristic.days.length >= 8) parsed = { ...heuristic, warnings: [...heuristic.warnings, 'Η ανάγνωση έγινε από το κείμενο του PDF.'] };
-        else if (process.env.OPENAI_API_KEY) parsed = await this.analyzeWithAi({ text, month });
-        else if (heuristic.days.length) parsed = heuristic;
-      }
+    const text = isPdf ? await this.extractPdfText(file.buffer) : '';
+    const heuristic = text.trim().length > 40 ? parseMenuText(text, month) : null;
+    if (heuristic && heuristic.days.length >= 8) {
+      return { ...heuristic, warnings: [...heuristic.warnings, 'Η ανάγνωση έγινε από το κείμενο του PDF.'] };
     }
-    if (!parsed) parsed = await this.analyzeWithAi({
-      text: isPdf ? await this.extractPdfText(file.buffer) : undefined,
-      image: isImage ? file.buffer.toString('base64') : undefined,
-      mime,
-      month,
-    });
-    if (!parsed.days.length) {
-      throw new BadRequestException(parsed.warnings[0] || 'Δεν αναγνωρίστηκε διατροφολόγιο στο αρχείο.');
+
+    let parsed: ParsedMenu | null = null;
+    if (process.env.OPENAI_API_KEY) {
+      try {
+        parsed = await this.analyzeWithAi({
+          text: text || undefined,
+          image: isImage ? file.buffer.toString('base64') : undefined,
+          pdf: isPdf ? file.buffer.toString('base64') : undefined,
+          mime: isImage ? (mime || 'image/jpeg') : mime,
+          month,
+        });
+      } catch (error) {
+        if (heuristic?.days.length) parsed = heuristic;
+        else throw error;
+      }
+    } else if (heuristic?.days.length) {
+      parsed = heuristic;
+    } else if (isImage) {
+      throw new BadRequestException('Για φωτογραφία χρειάζεται το OPENAI_API_KEY στον server. Τα PDF με κείμενο διαβάζονται και χωρίς αυτό.');
+    }
+
+    if (parsed && !parsed.days.length && heuristic?.days.length) parsed = heuristic;
+    if (!parsed?.days.length) {
+      throw new BadRequestException(parsed?.warnings?.[0] || heuristic?.warnings?.[0] || 'Δεν αναγνωρίστηκε διατροφολόγιο στο αρχείο.');
     }
     return parsed;
   }
@@ -158,15 +179,29 @@ export class DailyMenusService {
 
   private async extractPdfText(buffer: Buffer) {
     try {
-      const pdfParse = nodeRequire('pdf-parse/lib/pdf-parse.js');
-      const result = await pdfParse(buffer);
-      return String(result?.text || '');
-    } catch {
+      const loadPdfjs = new Function('return import("pdfjs-dist/legacy/build/pdf.mjs")') as () => Promise<typeof import('pdfjs-dist/legacy/build/pdf.mjs')>;
+      const pdfjs = await loadPdfjs();
+      const loading = pdfjs.getDocument({
+        data: new Uint8Array(buffer),
+        disableWorker: true,
+        isEvalSupported: false,
+      } as any);
+      const doc = await loading.promise;
+      const pages: string[] = [];
+      for (let i = 1; i <= doc.numPages; i++) {
+        const page = await doc.getPage(i);
+        const content = await page.getTextContent();
+        pages.push(content.items.map((item) => ('str' in item ? item.str : '')).join(' '));
+      }
+      await doc.destroy();
+      return pages.join('\n');
+    } catch (error) {
+      this.logger.warn(`PDF text extraction failed: ${(error as Error)?.message || error}`);
       return '';
     }
   }
 
-  private async analyzeWithAi(input: { text?: string; image?: string; mime?: string; month?: string }): Promise<ParsedMenu> {
+  private async analyzeWithAi(input: { text?: string; image?: string; pdf?: string; mime?: string; month?: string }): Promise<ParsedMenu> {
     const key = process.env.OPENAI_API_KEY;
     if (!key) {
       throw new BadRequestException(
@@ -180,17 +215,27 @@ export class DailyMenusService {
     if (input.image) {
       content.push({ type: 'image_url', image_url: { url: `data:${input.mime || 'image/jpeg'};base64,${input.image}` } });
     }
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        temperature: 0,
-        response_format: { type: 'json_object' },
-        messages: [{ role: 'user', content }],
-      }),
-    });
+    if (input.pdf) {
+      content.push({ type: 'file', file: { filename: 'menu.pdf', file_data: `data:application/pdf;base64,${input.pdf}` } });
+    }
+    let response: Response;
+    try {
+      response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          temperature: 0,
+          response_format: { type: 'json_object' },
+          messages: [{ role: 'user', content }],
+        }),
+      });
+    } catch (error) {
+      this.logger.error(error);
+      throw new BadRequestException('Η ανάλυση με AI δεν ολοκληρώθηκε. Δοκίμασε ξανά ή συμπλήρωσε τις ημέρες χειροκίνητα.');
+    }
     if (!response.ok) {
+      this.logger.warn(`Menu AI status ${response.status}`);
       throw new BadRequestException('Η ανάλυση με AI δεν ολοκληρώθηκε. Δοκίμασε ξανά ή συμπλήρωσε τις ημέρες χειροκίνητα.');
     }
     const payload = await response.json();

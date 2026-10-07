@@ -45,6 +45,7 @@ const emptyEntry = (dow: number) => ({ dayOfWeek: dow, breakfast: '', midMorning
 function errorText(err: any) {
   const message = err?.message || err?.error;
   if (Array.isArray(message)) return message.join(' ');
+  if (message === 'Internal server error') return 'Το διατροφολόγιο δεν ανέβηκε. Δοκίμασε μικρότερο JPG ή PDF.';
   return typeof message === 'string' ? message : 'Κάτι πήγε στραβά. Δοκίμασε ξανά.';
 }
 
@@ -92,9 +93,12 @@ export default function MenuPage() {
         audienceType: audience.audienceType,
         audienceIds: JSON.stringify(audience.audienceIds),
       }) as unknown as DayMenu[];
+      const rows = Array.isArray(data) ? data : [];
       const map: Record<string, DayMenu> = {};
-      data.forEach((menu) => { map[String(menu.date).slice(0, 10)] = menu; });
+      rows.forEach((menu) => { map[String(menu.date).slice(0, 10)] = menu; });
       setMenus(map);
+    } catch (err) {
+      setPageError(errorText(err));
     } finally {
       setLoading(false);
     }

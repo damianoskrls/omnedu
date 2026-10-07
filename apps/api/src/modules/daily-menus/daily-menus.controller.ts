@@ -23,7 +23,7 @@ export class DailyMenusController {
   @Roles('school_admin')
   @UseInterceptors(FileInterceptor('file', {
     storage: memoryStorage(),
-    limits: { fileSize: 12 * 1024 * 1024 },
+    limits: { fileSize: 20 * 1024 * 1024 },
   }))
   importFile(
     @UploadedFile() file: Express.Multer.File,
