@@ -1,11 +1,13 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { athensTodayYmd, resolveEventStatus } from './event-status';
 
 @Injectable()
 export class SchoolEventsService {
   constructor(private prisma: PrismaService) {}
 
   async list(schoolId: string, status?: string) {
+    await this.syncAutomaticStatus(schoolId);
     return this.prisma.schoolEvent.findMany({
       where: { schoolId, ...(status ? { status } : {}) },
       include: {
@@ -18,6 +20,7 @@ export class SchoolEventsService {
   }
 
   async get(schoolId: string, eventId: string) {
+    await this.syncAutomaticStatus(schoolId);
     const event = await this.prisma.schoolEvent.findFirst({
       where: { id: eventId, schoolId },
       include: {
@@ -54,7 +57,7 @@ export class SchoolEventsService {
         audienceType: audienceType ?? 'all',
         audienceIds: JSON.stringify(audienceIds ?? []),
         mediaUrls: mediaUrls ?? [],
-        status: status ?? 'draft',
+        status: resolveEventStatus(status, eventDate ? new Date(eventDate) : null),
         teachers: teacherIds?.length
           ? { create: (teacherIds as string[]).map((uid: string) => ({ userId: uid })) }
           : undefined,
@@ -64,7 +67,7 @@ export class SchoolEventsService {
       },
     });
 
-    if (event.status === 'published' && resolvedClassIds.length) {
+    if ((event.status === 'published' || event.status === 'completed') && resolvedClassIds.length) {
       await this.enrollStudentsForClasses(schoolId, event.id, resolvedClassIds);
     }
 
@@ -77,8 +80,10 @@ export class SchoolEventsService {
 
     const { title, description, eventType, eventDate, costPerChild, classIds, mediaUrls, teacherIds, status, audienceType, audienceIds } = dto;
 
-    const wasPublished = existing.status === 'published';
-    const becomesPublished = status === 'published' && !wasPublished;
+    const nextDate = eventDate !== undefined ? (eventDate ? new Date(eventDate) : null) : existing.eventDate;
+    const nextStatus = resolveEventStatus(status, nextDate, existing.status);
+    const wasPublished = existing.status === 'published' || existing.status === 'completed';
+    const becomesPublished = (nextStatus === 'published' || nextStatus === 'completed') && !wasPublished;
 
     const resolvedClassIds = (audienceType !== undefined || audienceIds !== undefined)
       ? await this.resolveAudienceToClassIds(schoolId, audienceType, audienceIds, classIds)
@@ -94,7 +99,7 @@ export class SchoolEventsService {
         ...(costPerChild !== undefined && { costPerChild }),
         ...(resolvedClassIds !== undefined && { classIds: resolvedClassIds }),
         ...(mediaUrls !== undefined && { mediaUrls }),
-        ...(status !== undefined && { status }),
+        status: nextStatus,
         ...(audienceType !== undefined && { audienceType }),
         ...(audienceIds !== undefined && { audienceIds: JSON.stringify(audienceIds) }),
         ...(teacherIds !== undefined && {
@@ -228,12 +233,18 @@ export class SchoolEventsService {
 
     const studentIds = children.map(c => c.id);
 
+    await this.syncAutomaticStatus(schoolId);
+
     const enrollments = await this.prisma.schoolEventEnrollment.findMany({
-      where: { studentId: { in: studentIds } },
+      where: {
+        studentId: { in: studentIds },
+        event: { schoolId, status: { in: ['published', 'completed'] } },
+      },
       include: {
         event: {
           include: {
             postMedia: { orderBy: { createdAt: 'asc' } },
+            teachers: { include: { user: { select: { id: true, fullName: true } } } },
           },
         },
         student: { select: { id: true, fullName: true, avatarUrl: true } },
@@ -274,12 +285,18 @@ export class SchoolEventsService {
     });
   }
 
-  // Post-event media (teacher upload)
+  // Post-event media (teacher upload). Assigned teachers see the event; a school admin using the teacher app sees every published one.
   async listForTeacher(teacherUserId: string, schoolId: string) {
+    await this.syncAutomaticStatus(schoolId);
+    const admin = await this.prisma.schoolMember.findFirst({
+      where: { schoolId, userId: teacherUserId, role: 'school_admin', isActive: true },
+      select: { id: true },
+    });
     return this.prisma.schoolEvent.findMany({
       where: {
         schoolId,
-        teachers: { some: { userId: teacherUserId } },
+        status: { in: ['published', 'completed'] },
+        ...(admin ? {} : { teachers: { some: { userId: teacherUserId } } }),
       },
       include: {
         enrollments: {
@@ -289,16 +306,45 @@ export class SchoolEventsService {
         postMedia: { orderBy: { createdAt: 'asc' } },
         teachers: { include: { user: { select: { id: true, fullName: true } } } },
       },
-      orderBy: { eventDate: 'asc' },
+      orderBy: { eventDate: 'desc' },
     });
   }
 
   async addMedia(schoolId: string, eventId: string, userId: string, url: string, mediaType = 'image') {
-    const event = await this.prisma.schoolEvent.findFirst({ where: { id: eventId, schoolId } });
+    const event = await this.prisma.schoolEvent.findFirst({
+      where: { id: eventId, schoolId },
+      include: { teachers: { select: { userId: true } } },
+    });
     if (!event) throw new NotFoundException('Event not found');
+
+    const assigned = event.teachers.some(t => t.userId === userId) || event.createdById === userId;
+    if (!assigned) {
+      const admin = await this.prisma.schoolMember.findFirst({
+        where: { schoolId, userId, role: 'school_admin', isActive: true },
+        select: { id: true },
+      });
+      if (!admin) throw new ForbiddenException('Μόνο οι εκπαιδευτικοί της εκδήλωσης μπορούν να ανεβάσουν υλικό');
+    }
 
     return this.prisma.schoolEventMedia.create({
       data: { eventId, uploadedById: userId, url, mediaType },
+    });
+  }
+
+  /** Published events become completed the day after they happen. Completed events with a future date go back to published. */
+  private async syncAutomaticStatus(schoolId: string) {
+    const cutoff = new Date(`${athensTodayYmd()}T00:00:00.000Z`);
+    await this.prisma.schoolEvent.updateMany({
+      where: { schoolId, status: 'published', eventDate: { lt: cutoff } },
+      data: { status: 'completed' },
+    });
+    await this.prisma.schoolEvent.updateMany({
+      where: {
+        schoolId,
+        status: 'completed',
+        OR: [{ eventDate: null }, { eventDate: { gte: cutoff } }],
+      },
+      data: { status: 'published' },
     });
   }
 

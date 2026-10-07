@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { billingApi, levelsApi, schoolEventsApi, broadcastsApi } from '@/lib/api';
+import { eventDisplayStatus } from '@/lib/event-status';
 import { useStoredUser } from '@/lib/auth';
 import {
   ChevronLeft, ChevronRight, Settings, Zap, Bus, CheckCircle2,
@@ -395,8 +396,8 @@ export default function BillingPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-semibold text-gray-900">{evt.title}</span>
-                      {evt.status === 'published' && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Δημοσιευμένο</span>}
-                      {evt.status === 'completed' && <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">Ολοκληρώθηκε</span>}
+                      {eventDisplayStatus(evt.status, evt.eventDate) === 'published' && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Δημοσιευμένο</span>}
+                      {eventDisplayStatus(evt.status, evt.eventDate) === 'completed' && <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">Ολοκληρώθηκε</span>}
                     </div>
                     <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500">
                       {evt.eventDate && <span>{new Date(evt.eventDate).toLocaleDateString('el-GR')}</span>}

@@ -8,6 +8,7 @@ import {
   Pencil, Trash2, ChevronDown, ChevronUp, Image, Upload,
 } from 'lucide-react';
 import { AudienceSelector, AudienceValue, audienceLabel } from '@/components/AudienceSelector';
+import { eventDisplayStatus } from '@/lib/event-status';
 
 const EVENT_TYPES: Record<string, { label: string; color: string; bg: string }> = {
   excursion: { label: 'Εκδρομή', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
@@ -95,7 +96,7 @@ export default function EventsPage() {
       audienceIds: storedIds,
       teacherIds: (ev.teachers ?? []).map((t: any) => t.userId),
       mediaUrls: ev.mediaUrls ?? [],
-      status: ev.status,
+      status: ev.status === 'completed' ? 'published' : ev.status,
     });
     setModal('edit');
   };
@@ -108,6 +109,7 @@ export default function EventsPage() {
         ...form,
         costPerChild: form.costPerChild !== '' ? Number(form.costPerChild) : null,
         eventDate: form.eventDate || null,
+        status: form.status === 'completed' ? 'published' : form.status,
       };
       if (modal === 'create') {
         // Strip blob URLs and pending files before sending; upload after creation
@@ -214,7 +216,8 @@ export default function EventsPage() {
         <div className="space-y-4">
           {events.map(ev => {
             const typeMeta = EVENT_TYPES[ev.eventType] ?? EVENT_TYPES.general;
-            const statusMeta = STATUS_META[ev.status] ?? STATUS_META.draft;
+            const shownStatus = eventDisplayStatus(ev.status, ev.eventDate);
+            const statusMeta = STATUS_META[shownStatus] ?? STATUS_META.draft;
             const isEnrollOpen = enrollPanel === ev.id;
             const isMediaOpen = mediaPanel === ev.id;
             const totalEnroll = ev._count?.enrollments ?? 0;
@@ -283,7 +286,7 @@ export default function EventsPage() {
                       <Users className="w-3.5 h-3.5" />Εγγραφές & Πληρωμές
                       {isEnrollOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                     </button>
-                    {ev.status === 'completed' && (
+                    {(shownStatus === 'published' || shownStatus === 'completed') && (
                       <button
                         onClick={() => setMediaPanel(isMediaOpen ? null : ev.id)}
                         className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-emerald-200 hover:bg-emerald-50 text-emerald-700"
@@ -481,17 +484,23 @@ export default function EventsPage() {
                 </div>
               </div>
 
-              {/* Status */}
+              {/* Status — completed follows the day after the event */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Κατάσταση</label>
                 <div className="flex gap-2">
-                  {(['draft', 'published', 'completed'] as const).map(s => (
-                    <button key={s} onClick={() => setForm((p: any) => ({ ...p, status: s }))}
+                  {(['draft', 'published'] as const).map(s => (
+                    <button key={s} type="button" onClick={() => setForm((p: any) => ({ ...p, status: s }))}
                       className={`flex-1 py-2 rounded-xl border-2 text-xs font-medium transition-colors ${form.status === s ? 'border-violet-500 bg-violet-50 text-violet-700' : 'border-gray-100 text-gray-600 hover:border-gray-200'}`}>
                       {STATUS_META[s].label}
                     </button>
                   ))}
                 </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  {eventDisplayStatus(form.status, form.eventDate) === 'completed'
+                    ? 'Ολοκληρωμένο — πέρασε η ημέρα της εκδήλωσης.'
+                    : 'Μετά την ημέρα της εκδήλωσης γίνεται αυτόματα Ολοκληρωμένο.'}
+                  {' '}Οι εκπαιδευτικοί που επιλέγεις τη βλέπουν στην εφαρμογή και ανεβάζουν φωτογραφίες και βίντεο. Οι γονείς τα βλέπουν στην καρτέλα Εκδηλώσεις.
+                </p>
               </div>
             </div>
 

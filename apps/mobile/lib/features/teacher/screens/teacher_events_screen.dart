@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:dio/dio.dart';
 import '../../../core/api/api_client.dart';
+import '../../../core/utils/event_status.dart';
 import '../../../core/widgets/app_image.dart';
 
 final _teacherEventsProvider = FutureProvider.family<List<dynamic>, String>(
@@ -147,8 +148,18 @@ class _TeacherEventsScreenState extends ConsumerState<TeacherEventsScreen> {
               child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                 Icon(Icons.event_outlined, size: 64, color: Color(0xFFD1D5DB)),
                 SizedBox(height: 16),
-                Text('Δεν υπάρχουν ανατεθειμένες εκδηλώσεις',
+                Text('Δεν υπάρχουν εκδηλώσεις για σένα',
+                    textAlign: TextAlign.center,
                     style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 15)),
+                SizedBox(height: 8),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 40),
+                  child: Text(
+                    'Εμφανίζονται οι δημοσιευμένες εκδηλώσεις στις οποίες σε έχει ορίσει το σχολείο.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 13),
+                  ),
+                ),
               ]),
             );
           }
@@ -229,7 +240,8 @@ class _TeacherEventCardState extends State<_TeacherEventCard> {
     final cost = double.tryParse(event['costPerChild']?.toString() ?? '0') ?? 0;
     final enrollments = event['enrollments'] as List<dynamic>? ?? [];
     final media = event['postMedia'] as List<dynamic>? ?? [];
-    final eventStatus = event['status'] as String? ?? '';
+    final shownStatus = eventDisplayStatus(event['status'] as String?, eventDate);
+    final statusLabel = shownStatus == 'completed' ? 'Ολοκληρωμένη' : 'Δημοσιευμένη';
 
     final consentedCount = enrollments.where((e) =>
       (e['status'] as String?) != 'pending_consent' &&
@@ -266,14 +278,31 @@ class _TeacherEventCardState extends State<_TeacherEventCard> {
                       child: Text(title,
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(_eventTypeGr[eventType] ?? eventType,
-                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(_eventTypeGr[eventType] ?? eventType,
+                              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+                        ),
+                        const SizedBox(height: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: shownStatus == 'completed'
+                                ? const Color(0xFF059669)
+                                : Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(statusLabel,
+                              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -419,7 +448,7 @@ class _TeacherEventCardState extends State<_TeacherEventCard> {
                     child: OutlinedButton.icon(
                       onPressed: widget.onUpload,
                       icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
-                      label: const Text('Ανέβασμα Φωτογραφίας / Βίντεο'),
+                      label: const Text('Ανέβασμα φωτογραφίας / βίντεο'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: const Color(0xFF4F46E5),
                         side: const BorderSide(color: Color(0xFFC7D2FE)),
@@ -428,6 +457,13 @@ class _TeacherEventCardState extends State<_TeacherEventCard> {
                       ),
                     ),
                   ),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 14),
+            child: Text(
+              'Οι γονείς βλέπουν τις φωτογραφίες και τα βίντεο στην καρτέλα Εκδηλώσεις.',
+              style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)),
+            ),
           ),
         ],
       ),

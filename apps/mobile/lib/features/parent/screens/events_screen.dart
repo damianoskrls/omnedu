@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/providers/auth_provider.dart';
+import '../../../core/utils/event_status.dart';
 import '../../../core/widgets/app_image.dart';
 
 // Returns list of enrollments (each has `event` + `student` + status)
@@ -282,18 +283,26 @@ class _EventCard extends StatelessWidget {
               ]),
             ),
 
-          // Post-event media gallery
-          if (media.isNotEmpty) ...[
+          if (media.isNotEmpty || eventDayReached(eventDate)) ...[
             const Divider(height: 1, color: Color(0xFFF3F4F6)),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Φωτογραφίες & Βίντεο',
+                  const Text('Υλικό από την εκδήλωση',
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF6B7280))),
-                  const SizedBox(height: 8),
-                  SizedBox(
+                  if (media.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8, bottom: 4),
+                      child: Text(
+                        'Ο εκπαιδευτικός δεν έχει ανεβάσει ακόμα φωτογραφίες ή βίντεο.',
+                        style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF)),
+                      ),
+                    ),
+                  if (media.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    SizedBox(
                     height: 80,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
@@ -326,7 +335,8 @@ class _EventCard extends StatelessWidget {
                         );
                       },
                     ),
-                  ),
+                    ),
+                  ],
                 ],
               ),
             ),
