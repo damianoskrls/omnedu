@@ -1,10 +1,11 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { athensTodayYmd, resolveEventStatus } from './event-status';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class SchoolEventsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private notifications: NotificationsService) {}
 
   async list(schoolId: string, status?: string) {
     await this.syncAutomaticStatus(schoolId);
@@ -233,7 +234,21 @@ export class SchoolEventsService {
     const data: any = { status };
     if (status === 'paid') data.paidAt = new Date();
     if (status === 'consent_given' || status === 'pending_payment') data.parentConsentAt = new Date();
-    return this.prisma.schoolEventEnrollment.update({ where: { id: enrollmentId }, data });
+    const updated = await this.prisma.schoolEventEnrollment.update({
+      where: { id: enrollmentId },
+      data,
+      include: { student: { select: { id: true, fullName: true } }, event: { select: { title: true } } },
+    });
+    if (status === 'pending_payment') {
+      await this.notifications.notifyStudentParents(schoolId, updated.studentId, {
+        event: 'payment_overdue',
+        type: 'payment',
+        title: 'Εκκρεμεί πληρωμή',
+        body: `${updated.student.fullName}: ${updated.event.title}`,
+        data: { screen: 'payments', studentId: updated.studentId },
+      });
+    }
+    return updated;
   }
 
   // Parent: see events for their children
@@ -292,13 +307,29 @@ export class SchoolEventsService {
         : 'consent_given'
       : 'consent_declined';
 
-    return this.prisma.schoolEventEnrollment.update({
+    const updated = await this.prisma.schoolEventEnrollment.update({
       where: { id: enrollmentId },
       data: {
         status: newStatus,
         parentConsentAt: new Date(),
       },
     });
+    if (newStatus === 'pending_payment') {
+      const event = await this.prisma.schoolEvent.findUnique({
+        where: { id: enrollment.eventId },
+        select: { schoolId: true, title: true },
+      });
+      if (event) {
+        await this.notifications.notifyStudentParents(event.schoolId, enrollment.studentId, {
+          event: 'payment_overdue',
+          type: 'payment',
+          title: 'Εκκρεμεί πληρωμή',
+          body: `${enrollment.student.fullName}: ${event.title}`,
+          data: { screen: 'payments', studentId: enrollment.studentId },
+        });
+      }
+    }
+    return updated;
   }
 
   // Post-event media (teacher upload). Assigned teachers see the event; a school admin using the teacher app sees every published one.

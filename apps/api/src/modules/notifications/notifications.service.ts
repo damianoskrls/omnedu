@@ -89,7 +89,8 @@ export class NotificationsService {
                 body: data.body,
                 ...(data.imageUrl ? { imageUrl: data.imageUrl } : {}),
               },
-              data: { type: 'broadcast', schoolId },
+              data: { type: 'broadcast', screen: 'inbox', schoolId },
+              android: { priority: 'high', notification: { channelId: 'oneirochora' } },
             });
             recipientCount += res.successCount;
           } catch (e) {
@@ -147,6 +148,7 @@ export class NotificationsService {
           type: 'broadcast',
           title: data.title,
           body: data.body,
+          data: { screen: 'inbox' },
         })),
         skipDuplicates: true,
       });
@@ -155,18 +157,109 @@ export class NotificationsService {
     return broadcast;
   }
 
+  async registerDevice(userId: string, token: string, platform = 'android') {
+    const value = token.trim();
+    if (!value) return null;
+    return this.prisma.fcmToken.upsert({
+      where: { token: value },
+      create: { id: crypto.randomUUID(), userId, token: value, platform },
+      update: { userId, platform },
+    });
+  }
+
+  async inbox(userId: string, schoolId: string) {
+    return this.prisma.notification.findMany({
+      where: { userId, schoolId },
+      orderBy: { sentAt: 'desc' },
+      take: 50,
+    });
+  }
+
+  async markRead(userId: string, notificationId: string) {
+    const row = await this.prisma.notification.findFirst({ where: { id: notificationId, userId } });
+    if (!row) return null;
+    return this.prisma.notification.update({ where: { id: notificationId }, data: { isRead: true } });
+  }
+
+  async notifyStudentParents(
+    schoolId: string,
+    studentId: string,
+    input: { event: string; type: string; title: string; body: string; data?: Record<string, string> },
+  ) {
+    const parents = await this.prisma.studentParent.findMany({
+      where: { studentId, student: { schoolId } },
+      select: { userId: true },
+    });
+    return this.notifyUsers(schoolId, parents.map((row) => row.userId), input);
+  }
+
+  async notifyUsers(
+    schoolId: string,
+    userIds: string[],
+    input: { event: string; type: string; title: string; body: string; data?: Record<string, string> },
+  ) {
+    const ids = [...new Set(userIds.filter(Boolean))];
+    if (!ids.length) return;
+    try {
+      const settings = await this.getSettings(schoolId);
+      const rules = (settings.eventRules as Record<string, string[] | undefined>) ?? {};
+      const channels = Array.isArray(rules[input.event]) ? rules[input.event] : ['push'];
+      const data = { ...(input.data ?? {}), type: input.type, schoolId };
+      await this.prisma.notification.createMany({
+        data: ids.map((userId) => ({
+          id: crypto.randomUUID(),
+          schoolId,
+          userId,
+          type: input.type,
+          title: input.title,
+          body: input.body,
+          data,
+        })),
+      });
+      if (channels.includes('push')) {
+        await this.pushToUsers(ids, input.title, input.body, data);
+      }
+    } catch (error) {
+      this.logger.error('Notification failed', error);
+    }
+  }
+
+  private async pushToUsers(userIds: string[], title: string, body: string, data: Record<string, string>) {
+    if (!this.fcmApp) return;
+    const tokens = await this.getTargetTokens(userIds);
+    if (!tokens.length) return;
+    const payload = Object.fromEntries(Object.entries(data).map(([key, value]) => [key, String(value ?? '')]));
+    for (const chunk of this.chunkArray(tokens, 500)) {
+      try {
+        const res = await admin.messaging(this.fcmApp).sendEachForMulticast({
+          tokens: chunk,
+          notification: { title, body },
+          data: payload,
+          android: { priority: 'high', notification: { channelId: 'oneirochora' } },
+        });
+        const stale: string[] = [];
+        res.responses.forEach((item, index) => {
+          const code = item.error?.code ?? '';
+          if (code.includes('registration-token-not-registered') || code.includes('invalid-registration-token')) {
+            stale.push(chunk[index]);
+          }
+        });
+        if (stale.length) await this.prisma.fcmToken.deleteMany({ where: { token: { in: stale } } });
+      } catch (error) {
+        this.logger.error('FCM send error', error);
+      }
+    }
+  }
+
   // ─── Automatic / event-driven notifications ─────────────────────────────
 
   async sendSystemEvent(schoolId: string, event: string, userIds: string[], payload: { title: string; body: string }) {
-    const settings = await this.getSettings(schoolId);
-    const rules = (settings.eventRules as Record<string, string[]>) ?? {};
-    const channels: string[] = rules[event] ?? ['push'];
-
-    await this.send(schoolId, 'system', {
+    await this.notifyUsers(schoolId, userIds, {
+      event,
+      type: event,
       title: payload.title,
       body: payload.body,
-      targetType: 'all',
-      channels,
+      data: { screen: 'inbox' },
     });
   }
 

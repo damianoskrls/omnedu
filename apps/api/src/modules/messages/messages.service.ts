@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const userCard = {
   id: true,
@@ -9,7 +10,7 @@ const userCard = {
 
 @Injectable()
 export class MessagesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private notifications: NotificationsService) {}
 
   async getConversations(userId: string, schoolId: string, role?: string | null) {
     const rows = await this.prisma.conversation.findMany({
@@ -123,7 +124,7 @@ export class MessagesService {
     await this.assertParticipant(conversationId, senderId);
     const text = (body ?? '').trim();
     if (!text) throw new BadRequestException('Το μήνυμα είναι κενό');
-    return this.prisma.message.create({
+    const created = await this.prisma.message.create({
       data: {
         conversationId,
         senderId,
@@ -132,6 +133,25 @@ export class MessagesService {
       },
       include: { sender: { select: userCard } },
     });
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { schoolId: true, participants: { select: { userId: true } } },
+    });
+    if (conversation) {
+      const senderName = created.sender?.fullName || 'Νέο μήνυμα';
+      await this.notifications.notifyUsers(
+        conversation.schoolId,
+        conversation.participants.map((person) => person.userId).filter((id) => id !== senderId),
+        {
+          event: 'new_message',
+          type: 'message',
+          title: senderName,
+          body: text,
+          data: { screen: 'message', conversationId, title: senderName },
+        },
+      );
+    }
+    return created;
   }
 
   async deleteMessage(messageId: string, userId: string) {

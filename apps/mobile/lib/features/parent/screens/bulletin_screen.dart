@@ -23,7 +23,8 @@ final dayReportProvider = FutureProvider.family<Map<String, dynamic>?, ({String 
 class BulletinScreen extends ConsumerStatefulWidget {
   final String schoolId;
   final Map<String, dynamic> child;
-  const BulletinScreen({super.key, required this.schoolId, required this.child});
+  final DateTime? initialDay;
+  const BulletinScreen({super.key, required this.schoolId, required this.child, this.initialDay});
 
   @override
   ConsumerState<BulletinScreen> createState() => _BulletinScreenState();
@@ -40,7 +41,8 @@ class _BulletinScreenState extends ConsumerState<BulletinScreen> {
   @override
   void initState() {
     super.initState();
-    _day = _today;
+    final initial = widget.initialDay;
+    _day = initial == null ? _today : DateTime(initial.year, initial.month, initial.day);
   }
 
   String get _dateKey =>

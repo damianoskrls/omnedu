@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
+import '../../../core/notifications/notification_center.dart';
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/utils/event_status.dart';
 import '../../../core/widgets/app_image.dart';
@@ -898,50 +899,13 @@ class _RegulationBlock extends StatelessWidget {
   }
 }
 
-class AlertsScreen extends ConsumerWidget {
+class AlertsScreen extends StatelessWidget {
   final String schoolId;
   const AlertsScreen({super.key, required this.schoolId});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final posts = ref.watch(_postsProvider(schoolId));
-    return Scaffold(
-      appBar: AppBar(title: const Text('Ειδοποιήσεις')),
-      body: posts.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e')),
-        data: (list) => list.isEmpty
-            ? const Center(child: Text('Δεν υπάρχουν ανακοινώσεις.'))
-            : ListView.separated(
-                padding: const EdgeInsets.all(16),
-                itemCount: list.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (_, i) {
-                  final p = list[i] as Map;
-                  return Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(p['title'] as String? ?? 'Ανακοίνωση', style: const TextStyle(fontWeight: FontWeight.w800)),
-                        const SizedBox(height: 4),
-                        Text(p['body'] as String? ?? p['content'] as String? ?? ''),
-                      ],
-                    ),
-                  );
-                },
-              ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => InboxScreen(schoolId: schoolId);
 }
-
-final _postsProvider = FutureProvider.family<List<dynamic>, String>((ref, schoolId) async {
-  final dio = ref.read(dioProvider);
-  final resp = await dio.get('/schools/$schoolId/posts');
-  return resp.data is List ? resp.data as List<dynamic> : [];
-});
 
 class QuestionnairesScreen extends ConsumerStatefulWidget {
   final String schoolId;

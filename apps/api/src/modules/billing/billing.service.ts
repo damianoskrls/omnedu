@@ -1,10 +1,23 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { isOpenMonth, quoteStudentMonth, schoolYearBounds } from './billing-quote';
+import { NotificationsService } from '../notifications/notifications.service';
+
+const monthNames = ['', 'Ιανουάριο', 'Φεβρουάριο', 'Μάρτιο', 'Απρίλιο', 'Μάιο', 'Ιούνιο', 'Ιούλιο', 'Αύγουστο', 'Σεπτέμβριο', 'Οκτώβριο', 'Νοέμβριο', 'Δεκέμβριο'];
 
 @Injectable()
 export class BillingService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private notifications: NotificationsService) {}
+
+  private async tellParents(schoolId: string, studentId: string, body: string) {
+    await this.notifications.notifyStudentParents(schoolId, studentId, {
+      event: 'payment_overdue',
+      type: 'payment',
+      title: 'Εκκρεμεί πληρωμή',
+      body,
+      data: { screen: 'payments', studentId },
+    });
+  }
 
   // ── Level fees ──────────────────────────────────────────
 
@@ -256,6 +269,7 @@ export class BillingService {
         results.push(existing);
         continue;
       }
+      const isNew = !existing;
 
       const quote = this.quoteLoadedStudent(student, month, year);
       const { schoolFee, busFee, activityFees, subsidyTotal, totalDue } = quote;
@@ -270,6 +284,13 @@ export class BillingService {
         update: { schoolFee, busFee, activityFees, subsidyTotal, totalDue },
       });
       results.push(charge);
+      if (isNew && Number(totalDue) > 0) {
+        await this.tellParents(
+          schoolId,
+          student.id,
+          `${student.fullName}: ${monthNames[month] ?? month} ${year} · ${Number(totalDue).toFixed(2)} €`,
+        );
+      }
     }
 
     return { generated: results.length, month, year };
@@ -328,7 +349,7 @@ export class BillingService {
     studentId: string; description: string; amount: number;
     chargeDate: string; notes?: string;
   }) {
-    return this.prisma.oneTimeCharge.create({
+    const created = await this.prisma.oneTimeCharge.create({
       data: {
         schoolId,
         studentId: data.studentId,
@@ -339,6 +360,10 @@ export class BillingService {
       },
       include: { student: { select: { id: true, fullName: true } } },
     });
+    if (Number(data.amount) > 0) {
+      await this.tellParents(schoolId, data.studentId, `${created.student.fullName}: ${data.description} · ${Number(data.amount).toFixed(2)} €`);
+    }
+    return created;
   }
 
   async updateOneTimeCharge(schoolId: string, chargeId: string, data: {
@@ -552,7 +577,7 @@ export class BillingService {
         });
     if (match) return match;
 
-    return this.prisma.oneTimeCharge.create({
+    const created = await this.prisma.oneTimeCharge.create({
       data: {
         schoolId,
         studentId,
@@ -562,6 +587,8 @@ export class BillingService {
         notes: `Έναρξη σχολικής χρονιάς ${startYear}-${startYear + 1}`,
       },
     });
+    await this.tellParents(schoolId, studentId, `Γραφική ύλη · ${annual.toFixed(2)} €`);
+    return created;
   }
 
   private isStationery(description: string, chargeDate: Date, startYear: number) {
@@ -674,6 +701,7 @@ export class BillingService {
           chargeDate: new Date(`${year}-09-01`),
         },
       });
+      await this.tellParents(schoolId, student.id, `${student.fullName}: Ετήσια εγγραφή · ${Number(fee.annualFee).toFixed(2)} €`);
       results.push(charge);
     }
     return { generated: results.length, year };

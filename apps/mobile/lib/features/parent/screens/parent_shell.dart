@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/notifications/notification_center.dart';
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/utils/system_insets.dart';
 import 'home_screen.dart';
@@ -39,7 +40,12 @@ class _ParentShellState extends ConsumerState<ParentShell> {
       child: Scaffold(
         backgroundColor: const Color(0xFFF6F3FA),
         extendBody: false,
-        body: IndexedStack(index: _index, children: pages),
+        body: Stack(
+          children: [
+            IndexedStack(index: _index, children: pages),
+            NotificationWatcher(schoolId: schoolId),
+          ],
+        ),
         bottomNavigationBar: _FloatingNavBar(
           selectedIndex: _index,
           onTap: (i) => setState(() => _index = i),
