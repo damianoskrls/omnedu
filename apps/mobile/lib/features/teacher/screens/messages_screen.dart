@@ -39,13 +39,6 @@ class TeacherMessagesScreen extends ConsumerWidget {
 
   Future<List<Map<String, dynamic>>> _parents(WidgetRef ref) async {
     final dio = ref.read(dioProvider);
-    try {
-      final resp = await dio.get('/schools/$schoolId/conversations/contacts');
-      if (resp.data is Map) {
-        final rows = (resp.data['parents'] as List?) ?? [];
-        return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
-      }
-    } catch (_) {}
     final details = await ref.read(teacherParentDetailsProvider(schoolId).future);
     final studentsResp = await dio.get('/schools/$schoolId/students');
     final students = studentsResp.data is List ? studentsResp.data as List : <dynamic>[];
@@ -75,7 +68,7 @@ class TeacherMessagesScreen extends ConsumerWidget {
       parents = await _parents(ref);
     } catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(apiErrorText(error))));
+        showAppMessage(context, apiErrorText(error));
       }
       return;
     }
@@ -153,7 +146,7 @@ class TeacherMessagesScreen extends ConsumerWidget {
       ref.invalidate(conversationsProvider(schoolId));
     } catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(apiErrorText(error))));
+        showAppMessage(context, apiErrorText(error));
       }
     }
   }
@@ -176,11 +169,17 @@ class TeacherMessagesScreen extends ConsumerWidget {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _newMessage(context, ref, asAdmin: asAdmin),
-        backgroundColor: brandPurple,
-        icon: const Icon(Icons.edit_outlined, color: Colors.white),
-        label: const Text('Νέο μήνυμα', style: TextStyle(color: Colors.white)),
+      bottomNavigationBar: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: FilledButton.icon(
+          style: FilledButton.styleFrom(
+            backgroundColor: brandPurple,
+            minimumSize: const Size.fromHeight(48),
+          ),
+          onPressed: () => _newMessage(context, ref, asAdmin: asAdmin),
+          icon: const Icon(Icons.edit_outlined, color: Colors.white),
+          label: const Text('Νέο μήνυμα', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+        ),
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -197,13 +196,13 @@ class TeacherMessagesScreen extends ConsumerWidget {
           Expanded(
             child: convsAsync.when(
               loading: () => const Center(child: CircularProgressIndicator(color: brandPurple)),
-              error: (e, _) => Center(child: Text('Σφάλμα: $e')),
+              error: (e, _) => Center(child: Text(apiErrorText(e))),
               data: (convs) => convs.isEmpty
                   ? const Center(child: Text('Δεν υπάρχουν μηνύματα', style: TextStyle(color: Color(0xFF9CA3AF))))
                   : RefreshIndicator(
                       onRefresh: () => ref.refresh(conversationsProvider(schoolId).future),
                       child: ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                         separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemCount: convs.length,
                         itemBuilder: (_, i) {

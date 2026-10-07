@@ -10,10 +10,6 @@ class ParentMessagesScreen extends ConsumerWidget {
 
   Future<Map<String, dynamic>> _contacts(WidgetRef ref) async {
     final dio = ref.read(dioProvider);
-    try {
-      final resp = await dio.get('/schools/$schoolId/conversations/contacts');
-      if (resp.data is Map) return Map<String, dynamic>.from(resp.data as Map);
-    } catch (_) {}
     final childrenResp = await dio.get('/schools/$schoolId/students/my-children');
     final children = childrenResp.data is List ? childrenResp.data as List : <dynamic>[];
     final teachers = <Map<String, dynamic>>[];
@@ -45,9 +41,7 @@ class ParentMessagesScreen extends ConsumerWidget {
     try {
       contacts = await _contacts(ref);
     } catch (error) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(apiErrorText(error))));
-      }
+      if (context.mounted) showAppMessage(context, apiErrorText(error));
       return;
     }
     if (!context.mounted) return;
@@ -150,9 +144,7 @@ class ParentMessagesScreen extends ConsumerWidget {
       );
       ref.invalidate(conversationsProvider(schoolId));
     } catch (error) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(apiErrorText(error))));
-      }
+      if (context.mounted) showAppMessage(context, apiErrorText(error));
     }
   }
 
@@ -172,11 +164,17 @@ class ParentMessagesScreen extends ConsumerWidget {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _newMessage(context, ref),
-        backgroundColor: brandPurple,
-        icon: const Icon(Icons.edit_outlined, color: Colors.white),
-        label: const Text('Νέο μήνυμα', style: TextStyle(color: Colors.white)),
+      bottomNavigationBar: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: FilledButton.icon(
+          style: FilledButton.styleFrom(
+            backgroundColor: brandPurple,
+            minimumSize: const Size.fromHeight(48),
+          ),
+          onPressed: () => _newMessage(context, ref),
+          icon: const Icon(Icons.edit_outlined, color: Colors.white),
+          label: const Text('Νέο μήνυμα', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+        ),
       ),
       body: convsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator(color: brandPurple)),
@@ -195,7 +193,7 @@ class ParentMessagesScreen extends ConsumerWidget {
             : RefreshIndicator(
                 onRefresh: () => ref.refresh(conversationsProvider(schoolId).future),
                 child: ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                   separatorBuilder: (_, __) => const SizedBox(height: 8),
                   itemCount: convs.length,
                   itemBuilder: (_, i) {

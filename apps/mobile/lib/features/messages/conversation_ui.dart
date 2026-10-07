@@ -102,6 +102,16 @@ String conversationSubtitle(Map<String, dynamic> conv, String userId) {
   return '';
 }
 
+void showAppMessage(BuildContext context, String message) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      behavior: SnackBarBehavior.floating,
+      margin: EdgeInsets.fromLTRB(16, 0, 16, 24 + systemBottomInset(context)),
+      content: Text(message),
+    ),
+  );
+}
+
 String apiErrorText(Object error) {
   if (error is DioException) {
     final data = error.response?.data;
