@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/widgets/app_image.dart';
+import '../../messages/conversation_ui.dart';
 
 String _iso(DateTime d) =>
     '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -541,35 +544,135 @@ class _ChildEventCard extends StatelessWidget {
   }
 }
 
+class _ClassTeacher {
+  final String id;
+  final String name;
+  final String? avatarUrl;
+  final String className;
+  const _ClassTeacher({required this.id, required this.name, required this.avatarUrl, required this.className});
+}
+
+List<_ClassTeacher> _teachersOf(dynamic student) {
+  if (student is! Map) return [];
+  final enrollments = student['enrollments'] as List<dynamic>? ?? [];
+  final teachers = <_ClassTeacher>[];
+  final seen = <String>{};
+  for (final enrollment in enrollments) {
+    if (enrollment is! Map) continue;
+    final klass = enrollment['class'];
+    if (klass is! Map) continue;
+    final className = klass['name'] as String? ?? '';
+    final list = klass['teachers'] as List<dynamic>? ?? [];
+    for (final row in list) {
+      if (row is! Map) continue;
+      final user = row['user'];
+      if (user is! Map) continue;
+      final id = user['id'] as String? ?? '';
+      final name = (user['fullName'] as String?)?.trim() ?? '';
+      if (id.isEmpty || name.isEmpty || !seen.add(id)) continue;
+      teachers.add(_ClassTeacher(
+        id: id,
+        name: name,
+        avatarUrl: user['avatarUrl'] as String?,
+        className: className,
+      ));
+    }
+  }
+  return teachers;
+}
+
+final parentTeachersProvider = FutureProvider.family<List<_ClassTeacher>, ({String schoolId, String studentId})>((ref, key) async {
+  final dio = ref.read(dioProvider);
+  final found = <_ClassTeacher>[];
+  final seen = <String>{};
+  void addAll(dynamic student) {
+    for (final teacher in _teachersOf(student)) {
+      if (seen.add(teacher.id)) found.add(teacher);
+    }
+  }
+
+  try {
+    final mine = await dio.get('/schools/${key.schoolId}/students/my-children');
+    if (mine.data is List) {
+      for (final row in mine.data as List) {
+        if (row is Map && row['id'] == key.studentId) addAll(row);
+      }
+    }
+  } catch (_) {}
+  if (found.isEmpty) {
+    try {
+      final one = await dio.get('/schools/${key.schoolId}/students/${key.studentId}');
+      addAll(one.data);
+    } catch (_) {}
+  }
+  return found;
+});
+
 class TeachersScreen extends ConsumerWidget {
   final String schoolId;
   final Map<String, dynamic> child;
   const TeachersScreen({super.key, required this.schoolId, required this.child});
 
+  Future<void> _message(BuildContext context, WidgetRef ref, _ClassTeacher teacher) async {
+    final parentId = ref.read(authProvider).user?.id;
+    if (parentId == null) return;
+    try {
+      final id = await openScopedConversation(
+        ref,
+        schoolId: schoolId,
+        kind: 'teacher',
+        withUserId: teacher.id,
+        participantIds: [parentId, teacher.id],
+      );
+      if (id == null || !context.mounted) return;
+      final subtitle = teacher.className.isEmpty ? 'Εκπαιδευτικός' : teacher.className;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChatScreen(
+            schoolId: schoolId,
+            convId: id,
+            title: teacher.name,
+            subtitle: subtitle,
+            currentUserId: parentId,
+          ),
+        ),
+      );
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(apiErrorText(error))));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final studentId = child['id'] as String? ?? '';
     final key = (schoolId: schoolId, studentId: studentId);
-    final live = ref.watch(liveChildProvider(key));
+    final live = ref.watch(parentTeachersProvider(key));
+    final fallback = _teachersOf(child);
     return Scaffold(
       backgroundColor: const Color(0xFFF6F3FA),
-      appBar: AppBar(title: const Text('Εκπαιδευτικοί')),
+      appBar: AppBar(
+        title: const Text('Εκπαιδευτικοί'),
+        actions: [
+          IconButton(onPressed: () => ref.invalidate(parentTeachersProvider(key)), icon: const Icon(Icons.refresh_rounded)),
+        ],
+      ),
       body: live.when(
-        loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFF77328D))),
-        error: (e, _) => ParentEmptyState(icon: Icons.cloud_off_rounded, title: 'Δεν φορτώθηκαν', message: '$e'),
-        data: (data) {
-          final enrollments = data['enrollments'] as List<dynamic>? ?? [];
-          final teachers = <Map>[];
-          final seen = <String>{};
-          for (final enrollment in enrollments) {
-            final list = enrollment['class']?['teachers'] as List<dynamic>? ?? [];
-            for (final t in list) {
-              final user = t['user'] as Map?;
-              final id = user?['id'] as String? ?? '';
-              if (user != null && seen.add(id)) teachers.add(user);
-            }
-          }
-          if (teachers.isEmpty) {
+        loading: () => fallback.isEmpty
+            ? const Center(child: CircularProgressIndicator(color: Color(0xFF77328D)))
+            : _TeacherList(teachers: fallback, onMessage: (teacher) => _message(context, ref, teacher)),
+        error: (_, __) => fallback.isEmpty
+            ? const ParentEmptyState(
+                icon: Icons.groups_outlined,
+                title: 'Χωρίς εκπαιδευτικούς',
+                message: 'Δεν έχουν οριστεί εκπαιδευτικοί στην τάξη του παιδιού.',
+              )
+            : _TeacherList(teachers: fallback, onMessage: (teacher) => _message(context, ref, teacher)),
+        data: (teachers) {
+          final rows = teachers.isNotEmpty ? teachers : fallback;
+          if (rows.isEmpty) {
             return const ParentEmptyState(
               icon: Icons.groups_outlined,
               title: 'Χωρίς εκπαιδευτικούς',
@@ -577,28 +680,89 @@ class TeachersScreen extends ConsumerWidget {
             );
           }
           return RefreshIndicator(
-            onRefresh: () => ref.refresh(liveChildProvider(key).future),
-            child: ListView.separated(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(16),
-              itemCount: teachers.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (_, i) {
-                final t = teachers[i];
-                return ListTile(
-                  tileColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  leading: const CircleAvatar(backgroundColor: Color(0xFFF6F3FA), child: Icon(Icons.person, color: Color(0xFF77328D))),
-                  title: Text(t['fullName'] as String? ?? ''),
-                  subtitle: Text((t['phone'] as String?)?.isNotEmpty == true ? t['phone'] as String : 'Τάξη'),
-                );
-              },
-            ),
+            color: const Color(0xFF77328D),
+            onRefresh: () => ref.refresh(parentTeachersProvider(key).future),
+            child: _TeacherList(teachers: rows, onMessage: (teacher) => _message(context, ref, teacher)),
           );
         },
       ),
     );
   }
+}
+
+class _TeacherList extends StatelessWidget {
+  final List<_ClassTeacher> teachers;
+  final ValueChanged<_ClassTeacher> onMessage;
+  const _TeacherList({required this.teachers, required this.onMessage});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(16),
+      itemCount: teachers.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (_, i) {
+        final teacher = teachers[i];
+        final photo = teacher.avatarUrl;
+        return Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => onMessage(teacher),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: photo != null && photo.isNotEmpty
+                        ? AppImage(
+                            photo,
+                            width: 48,
+                            height: 48,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => _teacherLetter(teacher.name),
+                          )
+                        : _teacherLetter(teacher.name),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(teacher.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                        const SizedBox(height: 2),
+                        Text(
+                          teacher.className.isEmpty ? 'Εκπαιδευτικός' : 'Τάξη ${teacher.className}',
+                          style: const TextStyle(color: Color(0xFF6B7280)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chat_bubble_outline_rounded, color: Color(0xFF77328D)),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+Widget _teacherLetter(String name) {
+  return Container(
+    width: 48,
+    height: 48,
+    color: const Color(0xFFF6F3FA),
+    alignment: Alignment.center,
+    child: Text(
+      name.isNotEmpty ? name[0].toUpperCase() : '?',
+      style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w800, fontSize: 18),
+    ),
+  );
 }
 
 class RegulationsScreen extends ConsumerWidget {

@@ -40,7 +40,7 @@ export class StudentsService {
                 level: { select: { id: true, name: true } },
                 instructions: { orderBy: { sortOrder: 'asc' } },
                 teachers: {
-                  include: { user: { select: { id: true, fullName: true, avatarUrl: true, phone: true } } },
+                  include: { user: { select: { id: true, fullName: true, avatarUrl: true } } },
                 },
               },
             },
@@ -136,7 +136,7 @@ export class StudentsService {
                 name: true,
                 instructions: { orderBy: { sortOrder: 'asc' } },
                 teachers: {
-                  include: { user: { select: { id: true, fullName: true, avatarUrl: true, phone: true } } },
+                  include: { user: { select: { id: true, fullName: true, avatarUrl: true } } },
                 },
               },
             },
