@@ -248,6 +248,8 @@ export const dailyMenusApi = {
 export const questionnairesApi = {
   list: (schoolId: string, academicYear?: number) =>
     api.get(`/schools/${schoolId}/questionnaires`, { params: academicYear ? { academicYear } : {} }),
+  forStudent: (schoolId: string, studentId: string) =>
+    api.get(`/schools/${schoolId}/questionnaires/for-student/${studentId}`),
   get: (schoolId: string, id: string) =>
     api.get(`/schools/${schoolId}/questionnaires/${id}`),
   create: (schoolId: string, data: any) =>

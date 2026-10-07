@@ -14,6 +14,52 @@ export class QuestionnairesService {
     });
   }
 
+  async findForStudent(schoolId: string, studentId: string) {
+    const student = await this.prisma.student.findFirst({
+      where: { id: studentId, schoolId },
+      select: {
+        id: true,
+        enrollments: { select: { classId: true, class: { select: { levelId: true } } } },
+      },
+    });
+    if (!student) throw new NotFoundException('Student not found');
+
+    const classIds = new Set(student.enrollments.map(e => e.classId));
+    const levelIds = new Set(
+      student.enrollments.map(e => e.class?.levelId).filter((id): id is string => Boolean(id)),
+    );
+
+    const questionnaires = await this.prisma.questionnaire.findMany({
+      where: { schoolId, isActive: true, status: 'sent' },
+      include: { responses: { where: { studentId } } },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return questionnaires
+      .filter(q => this.targetsStudent(q.scopeType, q.scopeIds, classIds, levelIds))
+      .map(({ responses, ...q }) => ({ ...q, response: responses[0] ?? null }));
+  }
+
+  private targetsStudent(
+    scopeType: string,
+    scopeIdsRaw: string,
+    classIds: Set<string>,
+    levelIds: Set<string>,
+  ) {
+    if (scopeType === 'teachers') return false;
+    if (scopeType === 'all' || !scopeType) return true;
+    let ids: string[] = [];
+    try {
+      const parsed = JSON.parse(scopeIdsRaw || '[]');
+      ids = Array.isArray(parsed) ? parsed.filter(id => typeof id === 'string') : [];
+    } catch {
+      ids = [];
+    }
+    if (scopeType === 'class') return ids.some(id => classIds.has(id));
+    if (scopeType === 'level') return ids.some(id => levelIds.has(id));
+    return false;
+  }
+
   async findOne(id: string, schoolId: string) {
     const q = await this.prisma.questionnaire.findFirst({
       where: { id, schoolId },

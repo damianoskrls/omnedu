@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { studentsApi, billingApi, classesApi, activitiesApi, extraServicesApi, medicationRequestsApi, studentFormsApi, broadcastsApi, schoolEventsApi } from '@/lib/api';
+import { studentsApi, billingApi, classesApi, activitiesApi, extraServicesApi, medicationRequestsApi, studentFormsApi, broadcastsApi, schoolEventsApi, questionnairesApi } from '@/lib/api';
 import { StudentStatement } from './student-statement';
 import { buildStudentQuoteInput, chargeMatchesQuote, findStationeryCharge, isOpenMonth, quoteStudentMonth, schoolYearMonths, schoolYearOf } from '@/lib/month-quote';
 import { noteWithoutPayment, payerOptions, paymentNote, PaymentInfo } from '@/lib/payment-note';
@@ -110,6 +110,10 @@ export default function StudentProfilePage() {
   const [overviewOneTime, setOverviewOneTime] = useState<any[] | null>(null);
   const [medications, setMedications] = useState<any[]>([]);
   const [questionnaire, setQuestionnaire] = useState<any>(null);
+  const [sentQuestionnaires, setSentQuestionnaires] = useState<any[]>([]);
+  const [openQuestionnaireId, setOpenQuestionnaireId] = useState<string | null>(null);
+  const [qAnswers, setQAnswers] = useState<Record<string, string>>({});
+  const [savingQAnswers, setSavingQAnswers] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifForm, setNotifForm] = useState({ title: '', body: '' });
   const [sendingNotif, setSendingNotif] = useState(false);
@@ -201,9 +205,11 @@ export default function StudentProfilePage() {
     Promise.all([
       medicationRequestsApi.list(schoolId, { studentId: id }).catch(() => []),
       studentFormsApi.get(schoolId, id, curYear).catch(() => null),
-    ]).then(([meds, qForm]: any) => {
+      questionnairesApi.forStudent(schoolId, id).catch(() => []),
+    ]).then(([meds, qForm, sent]: any) => {
       setMedications(Array.isArray(meds) ? meds.filter((m: any) => m.status !== 'completed') : []);
       setQuestionnaire(qForm ?? null);
+      setSentQuestionnaires(Array.isArray(sent) ? sent : []);
     });
     loadBillingData();
   }, [schoolId, id]);
@@ -541,6 +547,8 @@ export default function StudentProfilePage() {
   const busService = student?.studentServices?.find((ss: any) => ss.service?.serviceType === 'bus');
   const activeActivities = student?.activityRegistrations ?? [];
   const questionnaireSubmitted = questionnaire?.submittedAt != null;
+  const answeredQuestionnaires = sentQuestionnaires.filter((q: any) => q.response).length;
+  const pendingQuestionnaires = sentQuestionnaires.length - answeredQuestionnaires;
   const currentClass = student?.enrollments?.[0]?.class;
 
   return (
@@ -764,12 +772,26 @@ export default function StudentProfilePage() {
         <button
           onClick={() => setTab('health')}
           className={`flex items-center gap-2 px-3 py-2 bg-white rounded-xl border shadow-sm hover:opacity-80 transition-colors text-sm ${
-            questionnaireSubmitted ? 'border-blue-200' : 'border-amber-200'
+            sentQuestionnaires.length > 0
+              ? (pendingQuestionnaires > 0 ? 'border-amber-200' : 'border-blue-200')
+              : (questionnaireSubmitted ? 'border-blue-200' : 'border-amber-200')
           }`}
         >
-          <FileText className={`w-4 h-4 ${questionnaireSubmitted ? 'text-blue-500' : 'text-amber-500'}`} />
-          <span className={`font-medium ${questionnaireSubmitted ? 'text-blue-700' : 'text-amber-700'}`}>
-            {questionnaireSubmitted ? 'Ερωτηματολόγιο ✓' : 'Ερωτηματολόγιο —'}
+          <FileText className={`w-4 h-4 ${
+            sentQuestionnaires.length > 0
+              ? (pendingQuestionnaires > 0 ? 'text-amber-500' : 'text-blue-500')
+              : (questionnaireSubmitted ? 'text-blue-500' : 'text-amber-500')
+          }`} />
+          <span className={`font-medium ${
+            sentQuestionnaires.length > 0
+              ? (pendingQuestionnaires > 0 ? 'text-amber-700' : 'text-blue-700')
+              : (questionnaireSubmitted ? 'text-blue-700' : 'text-amber-700')
+          }`}>
+            {sentQuestionnaires.length > 0
+              ? (pendingQuestionnaires > 0
+                ? `Ερωτηματολόγιο ${answeredQuestionnaires}/${sentQuestionnaires.length}`
+                : 'Ερωτηματολόγιο ✓')
+              : (questionnaireSubmitted ? 'Ερωτηματολόγιο ✓' : 'Ερωτηματολόγιο —')}
           </span>
         </button>
       </div>
@@ -855,6 +877,122 @@ export default function StudentProfilePage() {
       {/* Tab: Υγεία */}
       {tab === 'health' && (
         <div className="space-y-6">
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
+            <div className="flex items-center gap-2 px-6 py-4 border-b border-gray-100">
+              <ClipboardList className="w-4 h-4 text-indigo-500" />
+              <h3 className="font-semibold text-gray-800">Ερωτηματολόγια</h3>
+              <span className="text-xs text-gray-400">
+                {sentQuestionnaires.length === 0
+                  ? 'Κανένα εσταλμένο'
+                  : `${answeredQuestionnaires}/${sentQuestionnaires.length} απαντημένα`}
+              </span>
+            </div>
+            {sentQuestionnaires.length === 0 ? (
+              <p className="px-6 py-8 text-center text-gray-400 text-sm">Δεν έχει σταλεί ερωτηματολόγιο σε αυτόν τον μαθητή.</p>
+            ) : (
+              <div className="divide-y divide-gray-50">
+                {sentQuestionnaires.map((item: any) => {
+                  const questions = parseQuestionnaireQuestions(item.questions);
+                  const answers = parseQuestionnaireAnswers(item.response?.answers);
+                  const open = openQuestionnaireId === item.id;
+                  const editing = open && qAnswers.__questionnaireId === item.id;
+                  return (
+                    <div key={item.id} className="px-6 py-4">
+                      <button
+                        type="button"
+                        onClick={() => setOpenQuestionnaireId(open ? null : item.id)}
+                        className="w-full flex items-start gap-3 text-left"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-medium text-gray-900">{item.title}</p>
+                            {item.response ? (
+                              <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                                Απαντήθηκε {item.response.submittedAt ? new Date(item.response.submittedAt).toLocaleDateString('el-GR') : ''}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Δεν έχει απαντήσει</span>
+                            )}
+                          </div>
+                          {item.description && <p className="text-sm text-gray-500 mt-1">{item.description}</p>}
+                          <p className="text-xs text-gray-400 mt-1">
+                            {questions.length === 1 ? '1 ερώτηση' : `${questions.length} ερωτήσεις`}
+                            {item.deadline ? ` · έως ${new Date(item.deadline).toLocaleDateString('el-GR')}` : ''}
+                          </p>
+                        </div>
+                        {open ? <ChevronUp className="w-4 h-4 text-gray-400 mt-1" /> : <ChevronDown className="w-4 h-4 text-gray-400 mt-1" />}
+                      </button>
+                      {open && (
+                        <div className="mt-4 space-y-4">
+                          {questions.map((question, idx) => (
+                            <div key={question.id}>
+                              <p className="text-sm font-medium text-gray-800 mb-2">
+                                <span className="text-indigo-500 font-bold mr-1.5">{idx + 1}.</span>{question.text}
+                              </p>
+                              {editing ? (
+                                <QuestionnaireAnswerInput
+                                  question={question}
+                                  value={qAnswers[question.id] ?? ''}
+                                  onChange={value => setQAnswers(prev => ({ ...prev, [question.id]: value }))}
+                                />
+                              ) : (
+                                <p className="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2">
+                                  {answers[question.id] ? String(answers[question.id]) : '—'}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                          {isAdmin && (
+                            <div className="flex gap-2 pt-1">
+                              {editing ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => setQAnswers({})}
+                                    className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50"
+                                  >
+                                    Ακύρωση
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={savingQAnswers}
+                                    onClick={async () => {
+                                      setSavingQAnswers(true);
+                                      try {
+                                        const { __questionnaireId, ...answersToSave } = qAnswers;
+                                        await questionnairesApi.upsertResponse(schoolId, item.id, id, answersToSave);
+                                        const fresh = await questionnairesApi.forStudent(schoolId, id);
+                                        setSentQuestionnaires(Array.isArray(fresh) ? fresh : []);
+                                        setQAnswers({});
+                                      } finally {
+                                        setSavingQAnswers(false);
+                                      }
+                                    }}
+                                    className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+                                  >
+                                    {savingQAnswers ? 'Αποθήκευση...' : 'Αποθήκευση'}
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setQAnswers({ __questionnaireId: item.id, ...answers })}
+                                  className="ml-auto flex items-center gap-1 text-xs text-indigo-600 font-medium hover:text-indigo-800 border border-indigo-200 rounded-lg px-2.5 py-1 hover:bg-indigo-50"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" /> {item.response ? 'Επεξεργασία' : 'Συμπλήρωση'}
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {/* Questionnaire card */}
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
             <div className="flex items-center gap-2 px-6 py-4 border-b border-gray-100">
@@ -3262,5 +3400,88 @@ function StatMini({ label, value, color }: { label: string; value: string; color
       <div className="text-xs text-gray-500 mb-1">{label}</div>
       <div className={`text-xl font-bold ${color}`}>{value}</div>
     </div>
+  );
+}
+
+type ProfileQuestion = { id: string; text: string; type: string; options?: string[] };
+
+function parseQuestionnaireQuestions(raw: unknown): ProfileQuestion[] {
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(q => q && typeof q.id === 'string').map(q => ({
+      id: q.id,
+      text: typeof q.text === 'string' ? q.text : '',
+      type: typeof q.type === 'string' ? q.type : 'text',
+      options: Array.isArray(q.options) ? q.options.filter((o: unknown) => typeof o === 'string') : undefined,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function parseQuestionnaireAnswers(raw: unknown): Record<string, string> {
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!parsed || typeof parsed !== 'object') return {};
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>).map(([key, value]) => [key, value == null ? '' : String(value)]),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function QuestionnaireAnswerInput({
+  question, value, onChange,
+}: {
+  question: ProfileQuestion;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  if (question.type === 'yesno') {
+    return (
+      <div className="flex gap-3">
+        {['Ναι', 'Όχι'].map(opt => (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => onChange(opt)}
+            className={`flex-1 py-2 rounded-xl border-2 text-sm font-medium ${
+              value === opt ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600 hover:border-indigo-200'
+            }`}
+          >
+            {opt}
+          </button>
+        ))}
+      </div>
+    );
+  }
+  if (question.type === 'choice') {
+    return (
+      <div className="space-y-2">
+        {(question.options ?? []).filter(opt => opt.trim()).map(opt => (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => onChange(opt)}
+            className={`w-full text-left px-3 py-2 rounded-xl border-2 text-sm ${
+              value === opt ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600 hover:border-indigo-200'
+            }`}
+          >
+            {opt}
+          </button>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <textarea
+      rows={3}
+      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      placeholder="Απάντηση..."
+    />
   );
 }

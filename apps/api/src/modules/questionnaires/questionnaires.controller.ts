@@ -22,6 +22,11 @@ export class QuestionnairesController {
     return this.svc.findAll(schoolId, academicYear ? Number(academicYear) : undefined);
   }
 
+  @Get('for-student/:studentId')
+  findForStudent(@Param('schoolId') schoolId: string, @Param('studentId') studentId: string) {
+    return this.svc.findForStudent(schoolId, studentId);
+  }
+
   @Get(':id')
   findOne(@Param('schoolId') schoolId: string, @Param('id') id: string) {
     return this.svc.findOne(id, schoolId);
