@@ -585,6 +585,10 @@ class _ActivityTile extends StatelessWidget {
                     '${_typeLabel(type)}${monthlyCost != null ? ' · €$monthlyCost/μήνα' : ''}',
                     style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 11),
                   ),
+                if (_scheduleLine(activity).isNotEmpty)
+                  Text(_scheduleLine(activity), style: const TextStyle(color: Color(0xFF374151), fontSize: 12)),
+                if (_instructorLine(activity).isNotEmpty)
+                  Text(_instructorLine(activity), style: const TextStyle(color: Color(0xFF374151), fontSize: 12)),
               ],
             ),
           ),
@@ -608,6 +612,29 @@ class _ActivityTile extends StatelessWidget {
       'music': 'Μουσική', 'language': 'Γλώσσα', 'other': 'Άλλο',
     };
     return map[t] ?? t;
+  }
+
+  String _scheduleLine(Map<String, dynamic> activity) {
+    final slots = activity['scheduleSlots'] as List? ?? [];
+    const days = ['', 'Δευ', 'Τρι', 'Τετ', 'Πεμ', 'Παρ', 'Σαβ', 'Κυρ'];
+    return slots.map((raw) {
+      if (raw is! Map) return '';
+      final dow = raw['dayOfWeek'] as int? ?? 0;
+      final start = raw['startTime']?.toString() ?? '';
+      final end = raw['endTime']?.toString() ?? '';
+      final day = dow > 0 && dow < days.length ? days[dow] : '';
+      return '$day $start–$end'.trim();
+    }).where((line) => line.isNotEmpty).join(' · ');
+  }
+
+  String _instructorLine(Map<String, dynamic> activity) {
+    final links = activity['instructorLinks'] as List? ?? [];
+    return links.map((raw) {
+      if (raw is! Map) return '';
+      final instructor = raw['instructor'];
+      if (instructor is! Map) return '';
+      return instructor['name']?.toString() ?? '';
+    }).where((name) => name.isNotEmpty).join(', ');
   }
 }
 

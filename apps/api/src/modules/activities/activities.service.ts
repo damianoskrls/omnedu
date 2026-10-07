@@ -16,6 +16,31 @@ export class ActivitiesService implements OnModuleInit {
       `ALTER TABLE "activities" ADD COLUMN IF NOT EXISTS "audience_type" TEXT NOT NULL DEFAULT 'all'`,
       `ALTER TABLE "activities" ADD COLUMN IF NOT EXISTS "audience_ids" TEXT NOT NULL DEFAULT '[]'`,
       `ALTER TABLE "activities" ADD COLUMN IF NOT EXISTS "requirements" TEXT NOT NULL DEFAULT '[]'`,
+      `CREATE TABLE IF NOT EXISTS "activity_schedule_slots" (
+        "id" TEXT NOT NULL,
+        "activity_id" TEXT NOT NULL,
+        "day_of_week" INTEGER NOT NULL,
+        "start_time" TEXT,
+        "end_time" TEXT,
+        "notes" TEXT,
+        CONSTRAINT "activity_schedule_slots_pkey" PRIMARY KEY ("id")
+      )`,
+      `CREATE TABLE IF NOT EXISTS "activity_instructors" (
+        "id" TEXT NOT NULL,
+        "school_id" TEXT NOT NULL,
+        "name" TEXT NOT NULL,
+        "title" TEXT,
+        "bio" TEXT,
+        "photo_url" TEXT,
+        "is_active" BOOLEAN NOT NULL DEFAULT true,
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "activity_instructors_pkey" PRIMARY KEY ("id")
+      )`,
+      `CREATE TABLE IF NOT EXISTS "activity_instructor_assignments" (
+        "instructor_id" TEXT NOT NULL,
+        "activity_id" TEXT NOT NULL,
+        CONSTRAINT "activity_instructor_assignments_pkey" PRIMARY KEY ("instructor_id","activity_id")
+      )`,
     ];
     for (const sql of statements) {
       try {

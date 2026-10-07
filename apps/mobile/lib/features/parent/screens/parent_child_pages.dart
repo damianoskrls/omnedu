@@ -313,24 +313,7 @@ class ChildActivitiesScreen extends ConsumerWidget {
               separatorBuilder: (_, __) => const SizedBox(height: 10),
               itemBuilder: (_, i) {
                 final reg = regs[i] as Map;
-                final activity = reg['activity'] as Map? ?? {};
-                final monthly = activity['monthlyCost'];
-                final once = activity['oneTimeCost'];
-                final start = DateTime.tryParse(activity['startsOn'] as String? ?? '');
-                return Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(activity['title'] as String? ?? 'Δραστηριότητα', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-                      const SizedBox(height: 6),
-                      if (monthly != null) Text('$monthly € / μήνα', style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w700)),
-                      if (once != null) Text('Εφάπαξ $once €'),
-                      if (start != null) Text('Έναρξη ${_grDate(start)}'),
-                    ],
-                  ),
-                );
+                return _RegisteredActivityCard(activity: Map<String, dynamic>.from(reg['activity'] as Map? ?? {}));
               },
             ),
           );
@@ -338,6 +321,117 @@ class ChildActivitiesScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+class _RegisteredActivityCard extends StatelessWidget {
+  final Map<String, dynamic> activity;
+  const _RegisteredActivityCard({required this.activity});
+
+  @override
+  Widget build(BuildContext context) {
+    final monthly = activity['monthlyCost'];
+    final once = activity['oneTimeCost'];
+    final start = DateTime.tryParse(activity['startsOn'] as String? ?? '');
+    final end = DateTime.tryParse(activity['endsOn'] as String? ?? '');
+    final description = activity['description']?.toString() ?? '';
+    final imageUrl = activity['imageUrl']?.toString();
+    final materials = _activityMaterials(activity['requirements']);
+    final slots = activity['scheduleSlots'] as List? ?? [];
+    final links = activity['instructorLinks'] as List? ?? [];
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (imageUrl != null && imageUrl.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: AppImage(imageUrl, height: 140, width: double.infinity, fit: BoxFit.cover),
+              ),
+            ),
+          Text(activity['title'] as String? ?? 'Δραστηριότητα', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          if (description.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(description, style: const TextStyle(color: Color(0xFF4B5563), height: 1.35)),
+          ],
+          const SizedBox(height: 8),
+          if (monthly != null) Text('$monthly € / μήνα', style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w700)),
+          if (once != null) Text('Εφάπαξ $once €'),
+          if (start != null) Text('Έναρξη ${_grDate(start)}${end == null ? '' : ' – ${_grDate(end)}'}'),
+          if (slots.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            const Text('Πότε', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF77328D))),
+            const SizedBox(height: 4),
+            ...slots.map((raw) {
+              if (raw is! Map) return const SizedBox.shrink();
+              return Text(_slotLabel(Map<String, dynamic>.from(raw)));
+            }),
+          ],
+          if (links.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            const Text('Εκπαιδευτικός', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF77328D))),
+            ...links.map((raw) {
+              if (raw is! Map) return const SizedBox.shrink();
+              final instructor = raw['instructor'];
+              if (instructor is! Map) return const SizedBox.shrink();
+              final name = instructor['name']?.toString() ?? '';
+              final title = instructor['title']?.toString() ?? '';
+              final bio = instructor['bio']?.toString() ?? '';
+              return Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title.isEmpty ? name : '$name · $title', style: const TextStyle(fontWeight: FontWeight.w700)),
+                    if (bio.isNotEmpty) Text(bio, style: const TextStyle(color: Color(0xFF4B5563), height: 1.35)),
+                  ],
+                ),
+              );
+            }),
+          ],
+          if (materials.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            const Text('Χρειάζεται', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF77328D))),
+            ...materials.map((line) => Text(line)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _slotLabel(Map<String, dynamic> slot) {
+    const days = ['', 'Δευτέρα', 'Τρίτη', 'Τετάρτη', 'Πέμπτη', 'Παρασκευή', 'Σάββατο', 'Κυριακή'];
+    final dow = slot['dayOfWeek'] as int? ?? 0;
+    final start = slot['startTime']?.toString() ?? '';
+    final end = slot['endTime']?.toString() ?? '';
+    final day = dow > 0 && dow < days.length ? days[dow] : '';
+    final hours = [start, end].where((part) => part.isNotEmpty).join('–');
+    return [day, hours].where((part) => part.isNotEmpty).join(' · ');
+  }
+}
+
+List<String> _activityMaterials(dynamic raw) {
+  dynamic parsed = raw;
+  if (raw is String && raw.isNotEmpty) {
+    try {
+      parsed = jsonDecode(raw);
+    } catch (_) {
+      return [];
+    }
+  }
+  if (parsed is! List) return [];
+  return parsed.map((row) {
+    if (row is! Map) return '';
+    final name = row['name']?.toString() ?? '';
+    final cost = row['cost'];
+    if (name.isEmpty) return '';
+    if (cost == null || cost.toString().isEmpty) return name;
+    return '$name · $cost€';
+  }).where((line) => line.isNotEmpty).cast<String>().toList();
 }
 
 class ServicesScreen extends ConsumerWidget {

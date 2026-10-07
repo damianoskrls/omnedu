@@ -4,6 +4,25 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { normalizePhone } from '../auth/phone';
 import { CreateStudentDto } from './dto/create-student.dto';
 
+const activityDetailSelect = {
+  id: true,
+  title: true,
+  description: true,
+  activityType: true,
+  monthlyCost: true,
+  oneTimeCost: true,
+  startsOn: true,
+  endsOn: true,
+  imageUrl: true,
+  requirements: true,
+  scheduleSlots: { orderBy: { dayOfWeek: 'asc' as const } },
+  instructorLinks: {
+    include: {
+      instructor: { select: { id: true, name: true, title: true, bio: true, photoUrl: true } },
+    },
+  },
+};
+
 @Injectable()
 export class StudentsService {
   constructor(private prisma: PrismaService) {}
@@ -65,9 +84,7 @@ export class StudentsService {
         activityRegistrations: {
           where: { status: { not: 'cancelled' } },
           include: {
-            activity: {
-              select: { id: true, title: true, activityType: true, monthlyCost: true, oneTimeCost: true, startsOn: true, endsOn: true },
-            },
+            activity: { select: activityDetailSelect },
           },
           orderBy: { registeredAt: 'desc' },
         },
@@ -166,9 +183,7 @@ export class StudentsService {
         activityRegistrations: {
           where: { status: { not: 'cancelled' } },
           include: {
-            activity: {
-              select: { id: true, title: true, activityType: true, monthlyCost: true, oneTimeCost: true, startsOn: true, endsOn: true, imageUrl: true },
-            },
+            activity: { select: activityDetailSelect },
           },
           orderBy: { registeredAt: 'desc' },
         },
