@@ -23,6 +23,14 @@ export class UsersController {
     return this.users.updateProfile(user.sub, body, user);
   }
 
+  @Post('me/password')
+  changePassword(
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { currentPassword?: string; newPassword?: string },
+  ) {
+    return this.users.changePassword(user.sub, body?.currentPassword ?? '', body?.newPassword ?? '');
+  }
+
   @Delete('me')
   deleteMe(@CurrentUser() user: JwtPayload) {
     return this.users.deleteAccount(user.sub);

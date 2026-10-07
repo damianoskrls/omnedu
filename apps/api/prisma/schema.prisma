@@ -54,6 +54,7 @@ model School {
   oneTimeCharges       OneTimeCharge[]
   studentDocuments     StudentDocument[]
   holidays             SchoolHoliday[]
+  teacherAbsences      TeacherAbsence[]
   activityInstructors  ActivityInstructor[]
   schoolPosts          SchoolPost[]
   schoolEvents         SchoolEvent[]
@@ -138,6 +139,7 @@ model User {
   uploadedEventMedia       SchoolEventMedia[]
   taughtParentMeetings     ParentMeeting[]       @relation("MeetingTeacher")
   meetingRequests          ParentMeetingRequest[]
+  teacherAbsences          TeacherAbsence[]
 
   @@map("users")
 }
@@ -1186,6 +1188,23 @@ model SchoolHoliday {
 
   @@index([schoolId])
   @@map("school_holidays")
+}
+
+model TeacherAbsence {
+  id            String   @id @default(uuid())
+  schoolId      String   @map("school_id")
+  teacherUserId String   @map("teacher_user_id")
+  date          DateTime @db.Date
+  note          String?
+  academicYear  String   @map("academic_year")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  school  School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  teacher User   @relation(fields: [teacherUserId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, teacherUserId, date])
+  @@index([schoolId, academicYear])
+  @@map("teacher_absences")
 }
 
 // ─────────────────────────────────────────────────────────

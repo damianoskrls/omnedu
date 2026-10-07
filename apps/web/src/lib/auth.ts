@@ -37,13 +37,19 @@ export function getStoredUser(): AuthUser | null {
 
 export function useStoredUser(): AuthUser | null {
   const [user, setUser] = useState<AuthUser | null>(null);
-  useEffect(() => { setUser(getStoredUser()); }, []);
+  useEffect(() => {
+    const sync = () => setUser(getStoredUser());
+    sync();
+    window.addEventListener('auth-changed', sync);
+    return () => window.removeEventListener('auth-changed', sync);
+  }, []);
   return user;
 }
 
 export function storeTokens(accessToken: string, refreshToken: string) {
   localStorage.setItem('access_token', accessToken);
   localStorage.setItem('refresh_token', refreshToken);
+  window.dispatchEvent(new Event('auth-changed'));
 }
 
 export function clearTokens() {

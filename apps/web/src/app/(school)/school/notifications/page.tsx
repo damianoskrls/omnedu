@@ -40,6 +40,7 @@ const AUTO_EVENTS = [
   { key: 'school_event', label: 'Νέα εκδήλωση ή εκδρομή' },
   { key: 'celebration', label: 'Γιορτή' },
   { key: 'school_post', label: 'Νέα ανάρτηση' },
+  { key: 'teacher_absence', label: 'Απουσία εκπαιδευτικού' },
 ];
 
 const defaultForm = () => ({

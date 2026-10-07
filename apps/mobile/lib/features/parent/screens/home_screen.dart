@@ -8,6 +8,7 @@ import 'child_hub_screen.dart';
 import 'day_history.dart';
 import 'parent_meetings_screen.dart';
 import 'school_posts_screen.dart';
+import 'teacher_absences_screen.dart';
 import 'thematic_screen.dart';
 
 final myChildrenProvider = FutureProvider.family<List<dynamic>, String>(
@@ -55,6 +56,7 @@ class HomeScreen extends ConsumerWidget {
     final postsAsync = ref.watch(_recentPostsProvider(schoolId));
     final thematicAsync = ref.watch(monthThematicProvider(schoolId));
     final meetingsAsync = ref.watch(parentMeetingsProvider(schoolId));
+    final absencesAsync = ref.watch(teacherAbsencesProvider(schoolId));
     final user = ref.watch(authProvider).user;
     final firstName = user?.fullName.split(' ').first ?? '';
 
@@ -68,6 +70,7 @@ class HomeScreen extends ConsumerWidget {
           ref.invalidate(_recentPostsProvider(schoolId));
           ref.invalidate(monthThematicProvider(schoolId));
           ref.invalidate(parentMeetingsProvider(schoolId));
+          ref.invalidate(teacherAbsencesProvider(schoolId));
         },
         child: CustomScrollView(
           slivers: [
@@ -115,6 +118,10 @@ class HomeScreen extends ConsumerWidget {
                   ],
                 ),
               ),
+            ),
+
+            SliverToBoxAdapter(
+              child: AbsenceHomeNotice(absences: absencesAsync.asData?.value ?? const []),
             ),
 
             SliverToBoxAdapter(

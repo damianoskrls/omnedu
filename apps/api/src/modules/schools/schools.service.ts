@@ -1,16 +1,19 @@
-import { ConflictException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
+import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateSchoolDto } from './dto/create-school.dto';
 
 @Injectable()
 export class SchoolsService implements OnModuleInit {
   private readonly logger = new Logger(SchoolsService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private notifications: NotificationsService) {}
 
   async onModuleInit() {
     await this.ensureRegulationSchema();
+    await this.ensureAbsenceTable();
   }
 
   private async ensureRegulationSchema() {
@@ -268,5 +271,132 @@ export class SchoolsService implements OnModuleInit {
     const h = await this.prisma.schoolHoliday.findFirst({ where: { id: holidayId, schoolId } });
     if (!h) throw new NotFoundException('Holiday not found');
     return this.prisma.schoolHoliday.delete({ where: { id: holidayId } });
+  }
+
+  async listTeacherAbsences(schoolId: string, user: JwtPayload, academicYear?: string) {
+    await this.ensureAbsenceTable();
+    const rows = await this.prisma.teacherAbsence.findMany({
+      where: { schoolId, ...(academicYear ? { academicYear } : {}) },
+      include: { teacher: { select: { id: true, fullName: true, avatarUrl: true } } },
+      orderBy: { date: 'asc' },
+    });
+    if (user.isSuperAdmin || user.role === 'school_admin' || user.role === 'teacher') return rows;
+    const teacherIds = await this.parentTeacherIds(schoolId, user.sub);
+    return rows.filter((row) => teacherIds.has(row.teacherUserId));
+  }
+
+  async createTeacherAbsence(
+    schoolId: string,
+    data: { teacherUserId?: string; date?: string; note?: string; academicYear?: string },
+  ) {
+    await this.ensureAbsenceTable();
+    const teacherUserId = String(data.teacherUserId ?? '').trim();
+    const day = String(data.date ?? '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new BadRequestException('Διάλεξε ημερομηνία.');
+    const member = await this.prisma.schoolMember.findFirst({
+      where: { schoolId, userId: teacherUserId, role: 'teacher', isActive: true },
+      include: { user: { select: { fullName: true } } },
+    });
+    if (!member) throw new BadRequestException('Διάλεξε εκπαιδευτικό του σχολείου.');
+    const academicYear = String(data.academicYear ?? '').trim() || this.yearForDay(day);
+    const note = String(data.note ?? '').trim();
+    try {
+      const created = await this.prisma.teacherAbsence.create({
+        data: {
+          schoolId,
+          teacherUserId,
+          date: new Date(`${day}T12:00:00.000Z`),
+          note: note || null,
+          academicYear,
+        },
+        include: { teacher: { select: { id: true, fullName: true, avatarUrl: true } } },
+      });
+      await this.notifyTeacherAbsence(schoolId, created.id, teacherUserId, member.user.fullName, day, note);
+      return created;
+    } catch (error) {
+      const code = (error as { code?: string })?.code;
+      if (code === 'P2002') throw new ConflictException('Η απουσία αυτού του εκπαιδευτικού είναι ήδη καταχωρημένη για αυτή την ημέρα.');
+      throw error;
+    }
+  }
+
+  async deleteTeacherAbsence(schoolId: string, absenceId: string) {
+    await this.ensureAbsenceTable();
+    const row = await this.prisma.teacherAbsence.findFirst({ where: { id: absenceId, schoolId } });
+    if (!row) throw new NotFoundException('Η απουσία δεν βρέθηκε.');
+    return this.prisma.teacherAbsence.delete({ where: { id: absenceId } });
+  }
+
+  private async notifyTeacherAbsence(schoolId: string, absenceId: string, teacherUserId: string, teacherName: string, day: string, note: string) {
+    const classes = await this.prisma.classTeacher.findMany({
+      where: { userId: teacherUserId, class: { schoolId } },
+      select: { classId: true },
+    });
+    const classIds = classes.map((row) => row.classId);
+    const parents = await this.prisma.studentParent.findMany({
+      where: {
+        student: {
+          schoolId,
+          isActive: true,
+          ...(classIds.length ? { enrollments: { some: { classId: { in: classIds } } } } : {}),
+        },
+      },
+      select: { userId: true },
+    });
+    const [year, month, date] = day.split('-');
+    const label = `${date}/${month}/${year}`;
+    const body = [`${teacherName} θα απουσιάσει στις ${label}.`, note].filter(Boolean).join(' ').slice(0, 180);
+    await this.notifications.notifyUsers(schoolId, parents.map((parent) => parent.userId), {
+      event: 'teacher_absence',
+      type: 'teacher_absence',
+      title: 'Απουσία εκπαιδευτικού',
+      body,
+      data: { screen: 'absences', absenceId, teacherUserId, date: day },
+    });
+  }
+
+  private async parentTeacherIds(schoolId: string, userId: string) {
+    const students = await this.prisma.student.findMany({
+      where: { schoolId, isActive: true, parents: { some: { userId } } },
+      select: { enrollments: { select: { class: { select: { teachers: { select: { userId: true } } } } } } },
+    });
+    const ids = new Set<string>();
+    for (const student of students) {
+      for (const enrollment of student.enrollments) {
+        for (const teacher of enrollment.class.teachers) ids.add(teacher.userId);
+      }
+    }
+    return ids;
+  }
+
+  private yearForDay(day: string) {
+    const [year, month] = day.split('-').map(Number);
+    const start = month >= 9 ? year : year - 1;
+    return `${start}-${start + 1}`;
+  }
+
+  private async ensureAbsenceTable() {
+    const statements = [
+      `CREATE TABLE IF NOT EXISTS "teacher_absences" (
+        "id" TEXT NOT NULL,
+        "school_id" TEXT NOT NULL,
+        "teacher_user_id" TEXT NOT NULL,
+        "date" DATE NOT NULL,
+        "note" TEXT,
+        "academic_year" TEXT NOT NULL,
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "teacher_absences_pkey" PRIMARY KEY ("id")
+      )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS "teacher_absences_school_id_teacher_user_id_date_key" ON "teacher_absences"("school_id", "teacher_user_id", "date")`,
+      `CREATE INDEX IF NOT EXISTS "teacher_absences_school_id_academic_year_idx" ON "teacher_absences"("school_id", "academic_year")`,
+    ];
+    for (const sql of statements) {
+      try {
+        await this.prisma.$executeRawUnsafe(sql);
+      } catch (error) {
+        const message = String((error as { message?: string })?.message ?? error);
+        if (!/already exists|duplicate/i.test(message)) this.logger.warn(`Teacher absence schema: ${message}`);
+      }
+    }
   }
 }

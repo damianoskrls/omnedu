@@ -42,6 +42,11 @@ api.interceptors.response.use(
   },
 );
 
+export const usersApi = {
+  updateMe: (data: { fullName?: string; email?: string; phone?: string }) => api.patch('/users/me', data),
+  changePassword: (data: { currentPassword: string; newPassword: string }) => api.post('/users/me/password', data),
+};
+
 export const authApi = {
   login: (email: string, password: string) => api.post('/auth/login', { email, password }),
   logout: (refreshToken: string) => api.post('/auth/logout', { refreshToken }),
@@ -68,6 +73,12 @@ export const schoolsApi = {
     api.post(`/schools/${id}/holidays`, data),
   deleteHoliday: (id: string, holidayId: string) =>
     api.delete(`/schools/${id}/holidays/${holidayId}`),
+  getTeacherAbsences: (id: string, academicYear?: string) =>
+    api.get(`/schools/${id}/teacher-absences`, { params: academicYear ? { academicYear } : {} }),
+  createTeacherAbsence: (id: string, data: { teacherUserId: string; date: string; note?: string; academicYear?: string }) =>
+    api.post(`/schools/${id}/teacher-absences`, data),
+  deleteTeacherAbsence: (id: string, absenceId: string) =>
+    api.delete(`/schools/${id}/teacher-absences/${absenceId}`),
   uploadLogo: (id: string, file: File) => {
     const form = new FormData();
     form.append('file', file);

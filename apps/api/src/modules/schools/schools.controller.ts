@@ -90,6 +90,30 @@ export class SchoolsController {
     return this.schools.deleteHoliday(id, holidayId);
   }
 
+  @Get(':id/teacher-absences')
+  listTeacherAbsences(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+    @Query('academicYear') academicYear?: string,
+  ) {
+    return this.schools.listTeacherAbsences(id, user, academicYear);
+  }
+
+  @Post(':id/teacher-absences')
+  @Roles('super_admin', 'school_admin')
+  createTeacherAbsence(
+    @Param('id') id: string,
+    @Body() body: { teacherUserId?: string; date?: string; note?: string; academicYear?: string },
+  ) {
+    return this.schools.createTeacherAbsence(id, body);
+  }
+
+  @Delete(':id/teacher-absences/:absenceId')
+  @Roles('super_admin', 'school_admin')
+  deleteTeacherAbsence(@Param('id') id: string, @Param('absenceId') absenceId: string) {
+    return this.schools.deleteTeacherAbsence(id, absenceId);
+  }
+
   @Post(':id/logo')
   @Roles('super_admin', 'school_admin')
   @UseInterceptors(FileInterceptor('file', {

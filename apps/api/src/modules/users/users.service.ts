@@ -1,4 +1,5 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import * as bcrypt from 'bcryptjs';
 import { AuthService } from '../auth/auth.service';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -52,6 +53,21 @@ export class UsersService {
       },
     });
     return this.auth.issueForUser(id, current?.schoolId, current?.role);
+  }
+
+  async changePassword(id: string, currentPassword: string, newPassword: string) {
+    if (newPassword.trim().length < 6) {
+      throw new BadRequestException('Ο νέος κωδικός χρειάζεται τουλάχιστον 6 χαρακτήρες.');
+    }
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException('Ο λογαριασμός δεν βρέθηκε.');
+    const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!valid) throw new BadRequestException('Ο τρέχων κωδικός δεν είναι σωστός.');
+    await this.prisma.user.update({
+      where: { id },
+      data: { passwordHash: await bcrypt.hash(newPassword.trim(), 12) },
+    });
+    return { updated: true };
   }
 
   async deleteAccount(id: string) {
