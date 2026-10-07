@@ -98,19 +98,20 @@ export class NotificationsService implements OnModuleInit {
         const chunks = this.chunkArray(tokens, 500);
         for (const chunk of chunks) {
           try {
+            const preview = this.pushPreview(data.body);
             const res = await admin.messaging(this.fcmApp).sendEachForMulticast({
               tokens: chunk,
               notification: {
-                title: data.title,
-                body: data.body,
+                title: data.title.slice(0, 120),
+                body: preview,
                 ...(data.imageUrl ? { imageUrl: data.imageUrl } : {}),
               },
               data: {
                 type: 'broadcast',
                 screen: 'inbox',
                 schoolId,
-                title: data.title,
-                body: data.body,
+                title: data.title.slice(0, 120),
+                body: preview,
                 ...(data.imageUrl ? { imageUrl: data.imageUrl } : {}),
               },
               android: {
@@ -389,6 +390,12 @@ export class NotificationsService implements OnModuleInit {
     if (!userIds.length) return [];
     const tokens = await this.prisma.fcmToken.findMany({ where: { userId: { in: userIds } } });
     return tokens.map(t => t.token);
+  }
+
+  private pushPreview(body: string) {
+    const text = body.replace(/\s+/g, ' ').trim();
+    if (text.length <= 180) return text;
+    return `${text.slice(0, 177)}...`;
   }
 
   private chunkArray<T>(arr: T[], size: number): T[][] {

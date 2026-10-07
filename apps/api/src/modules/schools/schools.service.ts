@@ -1,11 +1,43 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateSchoolDto } from './dto/create-school.dto';
 
 @Injectable()
-export class SchoolsService {
+export class SchoolsService implements OnModuleInit {
+  private readonly logger = new Logger(SchoolsService.name);
+
   constructor(private prisma: PrismaService) {}
+
+  async onModuleInit() {
+    await this.ensureRegulationSchema();
+  }
+
+  private async ensureRegulationSchema() {
+    const statements = [
+      `ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "operating_regulation" TEXT`,
+      `ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "financial_regulation" TEXT`,
+      `CREATE TABLE IF NOT EXISTS "school_regulations" (
+        "id" TEXT NOT NULL,
+        "school_id" TEXT NOT NULL,
+        "academic_year" TEXT NOT NULL,
+        "operating_text" TEXT,
+        "financial_text" TEXT,
+        "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "school_regulations_pkey" PRIMARY KEY ("id")
+      )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS "school_regulations_school_id_academic_year_key" ON "school_regulations"("school_id", "academic_year")`,
+      `CREATE INDEX IF NOT EXISTS "school_regulations_school_id_idx" ON "school_regulations"("school_id")`,
+    ];
+    for (const sql of statements) {
+      try {
+        await this.prisma.$executeRawUnsafe(sql);
+      } catch (error) {
+        const message = String((error as { message?: string })?.message ?? error);
+        if (!/already exists|duplicate/i.test(message)) this.logger.warn(`Regulation schema: ${message}`);
+      }
+    }
+  }
 
   async findAll() {
     return this.prisma.school.findMany({
@@ -127,11 +159,15 @@ export class SchoolsService {
   }
 
   async currentYearLabel(schoolId: string) {
-    const current = await this.prisma.academicYear.findFirst({
-      where: { schoolId, isCurrent: true },
-      orderBy: { startsOn: 'desc' },
-    });
-    return current?.label || this.currentYearLabelFrom();
+    try {
+      const current = await this.prisma.academicYear.findFirst({
+        where: { schoolId, isCurrent: true },
+        orderBy: { startsOn: 'desc' },
+      });
+      return current?.label || this.currentYearLabelFrom();
+    } catch {
+      return this.currentYearLabelFrom();
+    }
   }
 
   private async copyLegacyRegulations(schoolId: string) {
@@ -153,6 +189,7 @@ export class SchoolsService {
   }
 
   async getRegulations(schoolId: string, academicYear?: string) {
+    await this.ensureRegulationSchema();
     const school = await this.prisma.school.findUnique({
       where: { id: schoolId },
       select: { id: true, operatingRegulation: true, financialRegulation: true },
@@ -181,8 +218,11 @@ export class SchoolsService {
     operatingRegulation?: string | null;
     financialRegulation?: string | null;
   }) {
+    await this.ensureRegulationSchema();
     const school = await this.prisma.school.findUnique({ where: { id: schoolId }, select: { id: true } });
     if (!school) throw new NotFoundException('School not found');
+    const academicYear = (data.academicYear || '').trim() || await this.currentYearLabel(schoolId);
+    data = { ...data, academicYear };
     await this.copyLegacyRegulations(schoolId);
     const existing = await this.prisma.schoolRegulation.findUnique({
       where: { schoolId_academicYear: { schoolId, academicYear: data.academicYear } },
@@ -195,10 +235,14 @@ export class SchoolsService {
       update: { operatingText, financialText },
     });
     if (data.academicYear === await this.currentYearLabel(schoolId)) {
-      await this.prisma.school.update({
-        where: { id: schoolId },
-        data: { operatingRegulation: operatingText, financialRegulation: financialText },
-      });
+      try {
+        await this.prisma.school.update({
+          where: { id: schoolId },
+          data: { operatingRegulation: operatingText, financialRegulation: financialText },
+        });
+      } catch (error) {
+        this.logger.warn(`School regulation mirror: ${String((error as { message?: string })?.message ?? error)}`);
+      }
     }
     return {
       academicYear: row.academicYear,
