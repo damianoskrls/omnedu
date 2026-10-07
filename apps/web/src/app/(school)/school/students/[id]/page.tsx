@@ -3099,6 +3099,7 @@ function StudentSnapshot({
   }
   const debtTotal = debts.reduce((sum, item) => sum + item.amount, 0);
   const chargesReady = charges !== null && oneTimeCharges !== null;
+  const owes = chargesReady && debtTotal > 0.005;
 
   const buses = (student.studentServices ?? []).filter((ss: any) => ss.service?.serviceType === 'bus');
   const otherServices = (student.studentServices ?? []).filter((ss: any) => ss.service?.serviceType !== 'bus');
@@ -3107,15 +3108,17 @@ function StudentSnapshot({
 
   return (
     <div className="mt-5 grid gap-3 md:grid-cols-2">
-      <div className="rounded-xl border border-red-100 bg-red-50/60 p-4">
+      <div className={`rounded-xl border p-4 ${owes ? 'border-red-100 bg-red-50/60' : chargesReady ? 'border-emerald-100 bg-emerald-50/70' : 'border-gray-100 bg-gray-50'}`}>
         <div className="flex items-center justify-between gap-3 mb-2">
-          <p className="text-sm font-semibold text-red-800">Χρωστάει</p>
-          <p className="text-lg font-bold text-red-700">{chargesReady ? `€${debtTotal.toFixed(2)}` : '...'}</p>
+          <p className={`text-sm font-semibold ${owes ? 'text-red-800' : chargesReady ? 'text-emerald-800' : 'text-gray-600'}`}>
+            {owes ? 'Χρωστάει' : chargesReady ? 'Δεν χρωστάει' : 'Οφειλές'}
+          </p>
+          {owes && <p className="text-lg font-bold text-red-700">€{debtTotal.toFixed(2)}</p>}
         </div>
         {!chargesReady ? (
-          <p className="text-xs text-red-600">Υπολογισμός οφειλών...</p>
-        ) : debts.length === 0 ? (
-          <p className="text-sm text-green-700">Δεν χρωστάει κάτι.</p>
+          <p className="text-xs text-gray-500">Υπολογισμός οφειλών...</p>
+        ) : !owes ? (
+          <p className="text-sm text-emerald-800">Όλα είναι τακτοποιημένα.</p>
         ) : (
           <div className="space-y-1.5">
             {debts.map((item) => (
