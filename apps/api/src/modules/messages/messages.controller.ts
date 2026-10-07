@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Delete, Body, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { MessagesService } from './messages.service';
+import { OpenConversationDto, SendMessageDto } from './dto/conversation.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 
@@ -24,7 +25,7 @@ export class MessagesController {
   getOrCreate(
     @Param('schoolId') schoolId: string,
     @CurrentUser() user: JwtPayload,
-    @Body() body: { participantIds?: string[]; kind?: string; withUserId?: string },
+    @Body() body: OpenConversationDto,
   ) {
     if (body.kind === 'admin' || body.kind === 'teacher') {
       return this.messages.openScoped(schoolId, user.sub, user.role, body.kind, body.withUserId);
@@ -47,7 +48,7 @@ export class MessagesController {
   sendMessage(
     @Param('conversationId') conversationId: string,
     @CurrentUser() user: JwtPayload,
-    @Body() body: { body: string; mediaUrl?: string },
+    @Body() body: SendMessageDto,
   ) {
     return this.messages.sendMessage(conversationId, user.sub, body.body, body.mediaUrl);
   }

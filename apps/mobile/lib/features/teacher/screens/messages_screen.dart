@@ -4,20 +4,78 @@ import '../../../core/api/api_client.dart';
 import '../../../core/providers/auth_provider.dart';
 import '../../messages/conversation_ui.dart';
 
+final teacherParentDetailsProvider = FutureProvider.family<Map<String, String>, String>((ref, schoolId) async {
+  final dio = ref.read(dioProvider);
+  final classesResp = await dio.get('/schools/$schoolId/classes/my-classes');
+  final classes = classesResp.data is List ? classesResp.data as List : <dynamic>[];
+  final details = <String, String>{};
+  for (final klass in classes) {
+    if (klass is! Map) continue;
+    final classId = klass['id'] as String?;
+    if (classId == null) continue;
+    final className = klass['name'] as String? ?? '';
+    final studentsResp = await dio.get('/schools/$schoolId/students', queryParameters: {'classId': classId});
+    final students = studentsResp.data is List ? studentsResp.data as List : <dynamic>[];
+    for (final student in students) {
+      if (student is! Map) continue;
+      final studentName = student['fullName'] as String? ?? '';
+      final label = [studentName, className].where((part) => part.isNotEmpty).join(' · ');
+      final parents = student['parents'] as List? ?? [];
+      for (final parent in parents) {
+        final id = (parent as Map)['user']?['id'] as String?;
+        if (id == null || label.isEmpty) continue;
+        final current = details[id];
+        details[id] = current == null || current.contains(label) ? (current ?? label) : '$current, $label';
+      }
+    }
+  }
+  return details;
+});
+
 class TeacherMessagesScreen extends ConsumerWidget {
   final String schoolId;
   final String userId;
   const TeacherMessagesScreen({super.key, required this.schoolId, required this.userId});
 
-  Future<void> _newMessage(BuildContext context, WidgetRef ref, {required bool asAdmin}) async {
+  Future<List<Map<String, dynamic>>> _parents(WidgetRef ref) async {
     final dio = ref.read(dioProvider);
-    List<dynamic> parents = [];
     try {
       final resp = await dio.get('/schools/$schoolId/conversations/contacts');
-      if (resp.data is Map) parents = (resp.data['parents'] as List?) ?? [];
+      if (resp.data is Map) {
+        final rows = (resp.data['parents'] as List?) ?? [];
+        return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+      }
+    } catch (_) {}
+    final details = await ref.read(teacherParentDetailsProvider(schoolId).future);
+    final studentsResp = await dio.get('/schools/$schoolId/students');
+    final students = studentsResp.data is List ? studentsResp.data as List : <dynamic>[];
+    final grouped = <String, Map<String, dynamic>>{};
+    for (final student in students) {
+      if (student is! Map) continue;
+      for (final parent in (student['parents'] as List? ?? [])) {
+        final user = (parent as Map)['user'] as Map?;
+        final id = user?['id'] as String?;
+        if (id == null) continue;
+        grouped.putIfAbsent(id, () => {
+          'id': id,
+          'name': user?['fullName'] ?? 'Γονέας',
+          'students': <String>[],
+        });
+        final label = details[id];
+        final studentsOf = grouped[id]!['students'] as List<String>;
+        if (label != null && !studentsOf.contains(label)) studentsOf.add(label);
+      }
+    }
+    return grouped.values.toList();
+  }
+
+  Future<void> _newMessage(BuildContext context, WidgetRef ref, {required bool asAdmin}) async {
+    List<Map<String, dynamic>> parents = [];
+    try {
+      parents = await _parents(ref);
     } catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Σφάλμα: $error')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(apiErrorText(error))));
       }
       return;
     }
@@ -40,8 +98,7 @@ class TeacherMessagesScreen extends ConsumerWidget {
                   padding: EdgeInsets.all(24),
                   child: Text('Δεν βρέθηκαν γονείς.', style: TextStyle(color: Color(0xFF6B7280))),
                 ),
-              ...parents.map((row) {
-                final parent = Map<String, dynamic>.from(row as Map);
+              ...parents.map((parent) {
                 final name = parent['name'] as String? ?? 'Γονέας';
                 final students = (parent['students'] as List?)?.map((item) => '$item').where((item) => item.isNotEmpty).join(', ') ?? '';
                 return ListTile(
@@ -77,6 +134,7 @@ class TeacherMessagesScreen extends ConsumerWidget {
         schoolId: schoolId,
         kind: asAdmin ? 'admin' : 'teacher',
         withUserId: parentId,
+        participantIds: [userId, parentId],
       );
       ref.invalidate(conversationsProvider(schoolId));
       if (id == null || !context.mounted) return;
@@ -95,7 +153,7 @@ class TeacherMessagesScreen extends ConsumerWidget {
       ref.invalidate(conversationsProvider(schoolId));
     } catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Σφάλμα: $error')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(apiErrorText(error))));
       }
     }
   }
@@ -104,6 +162,7 @@ class TeacherMessagesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final asAdmin = ref.watch(authProvider).user?.isSchoolAdmin ?? false;
     final convsAsync = ref.watch(conversationsProvider(schoolId));
+    final details = ref.watch(teacherParentDetailsProvider(schoolId)).asData?.value ?? const <String, String>{};
 
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAFB),
@@ -149,10 +208,23 @@ class TeacherMessagesScreen extends ConsumerWidget {
                         itemCount: convs.length,
                         itemBuilder: (_, i) {
                           final conv = Map<String, dynamic>.from(convs[i] as Map);
+                          final parentId = otherParticipants(conv, userId)
+                              .map((person) => person['userId'] ?? person['user']?['id'])
+                              .whereType<String>()
+                              .firstOrNull;
+                          final localDetail = parentId == null ? null : details[parentId];
                           return ConversationTile(
                             conv: conv,
                             userId: userId,
-                            onTap: () => openChat(context, ref, schoolId: schoolId, userId: userId, conv: conv),
+                            detail: localDetail,
+                            onTap: () => openChat(
+                              context,
+                              ref,
+                              schoolId: schoolId,
+                              userId: userId,
+                              conv: conv,
+                              subtitle: localDetail,
+                            ),
                           );
                         },
                       ),

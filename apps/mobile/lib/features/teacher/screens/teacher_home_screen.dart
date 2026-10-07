@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
+import '../../../core/widgets/app_image.dart';
 import '../../../core/providers/auth_provider.dart';
 import 'teacher_student_screen.dart';
 import 'teacher_thematic_screen.dart';
@@ -370,6 +371,43 @@ class _StudentsSliver extends ConsumerWidget {
   }
 }
 
+class _StudentPhoto extends StatelessWidget {
+  final Map<String, dynamic> student;
+  final String name;
+  final List<Color> colors;
+  const _StudentPhoto({required this.student, required this.name, required this.colors});
+
+  @override
+  Widget build(BuildContext context) {
+    final avatarUrl = student['avatarUrl'] as String?;
+    final letter = Container(
+      width: 50,
+      height: 50,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: colors, begin: Alignment.topLeft, end: Alignment.bottomRight),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Center(
+        child: Text(
+          name.isNotEmpty ? name[0].toUpperCase() : '?',
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20),
+        ),
+      ),
+    );
+    if (avatarUrl == null || avatarUrl.isEmpty) return letter;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: AppImage(
+        avatarUrl,
+        width: 50,
+        height: 50,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => letter,
+      ),
+    );
+  }
+}
+
 class _StudentCard extends StatelessWidget {
   final Map<String, dynamic> student;
   final List<Color> colors;
@@ -408,28 +446,7 @@ class _StudentCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: colors,
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Center(
-                child: Text(
-                  name.isNotEmpty ? name[0].toUpperCase() : '?',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 20,
-                  ),
-                ),
-              ),
-            ),
+            _StudentPhoto(student: student, name: name, colors: colors),
             const SizedBox(width: 14),
             Expanded(
               child: Column(

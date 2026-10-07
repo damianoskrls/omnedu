@@ -1,6 +1,8 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_client.dart';
+import '../../core/utils/system_insets.dart';
 
 const brandPurple = Color(0xFF77328D);
 
@@ -16,7 +18,10 @@ final conversationsProvider = FutureProvider.family<List<dynamic>, String>(
 final messagesProvider = FutureProvider.family<List<dynamic>, ConvKey>(
   (ref, key) async {
     final dio = ref.read(dioProvider);
-    final resp = await dio.get('/schools/${key.schoolId}/conversations/${key.convId}/messages');
+    final resp = await dio.get(
+      '/schools/${key.schoolId}/conversations/${key.convId}/messages',
+      queryParameters: const {'take': 40},
+    );
     final data = resp.data;
     return data is List ? data : (data is Map && data['messages'] is List ? data['messages'] : []);
   },
@@ -73,6 +78,20 @@ String conversationTitle(Map<String, dynamic> conv, String userId) {
   return named.join(', ');
 }
 
+String conversationDetail(Map<String, dynamic> conv, String userId) {
+  final about = conv['about'] as List<dynamic>? ?? [];
+  final labels = <String>[];
+  for (final row in about) {
+    if (row is! Map) continue;
+    final student = (row['studentName'] as String?)?.trim() ?? '';
+    final klass = (row['className'] as String?)?.trim() ?? '';
+    final label = [student, klass].where((part) => part.isNotEmpty).join(' · ');
+    if (label.isNotEmpty && !labels.contains(label)) labels.add(label);
+  }
+  if (labels.isNotEmpty) return labels.join(', ');
+  return conversationSubtitle(conv, userId);
+}
+
 String conversationSubtitle(Map<String, dynamic> conv, String userId) {
   final others = otherParticipants(conv, userId);
   if (others.isNotEmpty && others.every((person) => _hasRole(person, 'school_admin'))) {
@@ -83,16 +102,32 @@ String conversationSubtitle(Map<String, dynamic> conv, String userId) {
   return '';
 }
 
+String apiErrorText(Object error) {
+  if (error is DioException) {
+    final data = error.response?.data;
+    final message = data is Map ? data['message'] : null;
+    if (message is List && message.isNotEmpty) return message.map((item) => '$item').join('\n');
+    if (message is String && message.isNotEmpty && message.length < 180) return message;
+    final code = error.response?.statusCode;
+    if (code == 403) return 'Δεν έχεις πρόσβαση σε αυτή τη συνομιλία.';
+    if (code == 400) return 'Το μήνυμα δεν στάλθηκε. Δοκίμασε ξανά.';
+    if (code != null) return 'Η συνομιλία δεν φορτώθηκε ($code).';
+  }
+  return 'Η συνομιλία δεν φορτώθηκε. Δοκίμασε ξανά.';
+}
+
 Future<String?> openScopedConversation(
   WidgetRef ref, {
   required String schoolId,
   required String kind,
   String? withUserId,
+  List<String>? participantIds,
 }) async {
   final dio = ref.read(dioProvider);
   final resp = await dio.post('/schools/$schoolId/conversations', data: {
     'kind': kind,
     if (withUserId != null) 'withUserId': withUserId,
+    if (participantIds != null && participantIds.isNotEmpty) 'participantIds': participantIds,
   });
   final data = resp.data;
   if (data is Map && data['id'] is String) return data['id'] as String;
@@ -103,7 +138,8 @@ class ConversationTile extends StatelessWidget {
   final Map<String, dynamic> conv;
   final String userId;
   final VoidCallback onTap;
-  const ConversationTile({super.key, required this.conv, required this.userId, required this.onTap});
+  final String? detail;
+  const ConversationTile({super.key, required this.conv, required this.userId, required this.onTap, this.detail});
 
   @override
   Widget build(BuildContext context) {
@@ -112,7 +148,10 @@ class ConversationTile extends StatelessWidget {
         ? Map<String, dynamic>.from(lastMessages.first as Map)
         : null;
     final title = conversationTitle(conv, userId);
-    final subtitle = conversationSubtitle(conv, userId);
+    final fromApi = conversationDetail(conv, userId);
+    final subtitle = (detail != null && detail!.isNotEmpty && (fromApi.isEmpty || fromApi == 'Γονέας' || fromApi == 'Δασκάλα'))
+        ? detail!
+        : (fromApi.isNotEmpty ? fromApi : (detail ?? ''));
     final admin = title == 'Διαχείριση';
 
     return InkWell(
@@ -179,6 +218,7 @@ class ChatScreen extends ConsumerStatefulWidget {
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _ctrl = TextEditingController();
   bool _sending = false;
+  String? _error;
 
   @override
   void dispose() {
@@ -197,8 +237,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         data: {'body': text},
       );
       _ctrl.clear();
+      _error = null;
       ref.invalidate(messagesProvider(ConvKey(widget.schoolId, widget.convId)));
       ref.invalidate(conversationsProvider(widget.schoolId));
+    } catch (error) {
+      _error = apiErrorText(error);
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -226,7 +269,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           Expanded(
             child: msgsAsync.when(
               loading: () => const Center(child: CircularProgressIndicator(color: brandPurple)),
-              error: (e, _) => Center(child: Text('Σφάλμα: $e')),
+              error: (e, _) => Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(apiErrorText(e), textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFFB91C1C))),
+                ),
+              ),
               data: (msgs) => msgs.isEmpty
                   ? const Center(child: Text('Ξεκινήστε τη συνομιλία', style: TextStyle(color: Color(0xFF9CA3AF))))
                   : ListView.builder(
@@ -241,8 +289,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     ),
             ),
           ),
+          if (_error != null)
+            Container(
+              width: double.infinity,
+              color: const Color(0xFFFEF2F2),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text(_error!, style: const TextStyle(color: Color(0xFFB91C1C), fontSize: 13)),
+            ),
           Container(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+            padding: EdgeInsets.fromLTRB(12, 8, 12, 12 + systemBottomInset(context)),
             decoration: const BoxDecoration(
               color: Colors.white,
               border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
@@ -347,7 +402,7 @@ void openChat(
         schoolId: schoolId,
         convId: id,
         title: title ?? conversationTitle(conv, userId),
-        subtitle: subtitle ?? conversationSubtitle(conv, userId),
+        subtitle: subtitle ?? conversationDetail(conv, userId),
         currentUserId: userId,
       ),
     ),

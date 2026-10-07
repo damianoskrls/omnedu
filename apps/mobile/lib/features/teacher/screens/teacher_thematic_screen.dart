@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
+import '../../../core/utils/system_insets.dart';
 
 class TeacherThematicScreen extends ConsumerStatefulWidget {
   final String schoolId;
@@ -99,14 +100,39 @@ class _TeacherThematicScreenState extends ConsumerState<TeacherThematicScreen> {
     }
   }
 
+  Widget _field(TextEditingController controller, String label, {int maxLines = 1}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(
+        controller: controller,
+        maxLines: maxLines,
+        decoration: InputDecoration(labelText: label, alignLabelWithHint: maxLines > 1),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF6F3FA),
       appBar: AppBar(title: Text('Διαθεματικό · ${widget.className}')),
+      bottomNavigationBar: _loading
+          ? null
+          : Padding(
+              padding: EdgeInsets.fromLTRB(16, 8, 16, 12 + systemBottomInset(context)),
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF77328D),
+                  minimumSize: const Size.fromHeight(48),
+                ),
+                onPressed: _saving ? null : _save,
+                child: Text(_saving ? 'Αποθήκευση...' : 'Αποθήκευση μήνα'),
+              ),
+            ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFF77328D)))
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
               children: [
                 DropdownButtonFormField<String>(
                   value: _month,
@@ -124,18 +150,13 @@ class _TeacherThematicScreenState extends ConsumerState<TeacherThematicScreen> {
                   },
                 ),
                 const SizedBox(height: 12),
-                TextField(controller: _title, decoration: const InputDecoration(labelText: 'Τίτλος')),
-                TextField(controller: _greeting, decoration: const InputDecoration(labelText: 'Χαιρετισμός')),
-                TextField(controller: _intro, maxLines: 4, decoration: const InputDecoration(labelText: 'Εισαγωγή')),
-                TextField(controller: _goals, maxLines: 5, decoration: const InputDecoration(labelText: 'Στόχοι (μία γραμμή ο καθένας)')),
-                TextField(controller: _extras, maxLines: 4, decoration: const InputDecoration(labelText: 'Επιπλέον')),
-                TextField(controller: _closing, maxLines: 3, decoration: const InputDecoration(labelText: 'Κλείσιμο')),
-                TextField(controller: _signature, decoration: const InputDecoration(labelText: 'Υπογραφή')),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: _saving ? null : _save,
-                  child: Text(_saving ? 'Αποθήκευση...' : 'Αποθήκευση μήνα'),
-                ),
+                _field(_title, 'Τίτλος'),
+                _field(_greeting, 'Χαιρετισμός'),
+                _field(_intro, 'Εισαγωγή', maxLines: 4),
+                _field(_goals, 'Στόχοι (μία γραμμή ο καθένας)', maxLines: 5),
+                _field(_extras, 'Επιπλέον', maxLines: 4),
+                _field(_closing, 'Κλείσιμο', maxLines: 3),
+                _field(_signature, 'Υπογραφή'),
               ],
             ),
     );

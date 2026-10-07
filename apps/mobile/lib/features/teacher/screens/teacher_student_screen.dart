@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
-import '../../../core/providers/auth_provider.dart';
+import '../../../core/widgets/app_image.dart';
 
 String _isoDate(DateTime d) =>
     '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -18,6 +18,43 @@ final _studentReportsProvider =
     return resp.data is List ? resp.data as List<dynamic> : [];
   },
 );
+
+class _StudentFace extends StatelessWidget {
+  final Map<String, dynamic> student;
+  final String name;
+  const _StudentFace({required this.student, required this.name});
+
+  @override
+  Widget build(BuildContext context) {
+    final avatarUrl = student['avatarUrl'] as String?;
+    final letter = Container(
+      width: 72,
+      height: 72,
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.25),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withOpacity(0.5), width: 2),
+      ),
+      child: Center(
+        child: Text(
+          name.isNotEmpty ? name[0].toUpperCase() : '?',
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 30),
+        ),
+      ),
+    );
+    if (avatarUrl == null || avatarUrl.isEmpty) return letter;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(22),
+      child: AppImage(
+        avatarUrl,
+        width: 72,
+        height: 72,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => letter,
+      ),
+    );
+  }
+}
 
 class TeacherStudentScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic> student;
@@ -183,21 +220,7 @@ class _TeacherStudentScreenState extends ConsumerState<TeacherStudentScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         const SizedBox(height: 36),
-                        Container(
-                          width: 72,
-                          height: 72,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.25),
-                            borderRadius: BorderRadius.circular(22),
-                            border: Border.all(color: Colors.white.withOpacity(0.5), width: 2),
-                          ),
-                          child: Center(
-                            child: Text(
-                              name.isNotEmpty ? name[0].toUpperCase() : '?',
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 30),
-                            ),
-                          ),
-                        ),
+                        _StudentFace(student: widget.student, name: name),
                         const SizedBox(height: 8),
                         Text(firstName, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                         if (className.isNotEmpty)

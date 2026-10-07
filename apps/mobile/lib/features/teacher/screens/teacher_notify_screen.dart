@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
+import '../../../core/utils/system_insets.dart';
+import '../../messages/conversation_ui.dart';
 
 class TeacherNotifyScreen extends ConsumerStatefulWidget {
   final String schoolId;
@@ -78,6 +80,8 @@ class _TeacherNotifyScreenState extends ConsumerState<TeacherNotifyScreen> {
       final dio = ref.read(dioProvider);
       for (final parentId in targets) {
         final conv = await dio.post('/schools/${widget.schoolId}/conversations', data: {
+          'kind': 'teacher',
+          'withUserId': parentId,
           'participantIds': [widget.teacherId, parentId],
         });
         final id = (conv.data as Map)['id'];
@@ -88,7 +92,7 @@ class _TeacherNotifyScreenState extends ConsumerState<TeacherNotifyScreen> {
         _message.clear();
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Σφάλμα: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(apiErrorText(e))));
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -101,7 +105,7 @@ class _TeacherNotifyScreenState extends ConsumerState<TeacherNotifyScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 24 + systemBottomInset(context)),
               children: [
                 const Text(
                   'Στείλτε μήνυμα σε όλους τους γονείς της τάξης ή σε έναν γονέα.',

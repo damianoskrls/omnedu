@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/auth_provider.dart';
+import '../../../core/utils/system_insets.dart';
 import 'teacher_home_screen.dart';
 import 'teacher_events_screen.dart';
 import 'messages_screen.dart';
@@ -32,7 +33,7 @@ class _TeacherShellState extends ConsumerState<TeacherShell> {
       value: SystemUiOverlayStyle.dark,
       child: Scaffold(
         backgroundColor: const Color(0xFFF0F4FF),
-        extendBody: true,
+        extendBody: false,
         body: IndexedStack(index: _index, children: pages),
         bottomNavigationBar: _FloatingNavBar(
           selectedIndex: _index,
@@ -64,7 +65,7 @@ class _FloatingNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+    final bottomInset = systemBottomInset(context);
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 0, 20, bottomInset + 16),
       child: Container(

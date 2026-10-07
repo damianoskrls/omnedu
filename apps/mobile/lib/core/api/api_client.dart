@@ -19,9 +19,11 @@ String get _apiOrigin {
 /// resolves correctly on a physical device or non-emulator environment.
 String fixMediaUrl(String? url) {
   if (url == null || url.isEmpty) return '';
-  return url
-      .replaceFirst('http://localhost:', '${_apiOrigin.split(':').take(2).join(':')}:')
-      .replaceFirst('https://localhost:', '${_apiOrigin.split(':').take(2).join(':')}:');
+  var value = url.trim();
+  if (value.startsWith('/')) value = '$_apiOrigin$value';
+  return value
+      .replaceFirst(RegExp(r'https?://localhost:\d+'), _apiOrigin)
+      .replaceFirst(RegExp(r'https?://127\.0\.0\.1:\d+'), _apiOrigin);
 }
 
 final dioProvider = Provider<Dio>((ref) {

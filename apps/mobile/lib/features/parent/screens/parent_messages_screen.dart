@@ -8,15 +8,45 @@ class ParentMessagesScreen extends ConsumerWidget {
   final String userId;
   const ParentMessagesScreen({super.key, required this.schoolId, required this.userId});
 
-  Future<void> _newMessage(BuildContext context, WidgetRef ref) async {
+  Future<Map<String, dynamic>> _contacts(WidgetRef ref) async {
     final dio = ref.read(dioProvider);
-    Map<String, dynamic> contacts = {};
     try {
       final resp = await dio.get('/schools/$schoolId/conversations/contacts');
-      if (resp.data is Map) contacts = Map<String, dynamic>.from(resp.data as Map);
+      if (resp.data is Map) return Map<String, dynamic>.from(resp.data as Map);
+    } catch (_) {}
+    final childrenResp = await dio.get('/schools/$schoolId/students/my-children');
+    final children = childrenResp.data is List ? childrenResp.data as List : <dynamic>[];
+    final teachers = <Map<String, dynamic>>[];
+    final seen = <String>{};
+    for (final child in children) {
+      if (child is! Map) continue;
+      final studentName = child['fullName'] as String? ?? '';
+      for (final enrollment in (child['enrollments'] as List? ?? [])) {
+        final klass = (enrollment as Map)['class'] as Map?;
+        final className = klass?['name'] as String? ?? '';
+        for (final teacher in (klass?['teachers'] as List? ?? [])) {
+          final user = (teacher as Map)['user'] as Map?;
+          final id = user?['id'] as String?;
+          if (id == null || !seen.add('$id:$studentName')) continue;
+          teachers.add({
+            'id': id,
+            'name': user?['fullName'] ?? 'Δασκάλα',
+            'studentName': studentName,
+            'className': className,
+          });
+        }
+      }
+    }
+    return {'admins': <dynamic>[], 'teachers': teachers};
+  }
+
+  Future<void> _newMessage(BuildContext context, WidgetRef ref) async {
+    Map<String, dynamic> contacts = {};
+    try {
+      contacts = await _contacts(ref);
     } catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Σφάλμα: $error')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(apiErrorText(error))));
       }
       return;
     }
@@ -36,16 +66,15 @@ class ParentMessagesScreen extends ConsumerWidget {
                 padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
                 child: Text('Νέο μήνυμα', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
               ),
-              if (admins.isNotEmpty)
-                ListTile(
-                  leading: const CircleAvatar(
-                    backgroundColor: Color(0xFFF3E8F7),
-                    child: Icon(Icons.apartment_outlined, color: brandPurple),
-                  ),
-                  title: const Text('Διαχείριση'),
-                  subtitle: const Text('Μήνυμα προς το σχολείο'),
-                  onTap: () => _start(context, sheetContext, ref, kind: 'admin', title: 'Διαχείριση', subtitle: 'Σχολείο'),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFFF3E8F7),
+                  child: Icon(Icons.apartment_outlined, color: brandPurple),
                 ),
+                title: const Text('Διαχείριση'),
+                subtitle: const Text('Μήνυμα προς το σχολείο'),
+                onTap: () => _start(context, sheetContext, ref, kind: 'admin', title: 'Διαχείριση', subtitle: 'Σχολείο'),
+              ),
               if (teachers.isNotEmpty)
                 const Padding(
                   padding: EdgeInsets.fromLTRB(20, 12, 20, 4),
@@ -98,7 +127,13 @@ class ParentMessagesScreen extends ConsumerWidget {
   }) async {
     Navigator.pop(sheetContext);
     try {
-      final id = await openScopedConversation(ref, schoolId: schoolId, kind: kind, withUserId: withUserId);
+      final id = await openScopedConversation(
+        ref,
+        schoolId: schoolId,
+        kind: kind,
+        withUserId: withUserId,
+        participantIds: withUserId == null ? null : [userId, withUserId],
+      );
       ref.invalidate(conversationsProvider(schoolId));
       if (id == null || !context.mounted) return;
       await Navigator.push(
@@ -116,7 +151,7 @@ class ParentMessagesScreen extends ConsumerWidget {
       ref.invalidate(conversationsProvider(schoolId));
     } catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Σφάλμα: $error')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(apiErrorText(error))));
       }
     }
   }
@@ -145,7 +180,7 @@ class ParentMessagesScreen extends ConsumerWidget {
       ),
       body: convsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator(color: brandPurple)),
-        error: (e, _) => Center(child: Text('Σφάλμα: $e')),
+        error: (e, _) => Center(child: Text(apiErrorText(e))),
         data: (convs) => convs.isEmpty
             ? const Center(
                 child: Padding(

@@ -46,11 +46,17 @@ export class MessagesService {
         ? rows.filter((row) => this.visibleToTeacher(row.participants, userId))
         : rows;
 
-    return visible.sort((a, b) => {
+    const sorted = visible.sort((a, b) => {
       const aTime = a.messages[0]?.sentAt?.getTime() ?? a.createdAt.getTime();
       const bTime = b.messages[0]?.sentAt?.getTime() ?? b.createdAt.getTime();
       return bTime - aTime;
     });
+    const parentIds = [...new Set(sorted.flatMap((row) => row.participants.map((person) => person.userId)))];
+    const labels = await this.labelsForParents(schoolId, parentIds);
+    return sorted.map((row) => ({
+      ...row,
+      about: row.participants.flatMap((person) => labels.get(person.userId) ?? []),
+    }));
   }
 
   async contacts(userId: string, schoolId: string, role?: string | null) {
@@ -91,11 +97,13 @@ export class MessagesService {
 
   async getMessages(conversationId: string, userId: string, cursor?: string, take = 30) {
     await this.assertParticipant(conversationId, userId);
+    const size = Number(take);
+    const limit = Number.isFinite(size) && size > 0 ? Math.min(Math.floor(size), 100) : 30;
     const messages = await this.prisma.message.findMany({
       where: { conversationId, isDeleted: false },
       include: { sender: { select: userCard } },
       orderBy: { sentAt: 'desc' },
-      take,
+      take: limit,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
 
@@ -130,7 +138,9 @@ export class MessagesService {
     if (!others.length) return false;
     return others.every((person) => {
       const roles = person.user.schoolMemberships.map((row) => row.role);
-      return roles.includes('parent') && !roles.includes('school_admin') && !roles.includes('teacher');
+      if (roles.includes('parent')) return true;
+      if (!roles.length) return true;
+      return !roles.includes('school_admin') && !roles.includes('teacher');
     });
   }
 
@@ -308,6 +318,39 @@ export class MessagesService {
       where: { conversationId_userId: { conversationId, userId } },
     });
     if (!participant) throw new ForbiddenException('Not a participant');
+  }
+
+  private async labelsForParents(schoolId: string, userIds: string[]) {
+    const labels = new Map<string, { studentName: string; className: string }[]>();
+    if (!userIds.length) return labels;
+    const links = await this.prisma.studentParent.findMany({
+      where: { userId: { in: userIds }, student: { schoolId, isActive: true } },
+      select: {
+        userId: true,
+        student: {
+          select: {
+            fullName: true,
+            enrollments: {
+              orderBy: { academicYear: { startsOn: 'desc' } },
+              take: 1,
+              select: { class: { select: { name: true } } },
+            },
+          },
+        },
+      },
+    });
+    for (const link of links) {
+      const list = labels.get(link.userId) ?? [];
+      const item = {
+        studentName: link.student.fullName,
+        className: link.student.enrollments[0]?.class?.name ?? '',
+      };
+      if (!list.some((row) => row.studentName === item.studentName && row.className === item.className)) {
+        list.push(item);
+      }
+      labels.set(link.userId, list);
+    }
+    return labels;
   }
 
   private uniquePeople(people: { id: string; name: string }[]) {

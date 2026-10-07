@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/auth_provider.dart';
+import '../../../core/utils/system_insets.dart';
 import 'home_screen.dart';
 import 'diary_feed_screen.dart';
 import 'activities_screen.dart';
@@ -37,7 +38,7 @@ class _ParentShellState extends ConsumerState<ParentShell> {
       value: SystemUiOverlayStyle.dark,
       child: Scaffold(
         backgroundColor: const Color(0xFFF6F3FA),
-        extendBody: true,
+        extendBody: false,
         body: IndexedStack(index: _index, children: pages),
         bottomNavigationBar: _FloatingNavBar(
           selectedIndex: _index,
@@ -72,7 +73,7 @@ class _FloatingNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+    final bottomInset = systemBottomInset(context);
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 0, 20, bottomInset + 16),
       child: Container(
