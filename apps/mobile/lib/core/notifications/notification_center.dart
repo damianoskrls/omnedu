@@ -9,6 +9,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../features/messages/conversation_ui.dart';
 import '../../features/parent/screens/billing_screen.dart';
 import '../../features/parent/screens/bulletin_screen.dart';
+import '../../features/parent/screens/thematic_screen.dart';
+import '../../features/teacher/screens/teacher_thematic_screen.dart';
 import '../api/api_client.dart';
 import '../providers/auth_provider.dart';
 import 'phone_push.dart';
@@ -221,6 +223,23 @@ Future<void> openNotification(BuildContext context, WidgetRef ref, Map<String, d
     return;
   }
 
+  if (type == 'thematic') {
+    final classId = data['classId'] as String? ?? '';
+    if (classId.isEmpty) return;
+    final className = data['className'] as String? ?? '';
+    final month = data['month'] as String?;
+    final role = ref.read(authProvider).user?.role;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => role == 'teacher'
+            ? TeacherThematicScreen(schoolId: schoolId, classId: classId, className: className, initialMonth: month)
+            : ParentThematicScreen(schoolId: schoolId, classId: classId, className: className, initialMonth: month),
+      ),
+    );
+    return;
+  }
+
   if (fromList) return;
   await Navigator.push(context, MaterialPageRoute(builder: (_) => InboxScreen(schoolId: schoolId)));
 }
@@ -290,6 +309,7 @@ class InboxScreen extends ConsumerWidget {
     if (type == 'message') return Icons.chat_bubble_rounded;
     if (type == 'daily_report') return Icons.menu_book_rounded;
     if (type == 'payment') return Icons.payments_rounded;
+    if (type == 'thematic') return Icons.auto_stories_rounded;
     return Icons.notifications_rounded;
   }
 }

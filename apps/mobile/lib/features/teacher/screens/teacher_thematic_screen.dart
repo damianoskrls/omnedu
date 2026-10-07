@@ -7,11 +7,13 @@ class TeacherThematicScreen extends ConsumerStatefulWidget {
   final String schoolId;
   final String classId;
   final String className;
+  final String? initialMonth;
   const TeacherThematicScreen({
     super.key,
     required this.schoolId,
     required this.classId,
     required this.className,
+    this.initialMonth,
   });
 
   @override
@@ -20,6 +22,7 @@ class TeacherThematicScreen extends ConsumerStatefulWidget {
 
 class _TeacherThematicScreenState extends ConsumerState<TeacherThematicScreen> {
   late String _month;
+  String? _throughMonth;
   final _title = TextEditingController(text: 'Διαθεματικό');
   final _greeting = TextEditingController(text: 'Αγαπημένοι μας γονείς,');
   final _intro = TextEditingController();
@@ -34,7 +37,7 @@ class _TeacherThematicScreenState extends ConsumerState<TeacherThematicScreen> {
   void initState() {
     super.initState();
     final now = DateTime.now();
-    _month = '${now.year}-${now.month.toString().padLeft(2, '0')}';
+    _month = widget.initialMonth ?? '${now.year}-${now.month.toString().padLeft(2, '0')}';
     _load();
   }
 
@@ -64,12 +67,15 @@ class _TeacherThematicScreenState extends ConsumerState<TeacherThematicScreen> {
         _extras.text = plan['extras'] as String? ?? '';
         _closing.text = plan['closing'] as String? ?? '';
         _signature.text = plan['signature'] as String? ?? '';
+        final through = plan['throughMonth'] as String?;
+        _throughMonth = through != null && through.isNotEmpty ? through : null;
       } else {
         _intro.clear();
         _goals.clear();
         _extras.clear();
         _closing.clear();
         _signature.clear();
+        _throughMonth = null;
       }
     } catch (_) {}
     if (mounted) setState(() => _loading = false);
@@ -82,6 +88,7 @@ class _TeacherThematicScreenState extends ConsumerState<TeacherThematicScreen> {
       await dio.post('/schools/${widget.schoolId}/thematic-plans', data: {
         'classId': widget.classId,
         'month': _month,
+        'throughMonth': _throughMonth,
         'title': _title.text.trim(),
         'greeting': _greeting.text.trim(),
         'introduction': _intro.text.trim(),
@@ -91,7 +98,7 @@ class _TeacherThematicScreenState extends ConsumerState<TeacherThematicScreen> {
         'signature': _signature.text.trim(),
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Το διαθεματικό αποθηκεύτηκε.')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Το διαθεματικό αποθηκεύτηκε. Οι γονείς της τάξης ειδοποιούνται.')));
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Σφάλμα: $e')));
@@ -109,6 +116,24 @@ class _TeacherThematicScreenState extends ConsumerState<TeacherThematicScreen> {
         decoration: InputDecoration(labelText: label, alignLabelWithHint: maxLines > 1),
       ),
     );
+  }
+
+  List<String> get _monthChoices {
+    final now = DateTime.now();
+    final values = List.generate(12, (i) {
+      final date = DateTime(now.year, now.month - 1 + i, 1);
+      return '${date.year}-${date.month.toString().padLeft(2, '0')}';
+    });
+    if (!values.contains(_month)) values.insert(0, _month);
+    if (_throughMonth != null && !values.contains(_throughMonth)) values.add(_throughMonth!);
+    return values;
+  }
+
+  String _label(String ym) {
+    const names = ['Ιαν', 'Φεβ', 'Μαρ', 'Απρ', 'Μάι', 'Ιουν', 'Ιουλ', 'Αυγ', 'Σεπ', 'Οκτ', 'Νοε', 'Δεκ'];
+    final parts = ym.split('-');
+    final month = int.tryParse(parts.length > 1 ? parts[1] : '') ?? 1;
+    return '${names[month - 1]} ${parts[0]}';
   }
 
   @override
@@ -137,17 +162,27 @@ class _TeacherThematicScreenState extends ConsumerState<TeacherThematicScreen> {
                 DropdownButtonFormField<String>(
                   value: _month,
                   decoration: const InputDecoration(labelText: 'Μήνας'),
-                  items: List.generate(12, (i) {
-                    final now = DateTime.now();
-                    final date = DateTime(now.year, now.month - 1 + i, 1);
-                    final value = '${date.year}-${date.month.toString().padLeft(2, '0')}';
-                    return DropdownMenuItem(value: value, child: Text(value));
-                  }),
+                  items: _monthChoices.map((value) => DropdownMenuItem(value: value, child: Text(_label(value)))).toList(),
                   onChanged: (v) {
                     if (v == null) return;
                     setState(() => _month = v);
                     _load();
                   },
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: _throughMonth ?? '',
+                  decoration: const InputDecoration(labelText: 'Έως (προαιρετικά)'),
+                  items: [
+                    const DropdownMenuItem(value: '', child: Text('Μόνο αυτός ο μήνας')),
+                    ..._monthChoices.map((value) => DropdownMenuItem(value: value, child: Text(_label(value)))),
+                  ],
+                  onChanged: (v) => setState(() => _throughMonth = v == null || v.isEmpty ? null : v),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Με την αποθήκευση ειδοποιούνται οι γονείς της τάξης.',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
                 ),
                 const SizedBox(height: 12),
                 _field(_title, 'Τίτλος'),

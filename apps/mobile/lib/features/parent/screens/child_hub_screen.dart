@@ -3,6 +3,7 @@ import '../../../core/widgets/person_face.dart';
 import 'bulletin_screen.dart';
 import 'child_detail_screen.dart';
 import 'parent_child_pages.dart';
+import 'thematic_screen.dart';
 
 class ChildHubScreen extends StatelessWidget {
   final String schoolId;
@@ -16,6 +17,7 @@ class ChildHubScreen extends StatelessWidget {
     final enrollments = child['enrollments'] as List<dynamic>? ?? [];
     final klass = enrollments.isNotEmpty ? enrollments.first['class'] : null;
     final className = klass is Map ? (klass['name'] as String? ?? '') : '';
+    final classId = klass is Map ? (klass['id'] as String? ?? '') : '';
     final teachers = <String>[];
     if (klass is Map) {
       final list = klass['teachers'] as List? ?? [];
@@ -30,6 +32,14 @@ class ChildHubScreen extends StatelessWidget {
     final tiles = <_Tile>[
       _Tile('Ημερήσιο Δελτίο', Icons.menu_book_rounded, const Color(0xFF77328D), () {
         Navigator.push(context, MaterialPageRoute(builder: (_) => BulletinScreen(schoolId: schoolId, child: child)));
+      }),
+      _Tile('Διαθεματικό', Icons.auto_stories_rounded, const Color(0xFF642678), () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ParentThematicScreen(schoolId: schoolId, classId: classId, className: className),
+          ),
+        );
       }),
       _Tile('Φαγητό', Icons.restaurant_rounded, const Color(0xFFE95926), () {
         Navigator.push(context, MaterialPageRoute(builder: (_) => MealsScreen(schoolId: schoolId, childName: name)));

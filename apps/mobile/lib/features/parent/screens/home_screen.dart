@@ -7,6 +7,7 @@ import '../../../core/widgets/person_face.dart';
 import 'account_settings_screen.dart';
 import 'child_hub_screen.dart';
 import 'school_posts_screen.dart';
+import 'thematic_screen.dart';
 
 final myChildrenProvider = FutureProvider.family<List<dynamic>, String>(
   (ref, schoolId) async {
@@ -42,6 +43,19 @@ String _dayKey(DateTime date) {
   final day = date.day.toString().padLeft(2, '0');
   return '${date.year}-$month-$day';
 }
+
+final monthThematicProvider = FutureProvider.family<List<dynamic>, String>((ref, schoolId) async {
+  final dio = ref.read(dioProvider);
+  try {
+    final resp = await dio.get(
+      '/schools/$schoolId/thematic-plans',
+      queryParameters: {'month': thematicMonthKey(DateTime.now())},
+    );
+    return resp.data is List ? resp.data as List<dynamic> : [];
+  } catch (_) {
+    return [];
+  }
+});
 
 final _recentPostsProvider = FutureProvider.family<List<dynamic>, String>(
   (ref, schoolId) async {
@@ -113,6 +127,7 @@ class HomeScreen extends ConsumerWidget {
     final reportsAsync = ref.watch(todayReportsProvider(schoolId));
     final menuAsync = ref.watch(todayMenuProvider(schoolId));
     final postsAsync = ref.watch(_recentPostsProvider(schoolId));
+    final thematicAsync = ref.watch(monthThematicProvider(schoolId));
     final user = ref.watch(authProvider).user;
     final firstName = user?.fullName.split(' ').first ?? '';
     final schoolName = user?.memberships.isNotEmpty == true
@@ -127,6 +142,7 @@ class HomeScreen extends ConsumerWidget {
           ref.invalidate(todayReportsProvider(schoolId));
           ref.invalidate(todayMenuProvider(schoolId));
           ref.invalidate(_recentPostsProvider(schoolId));
+          ref.invalidate(monthThematicProvider(schoolId));
         },
         child: CustomScrollView(
           slivers: [
@@ -251,6 +267,7 @@ class HomeScreen extends ConsumerWidget {
                   }
                   final reports = reportsAsync.asData?.value ?? const [];
                   final menu = menuAsync.asData?.value;
+                  final plans = thematicAsync.asData?.value ?? const [];
                   return Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Column(
@@ -262,6 +279,7 @@ class HomeScreen extends ConsumerWidget {
                             child: child,
                             report: _reportFor(reports, child['id']?.toString(), _dayKey(DateTime.now())),
                             menu: menu,
+                            thematic: _thematicFor(plans, child),
                             onTap: () => Navigator.of(context).push(
                               MaterialPageRoute(
                                 builder: (_) => ChildHubScreen(schoolId: schoolId, child: child),
@@ -340,12 +358,29 @@ Map<String, dynamic>? _reportFor(List<dynamic> reports, String? studentId, Strin
   return null;
 }
 
+Map<String, dynamic>? _thematicFor(List<dynamic> plans, Map<String, dynamic> child) {
+  final enrollments = child['enrollments'] as List? ?? [];
+  final klass = enrollments.isNotEmpty && enrollments.first is Map ? enrollments.first['class'] : null;
+  final classId = klass is Map ? klass['id']?.toString() : null;
+  if (classId == null || classId.isEmpty) return null;
+  Map<String, dynamic>? covering;
+  final month = thematicMonthKey(DateTime.now());
+  for (final raw in plans) {
+    if (raw is! Map || raw['classId']?.toString() != classId) continue;
+    final plan = Map<String, dynamic>.from(raw);
+    if (plan['month'] == month) return plan;
+    covering ??= plan;
+  }
+  return covering;
+}
+
 class _TodayChildCard extends StatelessWidget {
   final Map<String, dynamic> child;
   final Map<String, dynamic>? report;
   final Map<String, dynamic>? menu;
+  final Map<String, dynamic>? thematic;
   final VoidCallback onTap;
-  const _TodayChildCard({required this.child, required this.report, required this.menu, required this.onTap});
+  const _TodayChildCard({required this.child, required this.report, required this.menu, required this.thematic, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -390,6 +425,16 @@ class _TodayChildCard extends StatelessWidget {
               _LineBlock(title: 'Ενημέρωση', lines: bulletin.isEmpty ? const ['Δεν έχει ανέβει δελτίο σήμερα.'] : bulletin),
               _LineBlock(title: 'Τι έφαγε', lines: meals.isEmpty ? const ['Δεν έχει καταχωρηθεί φαγητό για σήμερα.'] : meals),
               if (events.isNotEmpty) _LineBlock(title: 'Εκδηλώσεις', lines: events),
+              _LineBlock(
+                title: 'Διαθεματικό ${thematicMonthLabel(thematicMonthKey(DateTime.now()))}',
+                lines: [
+                  thematic == null
+                      ? 'Δεν έχει ανέβει ακόμα για αυτόν τον μήνα.'
+                      : (thematic!['title']?.toString().trim().isNotEmpty == true
+                          ? thematic!['title'].toString()
+                          : 'Διαθεματικό'),
+                ],
+              ),
             ],
           ),
         ),

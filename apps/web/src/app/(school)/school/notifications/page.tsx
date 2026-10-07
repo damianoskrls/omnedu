@@ -32,6 +32,7 @@ const AUTO_EVENTS = [
   { key: 'activity_approved',   label: 'Έγκριση δραστηριότητας' },
   { key: 'daily_report',        label: 'Νέα ημερήσια αναφορά' },
   { key: 'new_message',         label: 'Νέο μήνυμα' },
+  { key: 'thematic_plan',       label: 'Νέο διαθεματικό' },
 ];
 
 const defaultForm = () => ({
