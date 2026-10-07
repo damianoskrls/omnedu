@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
+import '../../../core/utils/system_insets.dart';
 import '../../../core/widgets/app_image.dart';
 import '../../../core/widgets/person_face.dart';
 
@@ -390,7 +391,14 @@ class _InstructorRow extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _InstructorSheet(instructor: instructor),
+      builder: (sheetContext) {
+        final bottom = systemBottomInset(sheetContext);
+        final maxHeight = MediaQuery.sizeOf(sheetContext).height * 0.8;
+        return Padding(
+          padding: EdgeInsets.only(bottom: bottom),
+          child: _InstructorSheet(instructor: instructor, maxHeight: maxHeight),
+        );
+      },
     );
   }
 }
@@ -435,7 +443,8 @@ class _InstructorAvatar extends StatelessWidget {
 
 class _InstructorSheet extends StatelessWidget {
   final Map<String, dynamic> instructor;
-  const _InstructorSheet({required this.instructor});
+  final double maxHeight;
+  const _InstructorSheet({required this.instructor, required this.maxHeight});
 
   @override
   Widget build(BuildContext context) {
@@ -444,50 +453,57 @@ class _InstructorSheet extends StatelessWidget {
     final bio = instructor['bio'] as String? ?? '';
     final photoUrl = instructor['photoUrl'] as String?;
 
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 36,
-            height: 4,
-            margin: const EdgeInsets.only(bottom: 24),
-            decoration: BoxDecoration(
-              color: const Color(0xFFE5E7EB),
-              borderRadius: BorderRadius.circular(2),
-            ),
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      child: Container(
+        width: double.infinity,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE5E7EB),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              _InstructorAvatar(name: name, photoUrl: photoUrl, radius: 40),
+              const SizedBox(height: 16),
+              Text(name,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
+              if (title.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 14, color: Color(0xFF77328D), fontWeight: FontWeight.w500)),
+              ],
+              if (bio.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF9FAFB),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    bio,
+                    style: const TextStyle(fontSize: 14, color: Color(0xFF374151), height: 1.6),
+                  ),
+                ),
+              ],
+            ],
           ),
-          _InstructorAvatar(name: name, photoUrl: photoUrl, radius: 40),
-          const SizedBox(height: 16),
-          Text(name,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
-          if (title.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(title,
-                style: const TextStyle(fontSize: 14, color: Color(0xFF77328D), fontWeight: FontWeight.w500)),
-          ],
-          if (bio.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF9FAFB),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                bio,
-                style: const TextStyle(fontSize: 14, color: Color(0xFF374151), height: 1.6),
-              ),
-            ),
-          ],
-          const SizedBox(height: 24),
-        ],
+        ),
       ),
     );
   }
