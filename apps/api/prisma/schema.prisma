@@ -460,6 +460,7 @@ model Activity {
   deadline     DateTime?
   audienceType String    @default("all") @map("audience_type")
   audienceIds  String    @default("[]") @map("audience_ids")
+  requirements String    @default("[]") @map("requirements")
   isActive     Boolean   @default(true) @map("is_active")
   createdAt    DateTime  @default(now()) @map("created_at")
 

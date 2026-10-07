@@ -1,0 +1,4 @@
+ALTER TABLE "activities" ADD COLUMN IF NOT EXISTS "image_url" TEXT;
+ALTER TABLE "activities" ADD COLUMN IF NOT EXISTS "audience_type" TEXT NOT NULL DEFAULT 'all';
+ALTER TABLE "activities" ADD COLUMN IF NOT EXISTS "audience_ids" TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE "activities" ADD COLUMN IF NOT EXISTS "requirements" TEXT NOT NULL DEFAULT '[]';

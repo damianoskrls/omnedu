@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, Delete, UseGuards, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, HttpException, Param, Patch, Post, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -117,9 +117,14 @@ export class ActivitiesController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) throw new BadRequestException('No file uploaded');
-    const imageUrl = await this.storage.upload(file, 'activities');
-    await this.activities.update(id, schoolId, { imageUrl });
-    return { imageUrl };
+    try {
+      const imageUrl = await this.storage.upload(file, 'activities');
+      await this.activities.update(id, schoolId, { imageUrl });
+      return { imageUrl };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new BadRequestException('Η εικόνα δεν ανέβηκε. Δοκίμασε ξανά μια μικρότερη φωτογραφία JPG ή PNG.');
+    }
   }
 
   @Patch(':id')
@@ -195,9 +200,14 @@ export class ActivitiesController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) throw new BadRequestException('No file uploaded');
-    const photoUrl = await this.storage.upload(file, 'instructors');
-    await this.activities.updateInstructor(instructorId, schoolId, { photoUrl });
-    return { photoUrl };
+    try {
+      const photoUrl = await this.storage.upload(file, 'instructors');
+      await this.activities.updateInstructor(instructorId, schoolId, { photoUrl });
+      return { photoUrl };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new BadRequestException('Η φωτογραφία του εκπαιδευτικού δεν ανέβηκε. Δοκίμασε ξανά JPG ή PNG.');
+    }
   }
 
   @Post(':id/instructors/:instructorId')

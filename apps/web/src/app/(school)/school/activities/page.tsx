@@ -18,9 +18,14 @@ type Activity = {
   id: string; title: string; description?: string; imageUrl?: string; activityType: string;
   monthlyCost?: number; oneTimeCost?: number; maxCapacity?: number;
   startsOn?: string; endsOn?: string; deadline?: string; isActive: boolean;
-  audienceType?: string; audienceIds?: string;
+  audienceType?: string; audienceIds?: string; requirements?: string;
+  scheduleSlots?: { id?: string; dayOfWeek: number; startTime?: string; endTime?: string }[];
+  instructorLinks?: { instructor: { id: string; name: string; title?: string; bio?: string; photoUrl?: string } }[];
   _count?: { registrations: number };
 };
+type DayDraft = { enabled: boolean; startTime: string; endTime: string };
+type RequirementDraft = { name: string; cost: string };
+type InstructorDraft = { id: string; name: string; title: string; bio: string; photoUrl: string };
 type Registration = {
   id: string; status: string; registeredAt: string; enrolledByAdmin?: boolean; notes?: string;
   student: { id: string; fullName: string; avatarUrl?: string };
@@ -64,6 +69,20 @@ const DAY_COLORS = [
 ];
 
 const emptyActivity = (): Partial<Activity> => ({ title: '', activityType: 'other', isActive: true });
+const emptyDays = (): DayDraft[] => DAYS.map(() => ({ enabled: false, startTime: '', endTime: '' }));
+const emptyInstructorDraft = (): InstructorDraft => ({ id: '', name: '', title: '', bio: '', photoUrl: '' });
+
+function parseRequirements(raw?: string): RequirementDraft[] {
+  try {
+    const parsed = JSON.parse(raw || '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((row) => row && typeof row.name === 'string' && row.name.trim())
+      .map((row) => ({ name: row.name, cost: row.cost == null || row.cost === '' ? '' : String(row.cost) }));
+  } catch {
+    return [];
+  }
+}
 
 function monthValue(iso?: string) {
   if (!iso) return '';
@@ -108,6 +127,11 @@ export default function ActivitiesPage() {
   const [saveError, setSaveError] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [daySlots, setDaySlots] = useState<DayDraft[]>(emptyDays());
+  const [requirementDrafts, setRequirementDrafts] = useState<RequirementDraft[]>([]);
+  const [instructorDraft, setInstructorDraft] = useState<InstructorDraft>(emptyInstructorDraft());
+  const [instructorPhoto, setInstructorPhoto] = useState<File | null>(null);
+  const [instructorPhotoPreview, setInstructorPhotoPreview] = useState('');
   const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
   const [levels, setLevels] = useState<{ id: string; name: string }[]>([]);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -192,6 +216,27 @@ export default function ActivitiesPage() {
     } finally { setActionLoading(null); }
   };
 
+  const openActivity = (activity?: Activity) => {
+    setEditActivity(activity ?? emptyActivity());
+    setImageFile(null);
+    setImagePreview(activity?.imageUrl ?? null);
+    setSaveError('');
+    const slots = activity?.scheduleSlots ?? [];
+    setDaySlots(DAYS.map((_, index) => {
+      const existing = slots.find(slot => slot.dayOfWeek === index + 1);
+      return { enabled: Boolean(existing), startTime: existing?.startTime ?? '', endTime: existing?.endTime ?? '' };
+    }));
+    setRequirementDrafts(parseRequirements(activity?.requirements));
+    const instructor = activity?.instructorLinks?.[0]?.instructor;
+    setInstructorDraft(instructor
+      ? { id: instructor.id, name: instructor.name, title: instructor.title ?? '', bio: instructor.bio ?? '', photoUrl: instructor.photoUrl ?? '' }
+      : emptyInstructorDraft());
+    setInstructorPhoto(null);
+    setInstructorPhotoPreview(instructor?.photoUrl ?? '');
+    setShowActivityModal(true);
+    if (instructors.length === 0) loadInstructors();
+  };
+
   const saveActivity = async () => {
     if (!editActivity.title?.trim()) return;
     setSaving(true);
@@ -212,19 +257,40 @@ export default function ActivitiesPage() {
         isActive: editActivity.isActive ?? true,
         audienceType: editActivity.audienceType ?? 'all',
         audienceIds: JSON.stringify(audienceIds),
+        requirements: requirementDrafts
+          .map(row => ({ name: row.name.trim(), cost: row.cost === '' ? null : Number(row.cost) }))
+          .filter(row => row.name),
+        scheduleSlots: daySlots.flatMap((slot, index) => slot.enabled ? [{
+          dayOfWeek: index + 1,
+          startTime: slot.startTime || undefined,
+          endTime: slot.endTime || undefined,
+        }] : []),
+        instructor: instructorDraft.name.trim()
+          ? { id: instructorDraft.id || undefined, name: instructorDraft.name.trim(), title: instructorDraft.title, bio: instructorDraft.bio }
+          : null,
       };
       const saved = (editActivity.id
         ? await activitiesApi.update(schoolId, editActivity.id, payload)
         : await activitiesApi.create(schoolId, payload)) as unknown as Activity;
+      if (saved?.id) setEditActivity(prev => ({ ...prev, id: saved.id }));
       if (imageFile && saved?.id) {
         await activitiesApi.uploadImage(schoolId, saved.id, imageFile);
+      }
+      const instructorId = saved?.instructorLinks?.[0]?.instructor?.id || instructorDraft.id;
+      if (instructorPhoto && instructorId) {
+        await activitiesApi.uploadInstructorPhoto(schoolId, instructorId, instructorPhoto);
       }
       setShowActivityModal(false);
       setImageFile(null);
       setImagePreview(null);
+      setInstructorPhoto(null);
       await loadActivities();
     } catch (err: any) {
-      setSaveError(typeof err?.message === 'string' ? err.message : 'Η αποθήκευση απέτυχε. Δοκιμάστε ξανά.');
+      const message = err?.message;
+      const text = Array.isArray(message) ? message.join(' ') : message;
+      setSaveError(text && text !== 'Internal server error'
+        ? text
+        : 'Η αποθήκευση απέτυχε. Δοκίμασε ξανά.');
     } finally { setSaving(false); }
   };
 
@@ -329,7 +395,7 @@ export default function ActivitiesPage() {
           <p className="text-sm text-gray-500 mt-1">Εκδρομές, δραστηριότητες, πρόγραμμα και εκπαιδευτές</p>
         </div>
         {isAdmin && activeTab === 'activities' && (
-          <button onClick={() => { setEditActivity(emptyActivity()); setImageFile(null); setImagePreview(null); setSaveError(''); setShowActivityModal(true); }}
+          <button onClick={() => openActivity()}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">
             <Plus className="w-4 h-4" /> Νέα Δραστηριότητα
           </button>
@@ -403,11 +469,12 @@ export default function ActivitiesPage() {
                         {activity.deadline && <span className="flex items-center gap-1 text-orange-600"><Clock className="w-3 h-3" />Λήξη εγγρ.: {format(new Date(activity.deadline), 'dd/MM/yyyy', { locale: el })}</span>}
                         <span className="flex items-center gap-1 text-indigo-600 font-medium"><Users className="w-3 h-3" />{activity._count?.registrations ?? 0} εγγεγραμμένοι</span>
                       </div>
+                      <ActivityFacts activity={activity} />
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       {isAdmin && (
                         <>
-                          <button onClick={() => { setEditActivity({ ...activity }); setImageFile(null); setImagePreview(activity.imageUrl ?? null); setSaveError(''); setShowActivityModal(true); }} className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50">Επεξεργασία</button>
+                          <button onClick={() => openActivity(activity)} className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50">Επεξεργασία</button>
                           {activity.isActive && <button onClick={() => deactivate(activity.id)} className="text-xs px-3 py-1.5 border border-red-200 text-red-600 rounded-lg hover:bg-red-50">Αρχείο</button>}
                         </>
                       )}
@@ -683,6 +750,100 @@ export default function ActivitiesPage() {
                     value={monthValue(editActivity.endsOn)} onChange={e => setEditActivity(p => ({ ...p, endsOn: monthEnd(e.target.value) }))} />
                 </div>
               </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-2">Ημέρες</label>
+                <div className="space-y-2">
+                  {DAYS.map((day, index) => (
+                    <div key={day} className="flex items-center gap-2">
+                      <label className="flex items-center gap-2 w-28 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={daySlots[index]?.enabled ?? false}
+                          onChange={e => setDaySlots(prev => prev.map((slot, slotIndex) => slotIndex === index ? { ...slot, enabled: e.target.checked } : slot))}
+                        />
+                        {day}
+                      </label>
+                      {daySlots[index]?.enabled && (
+                        <>
+                          <input type="time" className="border border-gray-200 rounded-lg px-2 py-1 text-sm"
+                            value={daySlots[index].startTime}
+                            onChange={e => setDaySlots(prev => prev.map((slot, slotIndex) => slotIndex === index ? { ...slot, startTime: e.target.value } : slot))} />
+                          <input type="time" className="border border-gray-200 rounded-lg px-2 py-1 text-sm"
+                            value={daySlots[index].endTime}
+                            onChange={e => setDaySlots(prev => prev.map((slot, slotIndex) => slotIndex === index ? { ...slot, endTime: e.target.value } : slot))} />
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="border border-gray-100 rounded-xl p-3 space-y-3">
+                <p className="text-xs font-medium text-gray-600">Εκπαιδευτικός</p>
+                <select
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  value={instructorDraft.id}
+                  onChange={e => {
+                    const selected = instructors.find(person => person.id === e.target.value);
+                    if (!selected) {
+                      setInstructorDraft(emptyInstructorDraft());
+                      setInstructorPhoto(null);
+                      setInstructorPhotoPreview('');
+                      return;
+                    }
+                    setInstructorDraft({ id: selected.id, name: selected.name, title: selected.title ?? '', bio: selected.bio ?? '', photoUrl: selected.photoUrl ?? '' });
+                    setInstructorPhoto(null);
+                    setInstructorPhotoPreview(selected.photoUrl ?? '');
+                  }}
+                >
+                  <option value="">Νέος εκπαιδευτικός</option>
+                  {instructors.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}
+                </select>
+                <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Ονοματεπώνυμο"
+                  value={instructorDraft.name} onChange={e => setInstructorDraft(prev => ({ ...prev, name: e.target.value }))} />
+                <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Ιδιότητα, π.χ. Δασκάλα χορού"
+                  value={instructorDraft.title} onChange={e => setInstructorDraft(prev => ({ ...prev, title: e.target.value }))} />
+                <textarea rows={3} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none" placeholder="Βιογραφικό"
+                  value={instructorDraft.bio} onChange={e => setInstructorDraft(prev => ({ ...prev, bio: e.target.value }))} />
+                <div className="flex items-center gap-3">
+                  {instructorPhotoPreview ? (
+                    <img src={instructorPhotoPreview} alt="" className="h-14 w-14 rounded-xl object-cover" />
+                  ) : (
+                    <div className="h-14 w-14 rounded-xl border border-dashed border-gray-300 flex items-center justify-center text-gray-400">
+                      <Upload className="w-4 h-4" />
+                    </div>
+                  )}
+                  <label className="text-sm font-medium text-[#77328D] cursor-pointer">
+                    Φωτογραφία εκπαιδευτικού
+                    <input type="file" accept="image/*" className="hidden" onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setInstructorPhoto(file);
+                      setInstructorPhotoPreview(URL.createObjectURL(file));
+                      e.target.value = '';
+                    }} />
+                  </label>
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-medium text-gray-600">Υλικά που χρειάζονται</label>
+                  <button type="button" onClick={() => setRequirementDrafts(prev => [...prev, { name: '', cost: '' }])}
+                    className="text-xs text-[#77328D] font-medium">+ Υλικό</button>
+                </div>
+                {requirementDrafts.length === 0 && <p className="text-xs text-gray-400">Π.χ. μπαλαρίνες, 18€</p>}
+                <div className="space-y-2">
+                  {requirementDrafts.map((row, index) => (
+                    <div key={index} className="flex gap-2">
+                      <input className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Τι χρειάζεται"
+                        value={row.name} onChange={e => setRequirementDrafts(prev => prev.map((item, itemIndex) => itemIndex === index ? { ...item, name: e.target.value } : item))} />
+                      <input type="number" min="0" step="0.01" className="w-24 border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="€"
+                        value={row.cost} onChange={e => setRequirementDrafts(prev => prev.map((item, itemIndex) => itemIndex === index ? { ...item, cost: e.target.value } : item))} />
+                      <button type="button" onClick={() => setRequirementDrafts(prev => prev.filter((_, itemIndex) => itemIndex !== index))}
+                        className="p-2 text-gray-400 hover:text-red-500"><X className="w-4 h-4" /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
             {saveError && <p className="px-5 text-sm text-red-600">{saveError}</p>}
             <div className="p-5 border-t border-gray-100 flex justify-end gap-3">
@@ -810,6 +971,41 @@ export default function ActivitiesPage() {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+function ActivityFacts({ activity }: { activity: Activity }) {
+  const days = (activity.scheduleSlots ?? [])
+    .slice()
+    .sort((a, b) => a.dayOfWeek - b.dayOfWeek)
+    .map(slot => {
+      const name = DAYS[slot.dayOfWeek - 1] ?? '';
+      const hours = [slot.startTime, slot.endTime].filter(Boolean).join('–');
+      return hours ? `${name} ${hours}` : name;
+    });
+  const materials = parseRequirements(activity.requirements);
+  const instructor = activity.instructorLinks?.[0]?.instructor;
+  if (!days.length && !materials.length && !instructor) return null;
+  return (
+    <div className="mt-3 space-y-2 text-sm text-gray-700">
+      {instructor && (
+        <div className="flex items-start gap-2">
+          <PersonAvatar name={instructor.name} src={instructor.photoUrl} tone="soft" letters={1} className="w-8 h-8 rounded-full text-xs" />
+          <div>
+            <p className="font-medium">{instructor.name}{instructor.title ? ` · ${instructor.title}` : ''}</p>
+            {instructor.bio && <p className="text-xs text-gray-500 whitespace-pre-line line-clamp-3">{instructor.bio}</p>}
+          </div>
+        </div>
+      )}
+      {days.length > 0 && <p className="text-xs text-gray-500">{days.join(' · ')}</p>}
+      {materials.length > 0 && (
+        <ul className="text-xs text-gray-600 space-y-0.5">
+          {materials.map(item => (
+            <li key={item.name}>Χρειάζεται: {item.name}{item.cost ? ` · ${item.cost}€` : ''}</li>
+          ))}
+        </ul>
       )}
     </div>
   );

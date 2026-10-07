@@ -1,9 +1,30 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { randomUUID } from 'crypto';
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
-export class ActivitiesService {
+export class ActivitiesService implements OnModuleInit {
   private readonly logger = new Logger(ActivitiesService.name);
+
+  async onModuleInit() {
+    await this.ensureActivityColumns();
+  }
+
+  private async ensureActivityColumns() {
+    const statements = [
+      `ALTER TABLE "activities" ADD COLUMN IF NOT EXISTS "image_url" TEXT`,
+      `ALTER TABLE "activities" ADD COLUMN IF NOT EXISTS "audience_type" TEXT NOT NULL DEFAULT 'all'`,
+      `ALTER TABLE "activities" ADD COLUMN IF NOT EXISTS "audience_ids" TEXT NOT NULL DEFAULT '[]'`,
+      `ALTER TABLE "activities" ADD COLUMN IF NOT EXISTS "requirements" TEXT NOT NULL DEFAULT '[]'`,
+    ];
+    for (const sql of statements) {
+      try {
+        await this.prisma.$executeRawUnsafe(sql);
+      } catch (error) {
+        this.logger.warn(`Activity column check skipped: ${error}`);
+      }
+    }
+  }
 
   constructor(private prisma: PrismaService) {}
 
@@ -61,6 +82,7 @@ export class ActivitiesService {
       oneTimeCost: row.oneTimeCost == null ? null : Number(row.oneTimeCost),
       audienceType: 'all',
       audienceIds: '[]',
+      requirements: '[]',
       imageUrl: null,
       scheduleSlots: [],
       instructorLinks: [],
@@ -88,7 +110,21 @@ export class ActivitiesService {
   }
 
   async create(schoolId: string, data: any) {
-    return this.prisma.activity.create({ data: { schoolId, ...this.activityWriteData(data) } });
+    await this.ensureActivityColumns();
+    let activity;
+    try {
+      activity = await this.prisma.activity.create({ data: { schoolId, ...this.activityWriteData(data) } });
+    } catch (error) {
+      this.logger.error(error);
+      throw new BadRequestException('Η δραστηριότητα δεν αποθηκεύτηκε. Έλεγξε τίτλο, κόστος και ημερομηνίες και δοκίμασε ξανά.');
+    }
+    try {
+      await this.syncDetails(activity.id, schoolId, data);
+      return await this.findOne(activity.id, schoolId);
+    } catch (error) {
+      this.logger.error(error);
+      return activity;
+    }
   }
 
   async register(activityId: string, studentId: string, parentId: string) {
@@ -184,9 +220,20 @@ export class ActivitiesService {
   }
 
   async update(id: string, schoolId: string, data: any) {
+    await this.ensureActivityColumns();
     const activity = await this.prisma.activity.findFirst({ where: { id, schoolId } });
     if (!activity) throw new NotFoundException('Activity not found');
-    return this.prisma.activity.update({ where: { id }, data: this.activityWriteData(data) });
+    try {
+      await this.prisma.activity.update({ where: { id }, data: this.activityWriteData(data) });
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
+      this.logger.error(error);
+      throw new BadRequestException('Η δραστηριότητα δεν αποθηκεύτηκε. Έλεγξε τίτλο, κόστος και ημερομηνίες και δοκίμασε ξανά.');
+    }
+    if (data.scheduleSlots !== undefined || data.instructor !== undefined) {
+      await this.syncDetails(id, schoolId, data);
+    }
+    return this.findOne(id, schoolId);
   }
 
   private activityWriteData(data: any) {
@@ -195,21 +242,82 @@ export class ActivitiesService {
       : typeof data.audienceIds === 'string'
         ? data.audienceIds
         : JSON.stringify(data.audienceIds ?? []);
-    const dateOrNull = (value: unknown) => (value ? new Date(String(value)) : null);
+    const dateOrNull = (value: unknown) => {
+      if (!value) return null;
+      const date = new Date(String(value));
+      return Number.isNaN(date.getTime()) ? null : date;
+    };
+    const money = (value: unknown) => {
+      if (value === '' || value == null) return null;
+      const number = Number(value);
+      return Number.isFinite(number) ? number : null;
+    };
     return {
       ...(data.title !== undefined && { title: data.title }),
       ...(data.description !== undefined && { description: data.description || null }),
       ...(data.imageUrl !== undefined && { imageUrl: data.imageUrl || null }),
       ...(data.activityType !== undefined && { activityType: data.activityType }),
-      ...(data.monthlyCost !== undefined && { monthlyCost: data.monthlyCost === '' || data.monthlyCost == null ? null : data.monthlyCost }),
-      ...(data.oneTimeCost !== undefined && { oneTimeCost: data.oneTimeCost === '' || data.oneTimeCost == null ? null : data.oneTimeCost }),
+      ...(data.monthlyCost !== undefined && { monthlyCost: money(data.monthlyCost) }),
+      ...(data.oneTimeCost !== undefined && { oneTimeCost: money(data.oneTimeCost) }),
       ...(data.startsOn !== undefined && { startsOn: dateOrNull(data.startsOn) }),
       ...(data.endsOn !== undefined && { endsOn: dateOrNull(data.endsOn) }),
       ...(data.deadline !== undefined && { deadline: dateOrNull(data.deadline) }),
       ...(data.audienceType !== undefined && { audienceType: data.audienceType }),
       ...(audienceIds !== undefined && { audienceIds }),
+      ...(data.requirements !== undefined && { requirements: JSON.stringify(this.cleanRequirements(data.requirements)) }),
       ...(data.isActive !== undefined && { isActive: data.isActive }),
     };
+  }
+
+  private cleanRequirements(value: unknown) {
+    const rows = Array.isArray(value) ? value : [];
+    return rows
+      .map((row: any) => ({
+        name: String(row?.name ?? '').trim(),
+        cost: row?.cost === '' || row?.cost == null || !Number.isFinite(Number(row.cost)) ? null : Number(row.cost),
+      }))
+      .filter(row => row.name);
+  }
+
+  private async syncDetails(activityId: string, schoolId: string, data: any) {
+    if (Array.isArray(data.scheduleSlots)) {
+      await this.prisma.activityScheduleSlot.deleteMany({ where: { activityId } });
+      const slots = data.scheduleSlots
+        .filter((slot: any) => Number(slot?.dayOfWeek) >= 1 && Number(slot?.dayOfWeek) <= 7)
+        .map((slot: any) => ({
+          id: randomUUID(),
+          activityId,
+          dayOfWeek: Number(slot.dayOfWeek),
+          startTime: slot.startTime || null,
+          endTime: slot.endTime || null,
+        }));
+      if (slots.length > 0) await this.prisma.activityScheduleSlot.createMany({ data: slots });
+    }
+
+    if (data.instructor === undefined) return;
+    const instructor = data.instructor;
+    const name = String(instructor?.name ?? '').trim();
+    if (!instructor || !name) {
+      await this.prisma.activityInstructorAssignment.deleteMany({ where: { activityId } });
+      return;
+    }
+    let instructorId = instructor.id as string | undefined;
+    if (instructorId) {
+      await this.updateInstructor(instructorId, schoolId, {
+        name,
+        title: instructor.title || null,
+        bio: instructor.bio || null,
+      });
+    } else {
+      const created = await this.createInstructor(schoolId, {
+        name,
+        title: instructor.title || undefined,
+        bio: instructor.bio || undefined,
+      });
+      instructorId = created.id;
+    }
+    await this.prisma.activityInstructorAssignment.deleteMany({ where: { activityId } });
+    await this.assignInstructor(activityId, instructorId, schoolId);
   }
 
   async remove(id: string, schoolId: string) {
@@ -258,7 +366,7 @@ export class ActivitiesService {
     return this.prisma.activityInstructor.create({ data: { schoolId, ...data } });
   }
 
-  async updateInstructor(instructorId: string, schoolId: string, data: { name?: string; title?: string; bio?: string; photoUrl?: string; isActive?: boolean }) {
+  async updateInstructor(instructorId: string, schoolId: string, data: { name?: string; title?: string | null; bio?: string | null; photoUrl?: string; isActive?: boolean }) {
     const inst = await this.prisma.activityInstructor.findFirst({ where: { id: instructorId, schoolId } });
     if (!inst) throw new NotFoundException('Instructor not found');
     return this.prisma.activityInstructor.update({ where: { id: instructorId }, data });

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
@@ -183,6 +185,8 @@ class _SchoolActivityCard extends StatelessWidget {
     final rawLinks = activity['instructorLinks'];
     final instructorLinks = rawLinks is List ? rawLinks : [];
     final scheduleSlots = (activity['scheduleSlots'] as List? ?? []);
+    final imageUrl = activity['imageUrl'] as String?;
+    final materials = _materials(activity['requirements']);
 
     final typeInfo = _typeIcons[type] ?? _typeIcons['other']!;
 
@@ -195,6 +199,11 @@ class _SchoolActivityCard extends StatelessWidget {
       ),
       child: Column(
         children: [
+          if (imageUrl != null && imageUrl.isNotEmpty)
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+              child: AppImage(imageUrl, height: 140, width: double.infinity, fit: BoxFit.cover),
+            ),
           Padding(
             padding: const EdgeInsets.all(14),
             child: Row(
@@ -232,7 +241,7 @@ class _SchoolActivityCard extends StatelessWidget {
                             _Chip('${_shortDate(startsOn)} – ${_shortDate(endsOn)}',
                                 const Color(0xFF6B7280), const Color(0xFFF3F4F6)),
                           if (scheduleSlots.isNotEmpty)
-                            _Chip(_scheduleLabel(scheduleSlots[0] as Map<String, dynamic>),
+                            _Chip(scheduleSlots.map((slot) => _scheduleLabel(slot as Map<String, dynamic>)).join(' · '),
                                 const Color(0xFF6B7280), const Color(0xFFF3F4F6)),
                         ],
                       ),
@@ -242,6 +251,24 @@ class _SchoolActivityCard extends StatelessWidget {
               ],
             ),
           ),
+          if (materials.isNotEmpty) ...[
+            const Divider(height: 1, color: Color(0xFFF3F4F6)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Χρειάζεται',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF9CA3AF))),
+                  const SizedBox(height: 6),
+                  ...materials.map((item) => Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text(item, style: const TextStyle(fontSize: 13, color: Color(0xFF374151))),
+                      )),
+                ],
+              ),
+            ),
+          ],
           if (instructorLinks.isNotEmpty) ...[
             const Divider(height: 1, color: Color(0xFFF3F4F6)),
             Padding(
@@ -273,6 +300,26 @@ class _SchoolActivityCard extends StatelessWidget {
     } catch (_) {
       return '';
     }
+  }
+
+  List<String> _materials(dynamic raw) {
+    dynamic parsed = raw;
+    if (raw is String && raw.isNotEmpty) {
+      try {
+        parsed = jsonDecode(raw);
+      } catch (_) {
+        return [];
+      }
+    }
+    if (parsed is! List) return [];
+    return parsed.map((row) {
+      if (row is! Map) return '';
+      final name = row['name']?.toString() ?? '';
+      final cost = row['cost'];
+      if (name.isEmpty) return '';
+      if (cost == null || cost.toString().isEmpty) return name;
+      return '$name · $cost€';
+    }).where((line) => line.isNotEmpty).cast<String>().toList();
   }
 
   String _scheduleLabel(Map<String, dynamic> slot) {
