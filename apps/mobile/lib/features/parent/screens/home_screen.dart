@@ -5,6 +5,7 @@ import '../../../core/providers/auth_provider.dart';
 import '../../../core/widgets/app_image.dart';
 import '../../../core/widgets/person_face.dart';
 import 'child_hub_screen.dart';
+import 'day_history.dart';
 import 'parent_meetings_screen.dart';
 import 'school_posts_screen.dart';
 import 'thematic_screen.dart';
@@ -17,32 +18,6 @@ final myChildrenProvider = FutureProvider.family<List<dynamic>, String>(
     return data is List ? data : [];
   },
 );
-
-final todayReportsProvider = FutureProvider.family<List<dynamic>, String>((ref, schoolId) async {
-  final dio = ref.read(dioProvider);
-  final resp = await dio.get('/schools/$schoolId/daily-reports/feed', queryParameters: {'limit': 40});
-  final data = resp.data;
-  return data is List ? data : [];
-});
-
-final todayMenuProvider = FutureProvider.family<Map<String, dynamic>?, String>((ref, schoolId) async {
-  final day = _dayKey(DateTime.now());
-  final dio = ref.read(dioProvider);
-  try {
-    final resp = await dio.get('/schools/$schoolId/daily-menus', queryParameters: {'from': day, 'to': day});
-    final data = resp.data;
-    if (data is List && data.isNotEmpty && data.first is Map) {
-      return Map<String, dynamic>.from(data.first as Map);
-    }
-  } catch (_) {}
-  return null;
-});
-
-String _dayKey(DateTime date) {
-  final month = date.month.toString().padLeft(2, '0');
-  final day = date.day.toString().padLeft(2, '0');
-  return '${date.year}-$month-$day';
-}
 
 final monthThematicProvider = FutureProvider.family<List<dynamic>, String>((ref, schoolId) async {
   final dio = ref.read(dioProvider);
@@ -77,8 +52,6 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final childrenAsync = ref.watch(myChildrenProvider(schoolId));
-    final reportsAsync = ref.watch(todayReportsProvider(schoolId));
-    final menuAsync = ref.watch(todayMenuProvider(schoolId));
     final postsAsync = ref.watch(_recentPostsProvider(schoolId));
     final thematicAsync = ref.watch(monthThematicProvider(schoolId));
     final meetingsAsync = ref.watch(parentMeetingsProvider(schoolId));
@@ -90,8 +63,8 @@ class HomeScreen extends ConsumerWidget {
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(myChildrenProvider(schoolId));
-          ref.invalidate(todayReportsProvider(schoolId));
-          ref.invalidate(todayMenuProvider(schoolId));
+          ref.invalidate(childDayReportsProvider);
+          ref.invalidate(dayHistoryMenuProvider);
           ref.invalidate(_recentPostsProvider(schoolId));
           ref.invalidate(monthThematicProvider(schoolId));
           ref.invalidate(parentMeetingsProvider(schoolId));
@@ -145,19 +118,10 @@ class HomeScreen extends ConsumerWidget {
             ),
 
             SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 28, 20, 12),
-                child: Text(
-                  'Σήμερα, ${_dayKey(DateTime.now()).split('-').reversed.join('/')}',
-                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF2C2422)),
-                ),
-              ),
-            ),
-            SliverToBoxAdapter(
               child: childrenAsync.when(
                 loading: () => const Padding(
                   padding: EdgeInsets.symmetric(vertical: 24),
-                  child: Center(child: CircularProgressIndicator()),
+                  child: Center(child: CircularProgressIndicator(color: Color(0xFF77328D))),
                 ),
                 error: (e, _) => Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -166,36 +130,56 @@ class HomeScreen extends ConsumerWidget {
                 data: (children) {
                   if (children.isEmpty) {
                     return const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 20),
+                      padding: EdgeInsets.fromLTRB(20, 24, 20, 0),
                       child: Text('Δεν βρέθηκαν παιδιά.', style: TextStyle(color: Color(0xFF9CA3AF))),
                     );
                   }
-                  final reports = reportsAsync.asData?.value ?? const [];
-                  final menu = menuAsync.asData?.value;
                   final plans = thematicAsync.asData?.value ?? const [];
                   final meetings = meetingsAsync.asData?.value ?? const [];
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Column(
-                      children: children.map((raw) {
-                        final child = Map<String, dynamic>.from(raw as Map);
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: _TodayChildCard(
-                            child: child,
-                            report: _reportFor(reports, child['id']?.toString(), _dayKey(DateTime.now())),
-                            menu: menu,
-                            thematic: _thematicFor(plans, child),
-                            meeting: acceptedMeetingFor(meetings, child['id']?.toString()),
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => ChildHubScreen(schoolId: schoolId, child: child),
+                  final cards = children.map((raw) => Map<String, dynamic>.from(raw as Map)).toList();
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        height: 148,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.fromLTRB(16, 18, 16, 4),
+                          itemCount: cards.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 12),
+                          itemBuilder: (context, index) {
+                            final child = cards[index];
+                            return _ChildEntryCard(
+                              child: child,
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => ChildHubScreen(schoolId: schoolId, child: child),
+                                ),
                               ),
+                            );
+                          },
+                        ),
+                      ),
+                      for (var i = 0; i < cards.length; i++) ...[
+                        if (cards.length > 1)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 22, 20, 0),
+                            child: Text(
+                              cards[i]['fullName']?.toString() ?? '',
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF2C2422)),
                             ),
                           ),
-                        );
-                      }).toList(),
-                    ),
+                        DayHistoryPanel(
+                          schoolId: schoolId,
+                          child: cards[i],
+                          showMenu: i == 0,
+                        ),
+                        _HomeExtras(
+                          thematic: _thematicFor(plans, cards[i]),
+                          meeting: acceptedMeetingFor(meetings, cards[i]['id']?.toString()),
+                        ),
+                      ],
+                    ],
                   );
                 },
               ),
@@ -253,18 +237,6 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-Map<String, dynamic>? _reportFor(List<dynamic> reports, String? studentId, String day) {
-  for (final raw in reports) {
-    if (raw is! Map) continue;
-    final report = Map<String, dynamic>.from(raw);
-    final student = report['student'];
-    final id = student is Map ? student['id']?.toString() : null;
-    final date = report['reportDate']?.toString() ?? '';
-    if (id == studentId && date.startsWith(day)) return report;
-  }
-  return null;
-}
-
 Map<String, dynamic>? _thematicFor(List<dynamic> plans, Map<String, dynamic> child) {
   final enrollments = child['enrollments'] as List? ?? [];
   final klass = enrollments.isNotEmpty && enrollments.first is Map ? enrollments.first['class'] : null;
@@ -281,159 +253,116 @@ Map<String, dynamic>? _thematicFor(List<dynamic> plans, Map<String, dynamic> chi
   return covering;
 }
 
-class _TodayChildCard extends StatelessWidget {
+class _ChildEntryCard extends StatelessWidget {
   final Map<String, dynamic> child;
-  final Map<String, dynamic>? report;
-  final Map<String, dynamic>? menu;
-  final Map<String, dynamic>? thematic;
-  final Map<String, dynamic>? meeting;
   final VoidCallback onTap;
-  const _TodayChildCard({required this.child, required this.report, required this.menu, required this.thematic, required this.meeting, required this.onTap});
+  const _ChildEntryCard({required this.child, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final name = child['fullName']?.toString() ?? '';
     final photo = child['avatarUrl']?.toString();
-    final enrollments = child['enrollments'] as List? ?? [];
-    final klass = enrollments.isNotEmpty && enrollments.first is Map ? enrollments.first['class'] : null;
-    final className = klass is Map ? klass['name']?.toString() ?? '' : '';
-    final bulletin = _bulletinLines(report);
-    final meals = _mealLines(report, menu);
-    final events = _eventLines(child);
-
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(22),
       child: InkWell(
         borderRadius: BorderRadius.circular(22),
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  PersonFace(name: name, photoUrl: photo, size: 52, radius: 16, fontSize: 18, background: const Color(0xFF77328D), foreground: Colors.white),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF2C2422))),
-                        if (className.isNotEmpty)
-                          Text(className, style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w600)),
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right, color: Color(0xFFD1D5DB)),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _LineBlock(title: 'Ενημέρωση', lines: bulletin.isEmpty ? const ['Δεν έχει ανέβει δελτίο σήμερα.'] : bulletin),
-              _LineBlock(title: 'Τι έφαγε', lines: meals.isEmpty ? const ['Δεν έχει καταχωρηθεί φαγητό για σήμερα.'] : meals),
-              if (events.isNotEmpty) _LineBlock(title: 'Εκδηλώσεις', lines: events),
-              if (meeting != null)
-                _LineBlock(
-                  title: 'Επερχόμενη συνάντηση',
-                  lines: [
-                    '${meetingDay(meeting!['meetingDate'])} στις ${meeting!['acceptedSlot'] ?? ''}',
-                  ],
+        child: Ink(
+          width: 156,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: const Color(0xFFE7D4F0)),
+            gradient: const LinearGradient(
+              colors: [Color(0xFFFFFFFF), Color(0xFFFFF7F4)],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
+            child: Column(
+              children: [
+                PersonFace(
+                  name: name,
+                  photoUrl: photo,
+                  size: 64,
+                  radius: 22,
+                  fontSize: 22,
+                  background: const Color(0xFF77328D),
+                  foreground: Colors.white,
                 ),
-              _LineBlock(
-                title: 'Διαθεματικό ${thematicMonthLabel(thematicMonthKey(DateTime.now()))}',
-                lines: [
-                  thematic == null
-                      ? 'Δεν έχει ανέβει ακόμα για αυτόν τον μήνα.'
-                      : (thematic!['title']?.toString().trim().isNotEmpty == true
-                          ? thematic!['title'].toString()
-                          : 'Διαθεματικό'),
-                ],
-              ),
-            ],
+                const SizedBox(height: 10),
+                Text(
+                  name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, height: 1.2, color: Color(0xFF2C2422)),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
-
-  List<String> _bulletinLines(Map<String, dynamic>? report) {
-    if (report == null) return [];
-    final lines = <String>[];
-    final mood = report['mood']?.toString() ?? '';
-    final notes = report['notes']?.toString() ?? '';
-    if (mood.isNotEmpty) lines.add('Διάθεση: $mood');
-    if (notes.isNotEmpty) lines.add(notes);
-    final nap = report['napDurationMinutes'];
-    if (nap is num && nap > 0) lines.add('Ύπνος: ${nap.toInt()} λεπτά');
-    return lines;
-  }
-
-  List<String> _mealLines(Map<String, dynamic>? report, Map<String, dynamic>? menu) {
-    final lines = <String>[];
-    void add(String label, dynamic value) {
-      final text = value?.toString().trim() ?? '';
-      if (text.isNotEmpty) lines.add('$label: $text');
-    }
-    add('Πρωινό', report?['mealBreakfast']);
-    add('Μεσημεριανό', report?['mealLunch']);
-    add('Σνακ', report?['mealSnack']);
-    if (lines.isNotEmpty) return lines;
-    add('Πρωινό', menu?['breakfast']);
-    add('Δεκατιανό', menu?['midMorning']);
-    add('Μεσημεριανό', menu?['lunch']);
-    add('Απογευματινό', menu?['afternoon']);
-    return lines;
-  }
-
-  List<String> _eventLines(Map<String, dynamic> child) {
-    final lines = <String>[];
-    final events = child['eventEnrollments'] as List? ?? [];
-    final today = DateTime.now();
-    for (final raw in events) {
-      if (raw is! Map) continue;
-      final event = raw['event'];
-      if (event is! Map) continue;
-      final title = event['title']?.toString() ?? '';
-      final when = event['eventDate']?.toString();
-      if (title.isEmpty) continue;
-      if (when != null && when.isNotEmpty) {
-        final date = DateTime.tryParse(when);
-        if (date != null && date.isBefore(DateTime(today.year, today.month, today.day))) continue;
-        lines.add(date == null ? title : '$title · ${date.day}/${date.month}');
-      } else {
-        lines.add(title);
-      }
-      if (lines.length == 3) break;
-    }
-    final activities = child['activityRegistrations'] as List? ?? [];
-    for (final raw in activities) {
-      if (lines.length == 3) break;
-      if (raw is! Map) continue;
-      final activity = raw['activity'];
-      if (activity is! Map) continue;
-      final title = activity['title']?.toString() ?? '';
-      if (title.isNotEmpty) lines.add(title);
-    }
-    return lines;
-  }
 }
 
-class _LineBlock extends StatelessWidget {
-  final String title;
-  final List<String> lines;
-  const _LineBlock({required this.title, required this.lines});
+class _HomeExtras extends StatelessWidget {
+  final Map<String, dynamic>? thematic;
+  final Map<String, dynamic>? meeting;
+  const _HomeExtras({required this.thematic, required this.meeting});
 
   @override
   Widget build(BuildContext context) {
+    final title = thematic == null
+        ? 'Δεν έχει ανέβει ακόμα για αυτόν τον μήνα.'
+        : (thematic!['title']?.toString().trim().isNotEmpty == true ? thematic!['title'].toString() : 'Διαθεματικό');
     return Padding(
-      padding: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF77328D))),
-          const SizedBox(height: 2),
-          ...lines.map((line) => Text(line, style: const TextStyle(fontSize: 13, height: 1.35, color: Color(0xFF374151)))),
+          if (meeting != null)
+            _extraRow(
+              Icons.event_available_rounded,
+              'Επερχόμενη συνάντηση',
+              '${meetingDay(meeting!['meetingDate'])} στις ${meeting!['acceptedSlot'] ?? ''}',
+            ),
+          _extraRow(
+            Icons.auto_stories_rounded,
+            'Διαθεματικό ${thematicMonthLabel(thematicMonthKey(DateTime.now()))}',
+            title,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _extraRow(IconData icon, String label, String value) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFF0E6F4)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: const Color(0xFFE95926), size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF77328D))),
+                const SizedBox(height: 2),
+                Text(value, style: const TextStyle(fontSize: 13, color: Color(0xFF374151))),
+              ],
+            ),
+          ),
         ],
       ),
     );

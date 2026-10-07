@@ -1,0 +1,618 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/api/api_client.dart';
+import '../../../core/widgets/person_face.dart';
+
+const dayHistoryColors = [Color(0xFF77328D), Color(0xFFE95926)];
+
+final childDayReportsProvider =
+    FutureProvider.family<List<dynamic>, ({String schoolId, String studentId})>(
+  (ref, key) async {
+    final dio = ref.read(dioProvider);
+    final resp = await dio.get(
+      '/schools/${key.schoolId}/daily-reports/student/${key.studentId}',
+      queryParameters: {'limit': 20},
+    );
+    return resp.data is List ? resp.data as List<dynamic> : [];
+  },
+);
+
+final dayHistoryMenuProvider =
+    FutureProvider.family<Map<String, dynamic>?, String>((ref, schoolId) async {
+  final dio = ref.read(dioProvider);
+  final today = dayHistoryIso(DateTime.now());
+  try {
+    final resp = await dio.get('/schools/$schoolId/daily-menus/$today');
+    return resp.data as Map<String, dynamic>?;
+  } catch (_) {
+    return null;
+  }
+});
+
+String dayHistoryIso(DateTime d) =>
+    '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+class DayHistoryPanel extends ConsumerWidget {
+  final String schoolId;
+  final Map<String, dynamic> child;
+  final bool showMenu;
+  final String? heading;
+
+  const DayHistoryPanel({
+    super.key,
+    required this.schoolId,
+    required this.child,
+    this.showMenu = true,
+    this.heading,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final studentId = child['id'] as String? ?? '';
+    final reportsAsync = ref.watch(childDayReportsProvider((schoolId: schoolId, studentId: studentId)));
+    final menuAsync = ref.watch(dayHistoryMenuProvider(schoolId));
+    final todayStr = dayHistoryIso(DateTime.now());
+    const colors = dayHistoryColors;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (heading != null && heading!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+            child: Text(
+              heading!,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF2C2422)),
+            ),
+          ),
+        _sectionTitle(Icons.today_rounded, 'Ενημέρωση Σήμερα', colors),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+          child: reportsAsync.when(
+            loading: () => const DayHistoryLoadingCard(),
+            error: (e, _) => const DayHistoryEmptyCard('Σφάλμα φόρτωσης'),
+            data: (reports) {
+              Map<String, dynamic>? todayReport;
+              for (final raw in reports) {
+                if (raw is! Map) continue;
+                final date = raw['reportDate']?.toString() ?? '';
+                if (date.startsWith(todayStr)) {
+                  todayReport = Map<String, dynamic>.from(raw);
+                  break;
+                }
+              }
+              if (todayReport == null) {
+                return const DayHistoryEmptyCard('Δεν υπάρχει ενημέρωση για σήμερα ακόμα');
+              }
+              return DayDiaryCard(report: todayReport, colors: colors);
+            },
+          ),
+        ),
+        if (showMenu) ...[
+          _sectionTitle(Icons.restaurant_rounded, 'Διατροφολόγιο Σήμερα', colors),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+            child: menuAsync.when(
+              loading: () => const DayHistoryLoadingCard(),
+              error: (_, __) => const DayHistoryEmptyCard('Δεν υπάρχει καταχωρημένο μενού'),
+              data: (menu) => menu == null
+                  ? const DayHistoryEmptyCard('Δεν υπάρχει καταχωρημένο μενού για σήμερα')
+                  : DayMenuCard(menu: menu, colors: colors),
+            ),
+          ),
+        ],
+        _sectionTitle(Icons.history_rounded, 'Πρόσφατες Ενημερώσεις', colors),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+          child: reportsAsync.when(
+            loading: () => const DayHistoryLoadingCard(),
+            error: (_, __) => const SizedBox.shrink(),
+            data: (reports) {
+              final recent = reports.where((r) {
+                final d = r is Map ? r['reportDate'] as String? ?? '' : '';
+                return !d.startsWith(todayStr);
+              }).take(10).toList();
+              if (recent.isEmpty) {
+                return const DayHistoryEmptyCard('Δεν υπάρχουν προηγούμενες ενημερώσεις');
+              }
+              return Column(
+                children: [
+                  for (final raw in recent)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: DayDiaryCard(
+                        report: Map<String, dynamic>.from(raw as Map),
+                        colors: colors,
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
+        _InstructionsBlock(child: child, colors: colors),
+        _EventsBlock(child: child, colors: colors),
+      ],
+    );
+  }
+
+  Widget _sectionTitle(IconData icon, String title, List<Color> colors) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+      child: Row(
+        children: [
+          Icon(icon, color: colors[0], size: 20),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: colors[0]),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class DayHistoryLoadingCard extends StatelessWidget {
+  const DayHistoryLoadingCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 80,
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+      child: const Center(child: CircularProgressIndicator(color: Color(0xFF77328D))),
+    );
+  }
+}
+
+class DayHistoryEmptyCard extends StatelessWidget {
+  final String message;
+  const DayHistoryEmptyCard(this.message, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+      child: Row(
+        children: [
+          const Icon(Icons.info_outline_rounded, color: Color(0xFF77328D), size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(message, style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 14)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InstructionsBlock extends StatelessWidget {
+  final Map<String, dynamic> child;
+  final List<Color> colors;
+  const _InstructionsBlock({required this.child, required this.colors});
+
+  @override
+  Widget build(BuildContext context) {
+    final enrollments = child['enrollments'] as List<dynamic>? ?? [];
+    final instructions = enrollments.isNotEmpty
+        ? (enrollments.first['class']?['instructions'] as List<dynamic>? ?? [])
+        : <dynamic>[];
+    if (instructions.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.assignment_rounded, color: colors[0], size: 20),
+            const SizedBox(width: 8),
+            Text('Οδηγίες από το Σχολείο',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: colors[0])),
+          ]),
+          const SizedBox(height: 12),
+          ...instructions.map((instr) {
+            final i = instr as Map<String, dynamic>;
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF7F4),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFF6C7B8)),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Expanded(
+                    child: Text(i['title'] as String? ?? '',
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF77328D))),
+                  ),
+                  if ((i['category'] as String?)?.isNotEmpty == true)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE95926).withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(i['category'] as String,
+                          style: const TextStyle(fontSize: 10, color: Color(0xFFE95926), fontWeight: FontWeight.w600)),
+                    ),
+                ]),
+                const SizedBox(height: 4),
+                Text(i['content'] as String? ?? '',
+                    style: const TextStyle(fontSize: 13, color: Color(0xFF4B3A36))),
+              ]),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+}
+
+class _EventsBlock extends StatelessWidget {
+  final Map<String, dynamic> child;
+  final List<Color> colors;
+  const _EventsBlock({required this.child, required this.colors});
+
+  @override
+  Widget build(BuildContext context) {
+    final eventEnrollments = child['eventEnrollments'] as List<dynamic>? ?? [];
+    if (eventEnrollments.isEmpty) return const SizedBox.shrink();
+    final pending = eventEnrollments.where((e) =>
+        (e['status'] as String?) == 'pending_consent' ||
+        (e['status'] as String?) == 'pending_payment').toList();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.event_rounded, color: colors[0], size: 20),
+            const SizedBox(width: 8),
+            Text('Εκδηλώσεις', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: colors[0])),
+            if (pending.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(color: const Color(0xFFE95926), borderRadius: BorderRadius.circular(20)),
+                child: Text('${pending.length} εκκρεμεί',
+                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ]),
+          const SizedBox(height: 12),
+          ...eventEnrollments.take(5).map((enr) {
+            final e = enr as Map<String, dynamic>;
+            final event = e['event'] as Map<String, dynamic>? ?? {};
+            final status = e['status'] as String? ?? '';
+            const statusColors = {
+              'pending_consent': (Color(0xFFE95926), Color(0xFFFFF7F4)),
+              'pending_payment': (Color(0xFF77328D), Color(0xFFF6F3FA)),
+              'paid': (Color(0xFF059669), Color(0xFFECFDF5)),
+              'consent_given': (Color(0xFF059669), Color(0xFFECFDF5)),
+              'consent_declined': (Color(0xFFDC2626), Color(0xFFFEF2F2)),
+            };
+            const statusLabels = {
+              'pending_consent': 'Αναμονή Συναίνεσης',
+              'pending_payment': 'Αναμονή Πληρωμής',
+              'paid': 'Εξοφλημένο ✓',
+              'consent_given': 'Συναίνεση ✓',
+              'consent_declined': 'Άρνηση',
+            };
+            final sc = statusColors[status] ?? (const Color(0xFF6B7280), const Color(0xFFF3F4F6));
+            return Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFF0E6F4)),
+              ),
+              child: Row(children: [
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(event['title'] as String? ?? '',
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Color(0xFF2C2422))),
+                  if ((event['eventDate'] as String?) != null)
+                    Text(_formatEventDate(event['eventDate'] as String),
+                        style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
+                ])),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(color: sc.$2, borderRadius: BorderRadius.circular(8)),
+                  child: Text(statusLabels[status] ?? status,
+                      style: TextStyle(color: sc.$1, fontSize: 11, fontWeight: FontWeight.w600)),
+                ),
+              ]),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  String _formatEventDate(String iso) {
+    try {
+      final dt = DateTime.parse(iso);
+      const months = ['', 'Ιαν', 'Φεβ', 'Μαρ', 'Απρ', 'Μαΐ', 'Ιουν', 'Ιουλ', 'Αυγ', 'Σεπ', 'Οκτ', 'Νοε', 'Δεκ'];
+      return '${dt.day} ${months[dt.month]} ${dt.year}';
+    } catch (_) {
+      return iso;
+    }
+  }
+}
+
+class DayDiaryCard extends StatelessWidget {
+  final Map<String, dynamic> report;
+  final List<Color> colors;
+  const DayDiaryCard({super.key, required this.report, required this.colors});
+
+  static const _moodEmojis = {
+    'χαρούμενος': '😊', 'happy': '😊', 'ήρεμος': '😌', 'calm': '😌',
+    'κουρασμένος': '😴', 'tired': '😴', 'λυπημένος': '😢', 'sad': '😢',
+    'αγχωμένος': '😰', 'anxious': '😰', 'ενθουσιασμένος': '🤩',
+  };
+
+  static const _moodLabels = {
+    'χαρούμενος': 'Χαρούμενος', 'happy': 'Χαρούμενος',
+    'ήρεμος': 'Ήρεμος', 'calm': 'Ήρεμος',
+    'κουρασμένος': 'Κουρασμένος', 'tired': 'Κουρασμένος',
+    'λυπημένος': 'Λυπημένος', 'sad': 'Λυπημένος',
+    'αγχωμένος': 'Αγχωμένος', 'anxious': 'Αγχωμένος',
+    'ενθουσιασμένος': 'Ενθουσιασμένος',
+  };
+
+  static const _mealLabels = {
+    'all': 'Όλο', 'most': 'Τα πιο πολλά', 'half': 'Τα μισά',
+    'little': 'Λίγο', 'none': 'Καθόλου',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final mood = report['mood'] as String?;
+    final notes = report['notes'] as String?;
+    final date = report['reportDate'] as String?;
+    final teacher = report['teacher'] as Map<String, dynamic>?;
+    final teacherName = teacher?['fullName'] as String? ?? '';
+    final teacherPhoto = teacher?['avatarUrl'] as String?;
+    final emoji = mood != null ? (_moodEmojis[mood.toLowerCase()] ?? '😐') : '😐';
+    final moodLabel = mood != null ? (_moodLabels[mood.toLowerCase()] ?? mood) : '';
+
+    final mealBreakfast = _text(report['mealBreakfast']);
+    final mealLunch = _text(report['mealLunch']);
+    final nap1 = _number(report['napDurationMinutes']);
+    final nap2 = _number(report['nap2DurationMinutes']);
+    final bathroomCount = _number(report['bathroomCount']);
+    final diaperChanges = _number(report['diaperChanges']);
+    final rawActs = report['activities'];
+    final activities = rawActs is List ? rawActs.cast<String>() : <String>[];
+
+    final hasMeals = mealBreakfast != null || mealLunch != null;
+    final hasBathroom = bathroomCount > 0 || diaperChanges > 0;
+    final hasSleep = nap1 > 0 || nap2 > 0;
+    final hasActivities = activities.isNotEmpty;
+    final hasDetails = hasMeals || hasBathroom || hasSleep || hasActivities;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(color: colors[0].withOpacity(0.08), blurRadius: 16, offset: const Offset(0, 4)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: [colors[0].withOpacity(0.12), colors[1].withOpacity(0.12)]),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  date != null ? _formatDate(date) : '',
+                  style: TextStyle(color: colors[0], fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              ),
+              const Spacer(),
+              if (mood != null) ...[
+                Text(emoji, style: const TextStyle(fontSize: 24)),
+                const SizedBox(width: 6),
+                Text(moodLabel, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF374151))),
+              ],
+            ],
+          ),
+          if (notes != null && notes.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF6F3FA),
+                borderRadius: BorderRadius.circular(10),
+                border: Border(left: BorderSide(color: colors[1], width: 3)),
+              ),
+              child: Text(
+                '"$notes"',
+                style: const TextStyle(color: Color(0xFF4B3A36), fontSize: 13, height: 1.5, fontStyle: FontStyle.italic),
+              ),
+            ),
+          ],
+          if (hasDetails) ...[
+            const SizedBox(height: 12),
+            const Divider(color: Color(0xFFF3F4F6), height: 1),
+            const SizedBox(height: 10),
+          ],
+          if (hasMeals)
+            _detailRow('🍽', 'Φαγητό', [
+              if (mealBreakfast != null) 'Πρωινό: ${_mealLabels[mealBreakfast] ?? mealBreakfast}',
+              if (mealLunch != null) 'Μεσημ.: ${_mealLabels[mealLunch] ?? mealLunch}',
+            ].join(' • ')),
+          if (hasBathroom)
+            _detailRow('🚽', 'Τουαλέτα', [
+              if (bathroomCount > 0) 'Κακά ✓',
+              if (diaperChanges > 0) 'Τσίσα ✓',
+            ].join(' • ')),
+          if (hasSleep)
+            _detailRow('😴', 'Ύπνος', [
+              if (nap1 > 0) '1η: ${_napLabel(nap1)}',
+              if (nap2 > 0) '2η: ${_napLabel(nap2)}',
+            ].join(' • ')),
+          if (hasActivities) _detailRow('🎨', 'Δραστηριότητες', activities.join(', ')),
+          if (teacherName.isNotEmpty) ...[
+            if (hasDetails) const SizedBox(height: 6) else const SizedBox(height: 10),
+            Row(
+              children: [
+                if (teacherPhoto != null && teacherPhoto.isNotEmpty)
+                  PersonFace(name: teacherName, photoUrl: teacherPhoto, size: 16, radius: 8, fontSize: 8, foreground: colors[0])
+                else
+                  Icon(Icons.person_outline_rounded, size: 14, color: colors[0].withOpacity(0.7)),
+                const SizedBox(width: 4),
+                Text(
+                  teacherName,
+                  style: TextStyle(fontSize: 12, color: colors[0].withOpacity(0.7), fontWeight: FontWeight.w500),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _detailRow(String icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(icon, style: const TextStyle(fontSize: 12)),
+          const SizedBox(width: 6),
+          Text('$label: ', style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12, fontWeight: FontWeight.w600)),
+          Expanded(child: Text(value, style: const TextStyle(color: Color(0xFF4B5563), fontSize: 12))),
+        ],
+      ),
+    );
+  }
+
+  String _formatDate(String iso) {
+    try {
+      final d = DateTime.parse(iso);
+      const months = ['Ιαν', 'Φεβ', 'Μαρ', 'Απρ', 'Μαϊ', 'Ιουν', 'Ιουλ', 'Αυγ', 'Σεπ', 'Οκτ', 'Νοε', 'Δεκ'];
+      return '${d.day} ${months[d.month - 1]} ${d.year}';
+    } catch (_) {
+      return iso;
+    }
+  }
+
+  String? _text(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? null : text;
+  }
+
+  int _number(dynamic value) => value is num ? value.toInt() : 0;
+
+  String _napLabel(int minutes) {
+    if (minutes == 0) return 'Καθόλου';
+    if (minutes < 60) return '$minutes\'';
+    if (minutes == 60) return '1 ώρα';
+    if (minutes == 90) return '1½ ώρα';
+    return '${minutes ~/ 60} ώρες';
+  }
+}
+
+class DayMenuCard extends StatelessWidget {
+  final Map<String, dynamic> menu;
+  final List<Color> colors;
+  const DayMenuCard({super.key, required this.menu, required this.colors});
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      ('Πρωινό', Icons.free_breakfast_rounded, menu['breakfast']),
+      ('Δεκατιανό', Icons.apple_rounded, menu['midMorning']),
+      ('Μεσημεριανό', Icons.lunch_dining_rounded, menu['lunch']),
+      ('Απογευματινό', Icons.icecream_rounded, menu['afternoon']),
+    ];
+
+    final filled = items.where((i) => i.$3 != null && (i.$3 as String).isNotEmpty).toList();
+    if (filled.isEmpty) {
+      return const DayHistoryEmptyCard('Δεν υπάρχει καταχωρημένο μενού για σήμερα');
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(color: colors[0].withOpacity(0.08), blurRadius: 16, offset: const Offset(0, 4)),
+        ],
+      ),
+      child: Column(
+        children: [
+          ...filled.map((item) {
+            final isLast = filled.last == item && (menu['notes'] == null || (menu['notes'] as String).isEmpty);
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              decoration: BoxDecoration(
+                border: isLast ? null : const Border(bottom: BorderSide(color: Color(0xFFF3F4F6), width: 1)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [colors[0].withOpacity(0.14), colors[1].withOpacity(0.14)],
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(item.$2, color: colors[0], size: 18),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.$1,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFE95926),
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          item.$3 as String,
+                          style: const TextStyle(fontSize: 14, color: Color(0xFF2C2422), fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+          if (menu['notes'] != null && (menu['notes'] as String).isNotEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: const BoxDecoration(
+                color: Color(0xFFF6F3FA),
+                borderRadius: BorderRadius.vertical(bottom: Radius.circular(18)),
+              ),
+              child: Text('📝 ${menu['notes']}', style: TextStyle(color: colors[0], fontSize: 12)),
+            ),
+        ],
+      ),
+    );
+  }
+}
