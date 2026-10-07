@@ -14,6 +14,7 @@ import '../../features/parent/screens/teacher_absences_screen.dart';
 import '../../features/parent/screens/parent_meetings_screen.dart';
 import '../../features/parent/screens/billing_screen.dart';
 import '../../features/parent/screens/bulletin_screen.dart';
+import '../../features/parent/screens/parent_child_pages.dart';
 import '../../features/parent/screens/thematic_screen.dart';
 import '../../features/teacher/screens/teacher_meetings_screen.dart';
 import '../../features/teacher/screens/teacher_thematic_screen.dart';
@@ -154,7 +155,7 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
   Future<void> _show(Map<String, dynamic> notice) async {
     final id = notice['id'] as String? ?? '';
     final title = notice['title'] as String? ?? 'Ονειροχώρα';
-    final body = notice['body'] as String? ?? '';
+    final body = _noticeBody(notice);
     const details = AndroidNotificationDetails(
       'oneirochora',
       'Ονειροχώρα',
@@ -185,6 +186,22 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
 
   @override
   Widget build(BuildContext context) => const SizedBox.shrink();
+}
+
+bool _isRegulation(Map<String, dynamic> notice, Map<String, dynamic> data) {
+  final type = notice['type']?.toString() ?? '';
+  final title = (notice['title']?.toString() ?? '').toLowerCase();
+  final screen = data['screen']?.toString() ?? '';
+  return type == 'regulation' || screen == 'regulations' || title.contains('κανονισμ');
+}
+
+String _noticeBody(Map<String, dynamic> notice) {
+  final raw = notice['data'];
+  final data = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+  final body = notice['body']?.toString() ?? '';
+  if (!_isRegulation(notice, data)) return body;
+  if (body.length <= 220 && body.contains('Πάτα')) return body;
+  return 'Ανέβηκε κανονισμός. Πάτα για να τον διαβάσεις.';
 }
 
 Future<void> openNotification(BuildContext context, WidgetRef ref, Map<String, dynamic> notice, {bool fromList = false}) async {
@@ -272,6 +289,19 @@ Future<void> openNotification(BuildContext context, WidgetRef ref, Map<String, d
 
   if (type == 'teacher_absence') {
     await Navigator.push(context, MaterialPageRoute(builder: (_) => TeacherAbsencesScreen(schoolId: schoolId)));
+    return;
+  }
+
+  if (_isRegulation(notice, data)) {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RegulationsScreen(
+          schoolId: schoolId,
+          academicYear: data['academicYear']?.toString() ?? '',
+        ),
+      ),
+    );
     return;
   }
 
@@ -393,7 +423,7 @@ class InboxScreen extends ConsumerWidget {
                       children: [
                         CircleAvatar(
                           backgroundColor: unread ? const Color(0xFFF3E8F7) : const Color(0xFFF3F4F6),
-                          child: Icon(_icon(notice['type'] as String?), color: const Color(0xFF77328D)),
+                          child: Icon(_icon(notice), color: const Color(0xFF77328D)),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -402,7 +432,7 @@ class InboxScreen extends ConsumerWidget {
                             children: [
                               Text(notice['title'] as String? ?? 'Ειδοποίηση', style: const TextStyle(fontWeight: FontWeight.w800)),
                               const SizedBox(height: 2),
-                              Text(notice['body'] as String? ?? ''),
+                              Text(_noticeBody(notice)),
                               if (imageUrl != null && imageUrl.isNotEmpty)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 8),
@@ -427,7 +457,11 @@ class InboxScreen extends ConsumerWidget {
     );
   }
 
-  IconData _icon(String? type) {
+  IconData _icon(Map<String, dynamic> notice) {
+    final raw = notice['data'];
+    final data = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+    final type = notice['type'] as String?;
+    if (type == 'regulation' || _isRegulation(notice, data)) return Icons.gavel_rounded;
     if (type == 'message') return Icons.chat_bubble_rounded;
     if (type == 'daily_report') return Icons.menu_book_rounded;
     if (type == 'payment') return Icons.payments_rounded;

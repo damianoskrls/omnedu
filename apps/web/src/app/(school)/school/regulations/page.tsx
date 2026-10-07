@@ -135,20 +135,21 @@ export default function RegulationsPage() {
     }
   }
 
-  async function saveAndNotify() {
-    if (!schoolId || !draft.trim()) return;
+  async function notifyParents() {
+    if (!schoolId || !savedText) return;
     setSending(true);
     setError('');
     try {
-      const ok = await persist(draft);
-      if (!ok) return;
       await broadcastsApi.send(schoolId, {
-        title: `${current.label} ${year}`,
-        body: draft.trim(),
-        targetType: 'all',
+        title: `Ανέβηκε κανονισμός ${year}`,
+        body: `Ανέβηκε ο ${current.label.toLowerCase()} για το ${year}. Πάτα για να τον διαβάσεις.`,
+        targetType: 'parents',
+        appType: 'regulation',
+        appScreen: 'regulations',
+        academicYear: year,
+        kind: tab,
       });
-      setEditing(false);
-      setNotice('Αποθηκεύτηκε και στάλθηκε ως ειδοποίηση σε όλους.');
+      setNotice(`Η ειδοποίηση στάλθηκε στους γονείς για το ${year}.`);
     } catch (err: any) {
       setError(typeof err?.message === 'string' ? err.message : 'Η αποστολή της ειδοποίησης απέτυχε.');
     } finally {
@@ -202,9 +203,16 @@ export default function RegulationsPage() {
             <p className="text-xs text-gray-500">Σχολικό έτος {year}</p>
           </div>
           {isAdmin && !editing && (
-            <button type="button" onClick={startEdit} className="rounded-lg bg-[#77328D] px-3 py-1.5 text-sm font-semibold text-white">
-              Επεξεργασία
-            </button>
+            <div className="flex flex-wrap justify-end gap-2">
+              {savedText && (
+                <button type="button" onClick={notifyParents} disabled={sending} className="rounded-lg bg-[#E95926] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50">
+                  {sending ? 'Αποστολή...' : 'Αποστολή σε γονείς'}
+                </button>
+              )}
+              <button type="button" onClick={startEdit} className="rounded-lg bg-[#77328D] px-3 py-1.5 text-sm font-semibold text-white">
+                Επεξεργασία
+              </button>
+            </div>
           )}
         </div>
 
@@ -219,11 +227,8 @@ export default function RegulationsPage() {
             {error && <p className="text-sm text-red-600">{error}</p>}
             <div className="flex flex-wrap justify-end gap-2">
               <button type="button" onClick={() => setEditing(false)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm">Ακύρωση</button>
-              <button type="button" onClick={save} disabled={saving || sending} className="rounded-lg border border-[#77328D] px-4 py-2 text-sm font-semibold text-[#642678] disabled:opacity-50">
+              <button type="button" onClick={save} disabled={saving} className="rounded-lg bg-[#77328D] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
                 {saving ? 'Αποθήκευση...' : 'Αποθήκευση'}
-              </button>
-              <button type="button" onClick={saveAndNotify} disabled={saving || sending || !draft.trim()} className="rounded-lg bg-[#E95926] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-                {sending ? 'Αποστολή...' : 'Αποστολή σε όλους'}
               </button>
             </div>
           </div>
@@ -235,6 +240,7 @@ export default function RegulationsPage() {
               </p>
             )}
             {notice && <p className="mb-3 text-sm font-medium text-emerald-700">{notice}</p>}
+            {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
             <div className="whitespace-pre-wrap text-sm leading-7 text-[#3f3834]">{text}</div>
           </div>
         )}

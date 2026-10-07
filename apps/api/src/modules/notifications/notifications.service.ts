@@ -27,6 +27,10 @@ interface BroadcastData {
   targetClassId?: string;
   targetStudentId?: string;
   channels?: string[]; // push | email | sms
+  appType?: string;
+  appScreen?: string;
+  academicYear?: string;
+  kind?: string;
 }
 
 @Injectable()
@@ -104,6 +108,12 @@ export class NotificationsService implements OnModuleInit {
     let recipientCount = 0;
     let pushDevices = 0;
     let pushDelivered = 0;
+    const appType = (data.appType || 'broadcast').trim().slice(0, 40) || 'broadcast';
+    const screen = (data.appScreen || (appType === 'regulation' ? 'regulations' : 'inbox')).trim().slice(0, 40);
+    const noticeBody = appType === 'regulation'
+      ? this.regulationNotice(data.body, data.academicYear)
+      : data.body;
+    const preview = this.pushPreview(noticeBody);
 
     // ─── Push notifications ─────────────────────────────────
     if (channels.includes('push')) {
@@ -113,7 +123,6 @@ export class NotificationsService implements OnModuleInit {
         const chunks = this.chunkArray(tokens, 500);
         for (const chunk of chunks) {
           try {
-            const preview = this.pushPreview(data.body);
             const res = await admin.messaging(this.fcmApp).sendEachForMulticast({
               tokens: chunk,
               notification: {
@@ -122,11 +131,13 @@ export class NotificationsService implements OnModuleInit {
                 ...(data.imageUrl ? { imageUrl: data.imageUrl } : {}),
               },
               data: {
-                type: 'broadcast',
-                screen: 'inbox',
+                type: appType,
+                screen,
                 schoolId,
                 title: data.title.slice(0, 120),
                 body: preview,
+                ...(data.academicYear ? { academicYear: data.academicYear.slice(0, 20) } : {}),
+                ...(data.kind ? { kind: data.kind.slice(0, 20) } : {}),
                 ...(data.imageUrl ? { imageUrl: data.imageUrl } : {}),
               },
               android: {
@@ -146,13 +157,13 @@ export class NotificationsService implements OnModuleInit {
 
     // ─── Email notifications ────────────────────────────────
     if (channels.includes('email')) {
-      const emailCount = await this.sendEmails(schoolId, userIds, data);
+      const emailCount = await this.sendEmails(schoolId, userIds, { ...data, body: noticeBody });
       if (!channels.includes('push')) recipientCount = emailCount;
     }
 
     // ─── SMS notifications ──────────────────────────────────
     if (channels.includes('sms')) {
-      const smsCount = await this.sendSms(schoolId, userIds, data);
+      const smsCount = await this.sendSms(schoolId, userIds, { ...data, body: noticeBody });
       if (!channels.includes('push') && !channels.includes('email')) recipientCount = smsCount;
     }
 
@@ -164,7 +175,7 @@ export class NotificationsService implements OnModuleInit {
         id: crypto.randomUUID(),
         schoolId,
         title: data.title,
-        body: data.body,
+        body: noticeBody,
         imageUrl: data.imageUrl ?? null,
         targetType: data.targetType,
         targetClassId: data.targetClassId ?? null,
@@ -187,10 +198,15 @@ export class NotificationsService implements OnModuleInit {
           id: crypto.randomUUID(),
           schoolId,
           userId,
-          type: 'broadcast',
+          type: appType,
           title: data.title,
-          body: data.body,
-          data: { screen: 'inbox', ...(data.imageUrl ? { imageUrl: data.imageUrl } : {}) },
+          body: noticeBody,
+          data: {
+            screen,
+            ...(data.academicYear ? { academicYear: data.academicYear } : {}),
+            ...(data.kind ? { kind: data.kind } : {}),
+            ...(data.imageUrl ? { imageUrl: data.imageUrl } : {}),
+          },
         })),
         skipDuplicates: true,
       });
@@ -406,6 +422,16 @@ export class NotificationsService implements OnModuleInit {
     if (!userIds.length) return [];
     const tokens = await this.prisma.fcmToken.findMany({ where: { userId: { in: userIds } } });
     return tokens.map(t => t.token);
+  }
+
+  private regulationNotice(body: string, academicYear?: string) {
+    const text = body.replace(/\s+/g, ' ').trim();
+    const year = (academicYear || '').trim();
+    const fallback = year
+      ? `Ανέβηκε κανονισμός για το ${year}. Πάτα για να τον διαβάσεις.`
+      : 'Ανέβηκε κανονισμός. Πάτα για να τον διαβάσεις.';
+    if (!text || text.length > 220) return fallback;
+    return text;
   }
 
   private pushPreview(body: string) {

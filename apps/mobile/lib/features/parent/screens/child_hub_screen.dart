@@ -74,9 +74,6 @@ class ChildHubScreen extends StatelessWidget {
       _Tile('Παροχές & σχολικό', Icons.directions_bus_rounded, const Color(0xFF0369A1), () {
         Navigator.push(context, MaterialPageRoute(builder: (_) => ServicesScreen(schoolId: schoolId, child: child)));
       }),
-      _Tile('Κανονισμοί', Icons.gavel_rounded, const Color(0xFF642678), () {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => RegulationsScreen(schoolId: schoolId)));
-      }),
       _Tile('Εκπαιδευτικοί', Icons.groups_rounded, const Color(0xFF77328D), () {
         Navigator.push(context, MaterialPageRoute(builder: (_) => TeachersScreen(schoolId: schoolId, child: child)));
       }),
@@ -127,6 +124,45 @@ class ChildHubScreen extends StatelessWidget {
                   Text(teachers.join(', '), textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF6B7280))),
                 ],
               ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Material(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => RegulationsScreen(schoolId: schoolId)));
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF3E8F7),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(Icons.gavel_rounded, color: Color(0xFF642678)),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Κανονισμοί', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF2C2422))),
+                          SizedBox(height: 2),
+                          Text('Λειτουργίας και οικονομικός, για αυτό το σχολικό έτος', style: TextStyle(color: Color(0xFF6B7280), fontSize: 13)),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right_rounded, color: Color(0xFF77328D)),
+                  ],
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 16),

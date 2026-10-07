@@ -893,17 +893,19 @@ Widget _teacherLetter(String name) {
 
 class RegulationsScreen extends ConsumerWidget {
   final String schoolId;
-  const RegulationsScreen({super.key, required this.schoolId});
+  final String academicYear;
+  const RegulationsScreen({super.key, required this.schoolId, this.academicYear = ''});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final school = ref.watch(_regulationsProvider(schoolId));
+    final query = (schoolId: schoolId, year: academicYear);
+    final school = ref.watch(_regulationsProvider(query));
     return Scaffold(
       backgroundColor: const Color(0xFFF6F3FA),
       appBar: AppBar(
         title: const Text('Κανονισμοί'),
         actions: [
-          IconButton(onPressed: () => ref.invalidate(_regulationsProvider(schoolId)), icon: const Icon(Icons.refresh_rounded)),
+          IconButton(onPressed: () => ref.invalidate(_regulationsProvider(query)), icon: const Icon(Icons.refresh_rounded)),
         ],
       ),
       body: school.when(
@@ -926,7 +928,7 @@ class RegulationsScreen extends ConsumerWidget {
           }
           return RefreshIndicator(
             color: const Color(0xFF77328D),
-            onRefresh: () => ref.refresh(_regulationsProvider(schoolId).future),
+            onRefresh: () => ref.refresh(_regulationsProvider(query).future),
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
@@ -948,32 +950,42 @@ class RegulationsScreen extends ConsumerWidget {
   }
 }
 
-final _regulationsProvider = FutureProvider.family<Map<String, dynamic>, String>((ref, schoolId) async {
+final _regulationsProvider = FutureProvider.family<Map<String, dynamic>, ({String schoolId, String year})>((ref, query) async {
   final dio = ref.read(dioProvider);
+  Future<Map<String, dynamic>?> load(String path) async {
+    try {
+      final resp = await dio.get(path);
+      if (resp.data is Map) return Map<String, dynamic>.from(resp.data as Map);
+    } catch (_) {}
+    return null;
+  }
+
+  bool filled(Map<String, dynamic>? row) {
+    final operating = (row?['operatingRegulation'] as String?)?.trim() ?? '';
+    final financial = (row?['financialRegulation'] as String?)?.trim() ?? '';
+    return operating.isNotEmpty || financial.isNotEmpty;
+  }
+
+  final year = query.year.trim();
+  final paths = <String>[
+    if (year.isNotEmpty) '/schools/${query.schoolId}/regulations?academicYear=${Uri.encodeQueryComponent(year)}',
+    '/schools/${query.schoolId}/regulations',
+  ];
   Map<String, dynamic>? fromYear;
-  try {
-    final resp = await dio.get('/schools/$schoolId/regulations');
-    if (resp.data is Map) fromYear = Map<String, dynamic>.from(resp.data as Map);
-  } catch (_) {}
-  final operating = (fromYear?['operatingRegulation'] as String?)?.trim() ?? '';
-  final financial = (fromYear?['financialRegulation'] as String?)?.trim() ?? '';
-  if (operating.isNotEmpty || financial.isNotEmpty) return fromYear!;
-  try {
-    final school = await dio.get('/schools/$schoolId');
-    if (school.data is Map) {
-      final row = Map<String, dynamic>.from(school.data as Map);
-      final op = (row['operatingRegulation'] as String?)?.trim() ?? '';
-      final fin = (row['financialRegulation'] as String?)?.trim() ?? '';
-      if (op.isNotEmpty || fin.isNotEmpty) {
-        return {
-          'academicYear': fromYear?['academicYear'],
-          'operatingRegulation': row['operatingRegulation'],
-          'financialRegulation': row['financialRegulation'],
-        };
-      }
-    }
-  } catch (_) {}
-  return fromYear ?? {'academicYear': null, 'operatingRegulation': null, 'financialRegulation': null};
+  for (final path in paths) {
+    final row = await load(path);
+    fromYear ??= row;
+    if (filled(row)) return row!;
+  }
+  final school = await load('/schools/${query.schoolId}');
+  if (filled(school)) {
+    return {
+      'academicYear': fromYear?['academicYear'] ?? (year.isEmpty ? null : year),
+      'operatingRegulation': school?['operatingRegulation'],
+      'financialRegulation': school?['financialRegulation'],
+    };
+  }
+  return fromYear ?? {'academicYear': year.isEmpty ? null : year, 'operatingRegulation': null, 'financialRegulation': null};
 });
 
 class _RegulationBlock extends StatelessWidget {

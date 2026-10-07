@@ -323,6 +323,10 @@ export const broadcastsApi = {
     targetClassId?: string;
     targetStudentId?: string;
     channels?: string[];
+    appType?: string;
+    appScreen?: string;
+    academicYear?: string;
+    kind?: string;
   }) => api.post(`/schools/${schoolId}/notifications/send`, data),
   uploadImage: (schoolId: string, file: File) => {
     const form = new FormData();
