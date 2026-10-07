@@ -57,23 +57,31 @@ export default function NotificationsPage() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [form, setForm]             = useState(defaultForm());
   const [sent, setSent]             = useState(false);
+  const [sendNote, setSendNote]     = useState('');
+  const [pushConfigured, setPushConfigured] = useState<boolean | null>(null);
+  const [pushDevices, setPushDevices] = useState(0);
 
   const load = useCallback(async () => {
     if (!schoolId) return;
     setLoading(true);
     try {
-      const [bData, cData, sData] = await Promise.all([
+      const [bData, cData, sData, settingsData] = await Promise.all([
         broadcastsApi.list(schoolId),
         classesApi.list(schoolId),
         studentsApi.list(schoolId),
+        isAdmin ? broadcastsApi.getSettings(schoolId) : Promise.resolve(null),
       ]);
       setBroadcasts(Array.isArray(bData) ? bData : []);
       setClasses(Array.isArray(cData) ? cData : []);
       setStudents(Array.isArray(sData) ? sData : []);
+      if (settingsData) {
+        setPushConfigured(Boolean((settingsData as any).pushConfigured));
+        setPushDevices(Number((settingsData as any).pushDevices ?? 0));
+      }
     } finally {
       setLoading(false);
     }
-  }, [schoolId]);
+  }, [schoolId, isAdmin]);
 
   const loadSettings = useCallback(async () => {
     if (!schoolId || !isAdmin) return;
@@ -98,7 +106,7 @@ export default function NotificationsPage() {
     if (form.channels.length === 0) return;
     setSending(true);
     try {
-      await broadcastsApi.send(schoolId, {
+      const result: any = await broadcastsApi.send(schoolId, {
         title: form.title,
         body: form.body,
         imageUrl: form.imageUrl || undefined,
@@ -107,9 +115,22 @@ export default function NotificationsPage() {
         targetStudentId: form.targetStudentId || undefined,
         channels: form.channels,
       });
+      if (form.channels.includes('push')) {
+        if (!result?.pushConfigured) {
+          setSendNote('Η ειδοποίηση μπήκε στην εφαρμογή. Δεν χτυπάει με κλειστό app, γιατί δεν έχει συνδεθεί το Firebase της Ονειροχώρας.');
+        } else if (!result?.pushDevices) {
+          setSendNote('Η ειδοποίηση μπήκε στην εφαρμογή. Κανένα κινητό δεν έχει ανοίξει ακόμα την έκδοση που δέχεται ειδοποιήσεις με κλειστό app.');
+        } else if (result?.pushDelivered > 0) {
+          setSendNote(`Έφτασε σε ${result.pushDelivered} κινητά, ακόμα και αν η εφαρμογή είναι κλειστή.`);
+        } else {
+          setSendNote('Η ειδοποίηση μπήκε στην εφαρμογή, αλλά δεν παραδόθηκε σε κινητό.');
+        }
+      } else {
+        setSendNote('Η ειδοποίηση καταχωρήθηκε.');
+      }
       setSent(true);
       setForm(defaultForm());
-      setTimeout(() => setSent(false), 3000);
+      setTimeout(() => setSent(false), 6000);
       load();
     } finally {
       setSending(false);
@@ -269,6 +290,17 @@ export default function NotificationsPage() {
         )}
       </div>
 
+      {isAdmin && pushConfigured === false && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Η ειδοποίηση φαίνεται μέσα στην εφαρμογή όταν είναι ανοιχτή. Για να χτυπάει στο κινητό και με κλειστή εφαρμογή, όπως στο Facebook, χρειάζεται σύνδεση Firebase. Αυτή δεν έχει μπει ακόμα στον server.
+        </div>
+      )}
+      {isAdmin && pushConfigured === true && pushDevices === 0 && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Το Firebase είναι συνδεδεμένο, αλλά κανένα κινητό δεν έχει ανοίξει ακόμα την έκδοση που δηλώνει το τηλέφωνο για ειδοποιήσεις.
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Compose panel */}
         {isAdmin && (
@@ -411,6 +443,7 @@ export default function NotificationsPage() {
                   <Send size={14} />
                   {sent ? 'Στάλθηκε!' : sending ? 'Αποστολή...' : 'Αποστολή'}
                 </button>
+                {sendNote && <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">{sendNote}</p>}
               </div>
             </div>
           </div>

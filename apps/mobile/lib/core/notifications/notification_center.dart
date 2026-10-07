@@ -11,6 +11,7 @@ import '../../features/parent/screens/billing_screen.dart';
 import '../../features/parent/screens/bulletin_screen.dart';
 import '../api/api_client.dart';
 import '../providers/auth_provider.dart';
+import 'phone_push.dart';
 
 const _shownKey = 'shown_notification_ids';
 final _plugin = FlutterLocalNotificationsPlugin();
@@ -44,6 +45,25 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
 
   Future<void> _start() async {
     await _prepare();
+    await startPhonePush(
+      onToken: (token) async {
+        if (!mounted || widget.schoolId.isEmpty) return;
+        try {
+          await ref.read(dioProvider).post(
+            '/schools/${widget.schoolId}/notifications/device',
+            data: {'token': token, 'platform': 'android'},
+          );
+        } catch (_) {}
+      },
+      onOpened: (data) {
+        if (!mounted) return;
+        openNotification(context, ref, {
+          'type': data['type'] ?? 'broadcast',
+          'title': data['title'] ?? 'Ονειροχώρα',
+          'data': data,
+        });
+      },
+    );
     await _poll();
     _timer = Timer.periodic(const Duration(seconds: 20), (_) => _poll());
   }

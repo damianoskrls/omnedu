@@ -46,7 +46,7 @@ export class NotificationsService {
   }
 
   async getSettings(schoolId: string) {
-    return this.prisma.notificationSettings.upsert({
+    const settings = await this.prisma.notificationSettings.upsert({
       where: { schoolId },
       create: {
         id: crypto.randomUUID(),
@@ -56,6 +56,10 @@ export class NotificationsService {
       },
       update: {},
     });
+    const pushDevices = await this.prisma.fcmToken.count({
+      where: { user: { schoolMemberships: { some: { schoolId, isActive: true } } } },
+    });
+    return { ...settings, pushConfigured: Boolean(this.fcmApp), pushDevices };
   }
 
   async updateSettings(schoolId: string, data: any) {
@@ -74,10 +78,13 @@ export class NotificationsService {
     const channels = data.channels ?? ['push'];
     const userIds = await this.getTargetUserIds(schoolId, data);
     let recipientCount = 0;
+    let pushDevices = 0;
+    let pushDelivered = 0;
 
     // ─── Push notifications ─────────────────────────────────
     if (channels.includes('push')) {
       const tokens = await this.getTargetTokens(userIds);
+      pushDevices = tokens.length;
       if (tokens.length > 0 && this.fcmApp) {
         const chunks = this.chunkArray(tokens, 500);
         for (const chunk of chunks) {
@@ -90,15 +97,14 @@ export class NotificationsService {
                 ...(data.imageUrl ? { imageUrl: data.imageUrl } : {}),
               },
               data: { type: 'broadcast', screen: 'inbox', schoolId },
-              android: { priority: 'high', notification: { channelId: 'oneirochora' } },
+              android: { priority: 'high', notification: { channelId: 'oneirochora', sound: 'default' } },
             });
+            pushDelivered += res.successCount;
             recipientCount += res.successCount;
           } catch (e) {
             this.logger.error('FCM send error', e);
           }
         }
-      } else {
-        recipientCount = tokens.length;
       }
     }
 
@@ -154,7 +160,12 @@ export class NotificationsService {
       });
     }
 
-    return broadcast;
+    return {
+      ...broadcast,
+      pushConfigured: Boolean(this.fcmApp),
+      pushDevices,
+      pushDelivered,
+    };
   }
 
   async registerDevice(userId: string, token: string, platform = 'android') {
@@ -235,7 +246,7 @@ export class NotificationsService {
           tokens: chunk,
           notification: { title, body },
           data: payload,
-          android: { priority: 'high', notification: { channelId: 'oneirochora' } },
+          android: { priority: 'high', notification: { channelId: 'oneirochora', sound: 'default' } },
         });
         const stale: string[] = [];
         res.responses.forEach((item, index) => {
