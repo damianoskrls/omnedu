@@ -1,6 +1,6 @@
-import { BadRequestException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, HttpException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { dateOnly, menuUnique, normalizeAudience, weekdaysOfMonth } from './menu-audience';
+import { dateOnly, ensureMenuSchema, menuUnique, normalizeAudience, weekdaysOfMonth } from './menu-audience';
 import { parseMenuJson, parseMenuText, ParsedMenu } from './menu-text.parser';
 
 type MenuInput = {
@@ -23,12 +23,26 @@ const AI_PROMPT = `Είσαι βοηθός παιδικού σταθμού. Δι
 - Μην επινοείς ημέρες που δεν φαίνονται.`;
 
 @Injectable()
-export class DailyMenusService {
+export class DailyMenusService implements OnModuleInit {
   private readonly logger = new Logger(DailyMenusService.name);
 
   constructor(private prisma: PrismaService) {}
 
+  async onModuleInit() {
+    await this.ensureSchema();
+  }
+
+  private async ensureSchema() {
+    try {
+      await ensureMenuSchema((sql) => this.prisma.$executeRawUnsafe(sql));
+    } catch (error) {
+      this.logger.warn(`Menu schema check skipped: ${error}`);
+    }
+  }
+
   async findAll(schoolId: string, from?: string, to?: string, audienceType?: string, audienceIds?: string) {
+    await this.ensureSchema();
+    try {
     const audience = audienceType ? normalizeAudience(audienceType, audienceIds) : null;
     return this.prisma.dailyMenu.findMany({
       where: {
@@ -45,6 +59,11 @@ export class DailyMenusService {
       },
       orderBy: { date: 'asc' },
     });
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      this.logger.error(error);
+      throw new BadRequestException('Το διατροφολόγιο δεν φορτώθηκε. Κάνε ανανέωση και δοκίμασε ξανά.');
+    }
   }
 
   async findByDate(schoolId: string, date: string, audienceType?: string, audienceIds?: string) {
@@ -57,6 +76,10 @@ export class DailyMenusService {
   }
 
   async upsert(schoolId: string, data: MenuInput) {
+    await this.ensureSchema();
+    if (!/^\d{4}-\d{2}-\d{2}/.test(String(data.date || ''))) {
+      throw new BadRequestException('Η ημερομηνία της ημέρας δεν είναι έγκυρη.');
+    }
     const audience = normalizeAudience(data.audienceType, data.audienceIds);
     const date = dateOnly(data.date);
     const meals = {
@@ -66,14 +89,21 @@ export class DailyMenusService {
       afternoon: data.afternoon ?? null,
       notes: data.notes ?? null,
     };
-    return this.prisma.dailyMenu.upsert({
-      where: menuUnique(schoolId, date, audience.audienceType, audience.audienceIds),
-      create: { schoolId, date, ...audience, ...meals },
-      update: meals,
-    });
+    try {
+      return await this.prisma.dailyMenu.upsert({
+        where: menuUnique(schoolId, date, audience.audienceType, audience.audienceIds),
+        create: { schoolId, date, ...audience, ...meals },
+        update: meals,
+      });
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      this.logger.error(error);
+      throw new BadRequestException('Η ημέρα του διατροφολόγιου δεν αποθηκεύτηκε. Δοκίμασε ξανά.');
+    }
   }
 
   async bulkUpsert(schoolId: string, body: { days?: MenuInput[]; audienceType?: string; audienceIds?: unknown }) {
+    await this.ensureSchema();
     const days = body.days || [];
     if (!days.length) throw new BadRequestException('Δεν υπάρχουν ημέρες για αποθήκευση.');
     const audience = normalizeAudience(body.audienceType ?? days[0]?.audienceType, body.audienceIds ?? days[0]?.audienceIds);

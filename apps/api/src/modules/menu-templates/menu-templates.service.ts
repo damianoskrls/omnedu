@@ -1,6 +1,6 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { dateOnly, menuUnique, normalizeAudience, weekdaysOfMonth } from '../daily-menus/menu-audience';
+import { dateOnly, ensureMenuSchema, menuUnique, normalizeAudience, weekdaysOfMonth } from '../daily-menus/menu-audience';
 import { SEPTEMBER_2026_TEMPLATE } from '../daily-menus/september-2026';
 
 type EntryInput = {
@@ -13,8 +13,18 @@ type EntryInput = {
 };
 
 @Injectable()
-export class MenuTemplatesService {
+export class MenuTemplatesService implements OnModuleInit {
+  private readonly logger = new Logger(MenuTemplatesService.name);
+
   constructor(private prisma: PrismaService) {}
+
+  async onModuleInit() {
+    try {
+      await ensureMenuSchema((sql) => this.prisma.$executeRawUnsafe(sql));
+    } catch (error) {
+      this.logger.warn(`Menu schema check skipped: ${error}`);
+    }
+  }
 
   async findAll(schoolId: string) {
     return this.prisma.menuTemplate.findMany({
