@@ -12,7 +12,14 @@ const MENU_SCHEMA = [
 ];
 
 export async function ensureMenuSchema(execute: (sql: string) => Promise<unknown>) {
-  for (const sql of MENU_SCHEMA) await execute(sql);
+  for (const sql of MENU_SCHEMA) {
+    try {
+      await execute(sql);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/already exists|duplicate/i.test(message)) throw error;
+    }
+  }
 }
 
 export function normalizeAudience(type?: string, ids?: unknown) {
