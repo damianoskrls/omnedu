@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 const userCard = {
@@ -107,18 +107,29 @@ export class MessagesService {
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
 
-    await this.prisma.conversationParticipant.update({
-      where: { conversationId_userId: { conversationId, userId } },
-      data: { lastReadAt: new Date() },
-    });
+    try {
+      await this.prisma.conversationParticipant.update({
+        where: { conversationId_userId: { conversationId, userId } },
+        data: { lastReadAt: new Date() },
+      });
+    } catch {
+      // A failed read-receipt must not hide the messages.
+    }
 
     return messages.reverse();
   }
 
   async sendMessage(conversationId: string, senderId: string, body: string, mediaUrl?: string) {
     await this.assertParticipant(conversationId, senderId);
+    const text = (body ?? '').trim();
+    if (!text) throw new BadRequestException('Το μήνυμα είναι κενό');
     return this.prisma.message.create({
-      data: { conversationId, senderId, body, mediaUrl },
+      data: {
+        conversationId,
+        senderId,
+        body: text,
+        ...(mediaUrl ? { mediaUrl } : {}),
+      },
       include: { sender: { select: userCard } },
     });
   }
