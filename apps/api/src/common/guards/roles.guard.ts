@@ -20,6 +20,7 @@ export class RolesGuard implements CanActivate {
 
     if (user.isSuperAdmin && requiredRoles.includes('super_admin')) return true;
     if (user.isSuperAdmin) return true;
+    if (user.role === 'owner' && requiredRoles.includes('school_admin')) return true;
 
     if (!requiredRoles.includes(user.role)) {
       throw new ForbiddenException(`Requires role: ${requiredRoles.join(' | ')}`);

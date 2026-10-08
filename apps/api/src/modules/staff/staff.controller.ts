@@ -22,6 +22,15 @@ export class StaffController {
     return this.staff.findAll(schoolId);
   }
 
+  @Post()
+  @Roles('school_admin')
+  createOwner(
+    @Param('schoolId') schoolId: string,
+    @Body() body: { fullName?: string; phone?: string },
+  ) {
+    return this.staff.createOwner(schoolId, body);
+  }
+
   @Get('me/leaves')
   myLeaves(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
     return this.staff.myLeaves(schoolId, user.sub);

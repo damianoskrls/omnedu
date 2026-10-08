@@ -50,7 +50,7 @@ export class CelebrationsService implements OnModuleInit {
       where: { schoolId, ...(academicYear ? { academicYear } : {}) },
       orderBy: [{ eventDate: 'asc' }, { createdAt: 'desc' }],
     });
-    if (user.isSuperAdmin || user.role === 'school_admin' || user.role === 'teacher') return rows;
+    if (user.isSuperAdmin || user.role === 'school_admin' || user.role === 'owner' || user.role === 'teacher') return rows;
     const scope = await this.parentScope(schoolId, user.sub);
     return rows.filter((row) => this.visibleToParent(row.audienceType, row.audienceIds, scope));
   }
@@ -59,7 +59,7 @@ export class CelebrationsService implements OnModuleInit {
     await this.ensureTable();
     const row = await this.prisma.schoolCelebration.findFirst({ where: { id, schoolId } });
     if (!row) throw new NotFoundException('Η γιορτή δεν βρέθηκε.');
-    if (user.isSuperAdmin || user.role === 'school_admin' || user.role === 'teacher') return row;
+    if (user.isSuperAdmin || user.role === 'school_admin' || user.role === 'owner' || user.role === 'teacher') return row;
     const scope = await this.parentScope(schoolId, user.sub);
     if (!this.visibleToParent(row.audienceType, row.audienceIds, scope)) {
       throw new NotFoundException('Η γιορτή δεν βρέθηκε.');

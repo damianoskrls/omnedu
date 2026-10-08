@@ -177,6 +177,8 @@ String _roleAccusative(String role) {
       return 'εκπαιδευτικό';
     case 'school_admin':
       return 'διαχειριστή';
+    case 'owner':
+      return 'ιδιοκτήτη';
     default:
       return 'άλλο ρόλο';
   }

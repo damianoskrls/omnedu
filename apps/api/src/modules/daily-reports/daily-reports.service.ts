@@ -180,6 +180,11 @@ export class DailyReportsService {
     });
     const teacherIds = enrollment?.class.teachers.map((teacher) => teacher.userId) ?? [];
     if (teacherIds.includes(teacherId)) return;
+    const owner = await this.prisma.schoolMember.findFirst({
+      where: { schoolId, userId: teacherId, role: 'owner', isActive: true },
+      select: { id: true },
+    });
+    if (owner) return;
     if (day && teacherIds.length) {
       const cover = await this.prisma.teacherAbsence.findFirst({
         where: {

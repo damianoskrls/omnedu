@@ -69,7 +69,7 @@ export class ReportsService {
         _sum: { totalDue: true, paidAmount: true, subsidyTotal: true, schoolFee: true, busFee: true, activityFees: true },
       }),
       this.prisma.schoolMember.count({ where: { schoolId, role: 'parent', isActive: true } }),
-      this.prisma.schoolMember.count({ where: { schoolId, role: { in: ['teacher', 'school_admin'] }, isActive: true } }),
+      this.prisma.schoolMember.count({ where: { schoolId, role: { in: ['teacher', 'school_admin', 'owner'] }, isActive: true } }),
       this.prisma.student.count({ where: { schoolId, isActive: false } }),
     ]);
 

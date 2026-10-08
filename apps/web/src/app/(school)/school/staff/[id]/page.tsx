@@ -37,6 +37,7 @@ const MONTH_NAMES = ['', 'Ιαν', 'Φεβ', 'Μαρ', 'Απρ', 'Μαΐ', 'Ιο
 const ROLE_LABELS: Record<string, string> = {
   teacher: 'Εκπαιδευτικός',
   school_admin: 'Διευθυντής/Διαχειριστής',
+  owner: 'Ιδιοκτήτης',
 };
 
 function leaveBalance(entitlement: unknown, requests: any[] | undefined) {

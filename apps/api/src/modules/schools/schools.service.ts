@@ -295,7 +295,7 @@ export class SchoolsService implements OnModuleInit {
       },
       orderBy: { date: 'asc' },
     });
-    if (user.isSuperAdmin || user.role === 'school_admin' || user.role === 'teacher') return rows;
+    if (user.isSuperAdmin || user.role === 'school_admin' || user.role === 'owner' || user.role === 'teacher') return rows;
     const teacherIds = await this.parentTeacherIds(schoolId, user.sub);
     return rows.filter((row) => teacherIds.has(row.teacherUserId));
   }

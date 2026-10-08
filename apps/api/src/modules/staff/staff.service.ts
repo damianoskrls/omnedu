@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { normalizePhone } from '../auth/phone';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -19,7 +20,7 @@ export class StaffService implements OnModuleInit {
 
   async findAll(schoolId: string) {
     return this.prisma.schoolMember.findMany({
-      where: { schoolId, role: { in: ['teacher', 'school_admin'] }, isActive: true },
+      where: { schoolId, role: { in: ['teacher', 'school_admin', 'owner'] }, isActive: true },
       include: {
         user: { select: { id: true, email: true, fullName: true, avatarUrl: true, phone: true } },
         teacherProfile: true,
@@ -53,6 +54,41 @@ export class StaffService implements OnModuleInit {
     });
 
     return { ...member, classes };
+  }
+
+  async createOwner(schoolId: string, data: { fullName?: string; phone?: string }) {
+    const fullName = data.fullName?.trim() ?? '';
+    const phone = normalizePhone(data.phone);
+    if (!fullName) throw new BadRequestException('Συμπληρώστε το ονοματεπώνυμο');
+    if (!phone || phone.length < 10) throw new BadRequestException('Συμπληρώστε ένα έγκυρο κινητό');
+
+    const existing = await this.prisma.user.findFirst({
+      where: { OR: [{ phone }, { phone: phone.replace(/^\+30/, '') }, { phone: `+30${phone.replace(/^\+30/, '')}` }] },
+    });
+    const user = existing ?? await this.prisma.user.create({
+      data: {
+        email: `owner-${phone.replace(/\D/g, '')}@omnedu.placeholder`,
+        fullName,
+        phone,
+        passwordHash: randomBytes(32).toString('hex'),
+      },
+    });
+    if (existing && existing.fullName !== fullName) {
+      await this.prisma.user.update({ where: { id: existing.id }, data: { fullName, phone } });
+    }
+
+    const membership = await this.prisma.schoolMember.findFirst({
+      where: { schoolId, userId: user.id, role: 'owner' },
+    });
+    if (membership?.isActive) throw new ConflictException('Αυτό το κινητό είναι ήδη ιδιοκτήτης');
+    if (membership) {
+      await this.prisma.schoolMember.update({ where: { id: membership.id }, data: { isActive: true } });
+      return this.findOne(membership.id, schoolId);
+    }
+    const created = await this.prisma.schoolMember.create({
+      data: { schoolId, userId: user.id, role: 'owner' },
+    });
+    return this.findOne(created.id, schoolId);
   }
 
   async upsertProfile(memberId: string, schoolId: string, data: {

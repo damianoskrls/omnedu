@@ -375,7 +375,7 @@ export class SchoolEventsService implements OnModuleInit {
   async listForTeacher(teacherUserId: string, schoolId: string) {
     await this.syncAutomaticStatus(schoolId);
     const admin = await this.prisma.schoolMember.findFirst({
-      where: { schoolId, userId: teacherUserId, role: 'school_admin', isActive: true },
+        where: { schoolId, userId: teacherUserId, role: { in: ['school_admin', 'owner'] }, isActive: true },
       select: { id: true },
     });
     return this.prisma.schoolEvent.findMany({
@@ -406,7 +406,7 @@ export class SchoolEventsService implements OnModuleInit {
     const assigned = event.teachers.some(t => t.userId === userId) || event.createdById === userId;
     if (!assigned) {
       const admin = await this.prisma.schoolMember.findFirst({
-        where: { schoolId, userId, role: 'school_admin', isActive: true },
+        where: { schoolId, userId, role: { in: ['school_admin', 'owner'] }, isActive: true },
         select: { id: true },
       });
       if (!admin) throw new ForbiddenException('Μόνο οι εκπαιδευτικοί της εκδήλωσης μπορούν να ανεβάσουν υλικό');
@@ -426,7 +426,7 @@ export class SchoolEventsService implements OnModuleInit {
     const assigned = event.teachers.some((teacher) => teacher.userId === userId) || event.createdById === userId;
     if (!assigned) {
       const admin = await this.prisma.schoolMember.findFirst({
-        where: { schoolId, userId, role: 'school_admin', isActive: true },
+        where: { schoolId, userId, role: { in: ['school_admin', 'owner'] }, isActive: true },
         select: { id: true },
       });
       if (!admin) throw new ForbiddenException('Μόνο οι εκπαιδευτικοί της εκδήλωσης μπορούν να γράψουν την ανάρτηση');

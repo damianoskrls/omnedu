@@ -238,6 +238,7 @@ enum Role {
   school_admin
   teacher
   parent
+  owner
 }
 
 // ─────────────────────────────────────────────────────────

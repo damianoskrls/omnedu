@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { isSchoolLead } from '../../common/school-lead';
 
 const userCard = {
   id: true,
@@ -18,7 +19,7 @@ export class MessagesService {
     const rows = await this.prisma.conversation.findMany({
       where: {
         schoolId,
-        participants: { some: { userId } },
+        ...(role === 'owner' ? {} : { participants: { some: { userId } } }),
       },
       include: {
         participants: {
@@ -43,11 +44,13 @@ export class MessagesService {
       },
     });
 
-    const visible = role === 'school_admin'
-      ? rows.filter((row) => this.visibleToAdmin(row.participants))
-      : role === 'teacher'
-        ? rows.filter((row) => this.visibleToTeacher(row.participants, userId))
-        : rows;
+    const visible = role === 'owner'
+      ? rows
+      : role === 'school_admin'
+        ? rows.filter((row) => this.visibleToAdmin(row.participants))
+        : role === 'teacher'
+          ? rows.filter((row) => this.visibleToTeacher(row.participants, userId))
+          : rows;
     const shown = visible.filter((row) => this.revealed(this.hiddenAt(row.participants, userId), row.messages[0]?.sentAt));
 
     const sorted = shown.sort((a, b) => {
@@ -60,9 +63,10 @@ export class MessagesService {
     return sorted.map((row) => {
       const latest = row.messages[0];
       const mine = row.participants.find((person) => person.userId === userId);
-      const unread = !!latest
+      const unread = !!mine
+        && !!latest
         && latest.senderId !== userId
-        && (!mine?.lastReadAt || latest.sentAt > mine.lastReadAt);
+        && (!mine.lastReadAt || latest.sentAt > mine.lastReadAt);
       return {
         ...row,
         unread,
@@ -74,7 +78,7 @@ export class MessagesService {
 
   async unreadCount(userId: string, schoolId: string, role?: string | null) {
     const rows = await this.prisma.conversation.findMany({
-      where: { schoolId, participants: { some: { userId } } },
+      where: { schoolId, ...(role === 'owner' ? {} : { participants: { some: { userId } } }) },
       select: {
         participants: {
           select: {
@@ -99,21 +103,24 @@ export class MessagesService {
         },
       },
     });
-    const visible = role === 'school_admin'
-      ? rows.filter((row) => this.visibleToAdmin(row.participants))
-      : role === 'teacher'
-        ? rows.filter((row) => this.visibleToTeacher(row.participants, userId))
-        : rows;
+    const visible = role === 'owner'
+      ? rows
+      : role === 'school_admin'
+        ? rows.filter((row) => this.visibleToAdmin(row.participants))
+        : role === 'teacher'
+          ? rows.filter((row) => this.visibleToTeacher(row.participants, userId))
+          : rows;
     return visible.filter((row) => {
       const latest = row.messages[0]?.sentAt;
       if (!latest || !this.revealed(this.hiddenAt(row.participants, userId), latest)) return false;
       const mine = row.participants.find((person) => person.userId === userId);
-      return !mine?.lastReadAt || latest > mine.lastReadAt;
+      if (!mine) return false;
+      return !mine.lastReadAt || latest > mine.lastReadAt;
     }).length;
   }
 
   async broadcast(schoolId: string, senderId: string, role: string | null, userIds: string[], body?: string) {
-    if (role !== 'school_admin') throw new ForbiddenException();
+    if (!isSchoolLead(role)) throw new ForbiddenException();
     const text = (body ?? '').trim();
     if (!text) throw new BadRequestException('Το μήνυμα είναι κενό');
     const ids = [...new Set(userIds.filter(Boolean))].slice(0, 400);
@@ -137,7 +144,7 @@ export class MessagesService {
         parents: await this.parentsOfTeacher(userId, schoolId),
       };
     }
-    if (role === 'school_admin') {
+    if (isSchoolLead(role)) {
       return { admins: [], teachers: await this.schoolTeachers(schoolId), parents: await this.schoolParents(schoolId) };
     }
     return { admins: [], teachers: [], parents: [] };
@@ -147,14 +154,15 @@ export class MessagesService {
     if (kind === 'admin') {
       const admins = await this.adminUserIds(schoolId);
       if (!admins.length) throw new NotFoundException('Δεν υπάρχει διαχειριστής');
-      if (role === 'school_admin') {
+      if (isSchoolLead(role)) {
         if (!withUserId) throw new ForbiddenException();
         const [parent, teacher] = await Promise.all([
           this.isParent(schoolId, withUserId),
           this.isTeacher(schoolId, withUserId),
         ]);
         if (!parent && !teacher) throw new ForbiddenException('Μπορείς να στείλεις σε γονέα ή εκπαιδευτικό');
-        return this.findOrCreate(schoolId, [withUserId, ...admins], userId);
+        const ids = role === 'owner' ? [userId, withUserId] : [withUserId, ...admins];
+        return this.findOrCreate(schoolId, ids, userId);
       }
       if (role !== 'parent' && role !== 'teacher') throw new ForbiddenException();
       return this.findOrCreate(schoolId, [userId, ...admins], userId);
@@ -180,7 +188,7 @@ export class MessagesService {
   }
 
   async getMessages(conversationId: string, userId: string, cursor?: string, take = 30) {
-    const participant = await this.assertParticipant(conversationId, userId);
+    const participant = await this.assertCanRead(conversationId, userId);
     const size = Number(take);
     const limit = Number.isFinite(size) && size > 0 ? Math.min(Math.floor(size), 100) : 30;
     const messages = await this.prisma.message.findMany({
@@ -217,7 +225,8 @@ export class MessagesService {
   }
 
   async sendMessage(conversationId: string, senderId: string, body?: string, mediaUrl?: string) {
-    await this.assertParticipant(conversationId, senderId);
+    await this.assertCanRead(conversationId, senderId);
+    await this.ensureParticipant(conversationId, senderId);
     const text = (body ?? '').trim();
     const image = mediaUrl?.trim() || '';
     if (!text && !image) throw new BadRequestException('Το μήνυμα είναι κενό');
@@ -537,11 +546,28 @@ export class MessagesService {
   }
 
   private async assertParticipant(conversationId: string, userId: string) {
+    return this.assertCanRead(conversationId, userId);
+  }
+
+  private async assertCanRead(conversationId: string, userId: string) {
     const participant = await this.prisma.conversationParticipant.findUnique({
       where: { conversationId_userId: { conversationId, userId } },
     });
-    if (!participant) throw new ForbiddenException('Not a participant');
-    return participant;
+    if (participant) return participant;
+    const owner = await this.prisma.schoolMember.findFirst({
+      where: { userId, role: 'owner', isActive: true, school: { conversations: { some: { id: conversationId } } } },
+      select: { id: true },
+    });
+    if (!owner) throw new ForbiddenException('Not a participant');
+    return { conversationId, userId, lastReadAt: null, hiddenAt: null };
+  }
+
+  private async ensureParticipant(conversationId: string, userId: string) {
+    await this.prisma.conversationParticipant.upsert({
+      where: { conversationId_userId: { conversationId, userId } },
+      create: { conversationId, userId },
+      update: {},
+    });
   }
 
   private async labelsForParents(schoolId: string, userIds: string[]) {

@@ -56,6 +56,6 @@ fi
 echo "Σβήνω την παλιά εγκατάσταση από το iPhone..."
 xcrun devicectl device uninstall app --device "$DEVICE" com.omnedu.omnedu >/dev/null 2>&1 || true
 
-echo "Εγκαθιστώ την έκδοση 8 Οκτ 2026 · 3 στο iPhone ($DEVICE)..."
-echo "Όταν ανοίξει, κάτω από το λογότυπο πρέπει να γράφει: Έκδοση 8 Οκτ 2026 · 3"
+echo "Εγκαθιστώ την έκδοση 8 Οκτ 2026 · 4 στο iPhone ($DEVICE)..."
+echo "Όταν ανοίξει, κάτω από το λογότυπο πρέπει να γράφει: Έκδοση 8 Οκτ 2026 · 4"
 flutter run --release -d "$DEVICE"

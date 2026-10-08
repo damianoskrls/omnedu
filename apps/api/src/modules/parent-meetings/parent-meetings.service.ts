@@ -256,14 +256,14 @@ export class ParentMeetingsService implements OnModuleInit {
   }
 
   private async assertCanManage(schoolId: string, user: JwtPayload, classId: string) {
-    if (user.isSuperAdmin || user.role === 'school_admin') return;
+    if (user.isSuperAdmin || user.role === 'school_admin' || user.role === 'owner') return;
     if (user.role !== 'teacher') throw new ForbiddenException('Μόνο ο εκπαιδευτικός ή ο διαχειριστής δημιουργεί ενημέρωση.');
     const link = await this.prisma.classTeacher.findFirst({ where: { classId, userId: user.sub, class: { schoolId } } });
     if (!link) throw new ForbiddenException('Μπορείς να ορίσεις συνάντηση μόνο για τις τάξεις σου.');
   }
 
   private async allowedClassIds(schoolId: string, user: JwtPayload) {
-    if (user.isSuperAdmin || user.role === 'school_admin') return null;
+    if (user.isSuperAdmin || user.role === 'school_admin' || user.role === 'owner') return null;
     if (user.role === 'teacher') {
       const rows = await this.prisma.classTeacher.findMany({
         where: { userId: user.sub, class: { schoolId } },

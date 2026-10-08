@@ -180,7 +180,7 @@ export class ThematicPlansService implements OnModuleInit {
   }
 
   private async assertCanEdit(schoolId: string, user: JwtPayload, classId: string) {
-    if (user.isSuperAdmin || user.role === 'school_admin') return;
+    if (user.isSuperAdmin || user.role === 'school_admin' || user.role === 'owner') return;
     if (user.role !== 'teacher') throw new ForbiddenException('Μόνο ο εκπαιδευτικός ή ο διαχειριστής αποθηκεύει διαθεματικό.');
     const link = await this.prisma.classTeacher.findFirst({
       where: { classId, userId: user.sub, class: { schoolId } },
@@ -189,7 +189,7 @@ export class ThematicPlansService implements OnModuleInit {
   }
 
   private async allowedClassIds(schoolId: string, user: JwtPayload) {
-    if (user.isSuperAdmin || user.role === 'school_admin') return null;
+    if (user.isSuperAdmin || user.role === 'school_admin' || user.role === 'owner') return null;
     if (user.role === 'teacher') {
       const rows = await this.prisma.classTeacher.findMany({
         where: { userId: user.sub, class: { schoolId } },

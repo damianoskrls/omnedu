@@ -9,11 +9,13 @@ import Link from 'next/link';
 const ROLE_LABELS: Record<string, string> = {
   school_admin: 'Διαχειριστής',
   teacher: 'Εκπαιδευτικός',
+  owner: 'Ιδιοκτήτης',
 };
 
 const ROLE_COLORS: Record<string, string> = {
   school_admin: 'bg-indigo-50 text-indigo-700',
   teacher: 'bg-emerald-50 text-emerald-700',
+  owner: 'bg-[#f3e8f7] text-[#77328D]',
 };
 
 const CONTRACT_LABELS: Record<string, string> = {
@@ -27,6 +29,11 @@ export default function StaffPage() {
   const schoolId = user?.schoolId ?? '';
   const [members, setMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
 
   useEffect(() => {
     if (!schoolId) return;
@@ -43,10 +50,55 @@ export default function StaffPage() {
           <h1 className="text-2xl font-bold text-gray-900">Προσωπικό</h1>
           <p className="text-gray-500 text-sm mt-1">{members.length} μέλη προσωπικού</p>
         </div>
-        <button className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">
-          <Plus className="h-4 w-4" /> Προσθήκη
+        <button
+          type="button"
+          onClick={() => { setAdding(true); setFormError(''); }}
+          className="flex items-center gap-2 bg-[#77328D] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#642678]"
+        >
+          <Plus className="h-4 w-4" /> Ιδιοκτήτης
         </button>
       </div>
+
+      {adding && (
+        <form
+          className="mb-6 max-w-lg rounded-2xl border border-[#77328D]/15 bg-white p-5 shadow-sm"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            setSaving(true);
+            setFormError('');
+            try {
+              await staffApi.createOwner(schoolId, { fullName, phone });
+              const data: any = await staffApi.list(schoolId);
+              setMembers(Array.isArray(data) ? data : []);
+              setFullName('');
+              setPhone('');
+              setAdding(false);
+            } catch (error: any) {
+              setFormError(typeof error?.message === 'string' ? error.message : 'Ο ιδιοκτήτης δεν αποθηκεύτηκε');
+            } finally {
+              setSaving(false);
+            }
+          }}
+        >
+          <h2 className="font-semibold text-gray-900">Νέος ιδιοκτήτης</h2>
+          <p className="mt-1 text-sm text-gray-500">Μπαίνει στην εφαρμογή με το κινητό του και βλέπει όλες τις τάξεις και τις αναφορές. Μπορείς να προσθέσεις και τους δύο.</p>
+          <label className="mt-4 block text-sm font-medium text-gray-700">
+            Ονοματεπώνυμο
+            <input value={fullName} onChange={(event) => setFullName(event.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2" />
+          </label>
+          <label className="mt-3 block text-sm font-medium text-gray-700">
+            Κινητό
+            <input value={phone} onChange={(event) => setPhone(event.target.value)} inputMode="tel" className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2" placeholder="69XXXXXXXX" />
+          </label>
+          {formError && <p className="mt-3 text-sm text-red-600">{formError}</p>}
+          <div className="mt-4 flex gap-2">
+            <button type="submit" disabled={saving} className="rounded-xl bg-[#77328D] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+              {saving ? 'Αποθήκευση...' : 'Αποθήκευση'}
+            </button>
+            <button type="button" onClick={() => setAdding(false)} className="rounded-xl px-4 py-2 text-sm text-gray-500">Ακύρωση</button>
+          </div>
+        </form>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {loading ? (

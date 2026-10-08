@@ -20,6 +20,7 @@ export class MedicationRequestsController {
   @Get('mine')
   mine(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
     if (user.role === 'parent') return this.svc.findForParent(schoolId, user.sub);
+    if (user.role === 'owner') return this.svc.findAll(schoolId, undefined, 'approved');
     return this.svc.findForTeacher(schoolId, user.sub);
   }
 

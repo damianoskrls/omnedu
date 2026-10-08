@@ -18,7 +18,11 @@ export class ClassesController {
   }
 
   @Get('my-classes')
-  myClasses(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
+  async myClasses(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
+    if (user.role === 'owner') {
+      const rows = await this.classes.findAll(schoolId);
+      return rows.filter((row) => row.academicYear?.isCurrent);
+    }
     return this.classes.findByTeacher(schoolId, user.sub);
   }
 

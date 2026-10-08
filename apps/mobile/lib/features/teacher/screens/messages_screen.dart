@@ -169,7 +169,8 @@ class TeacherMessagesScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final asAdmin = ref.watch(authProvider).user?.isSchoolAdmin ?? false;
+    final user = ref.watch(authProvider).user;
+    final asAdmin = (user?.isSchoolAdmin ?? false) || (user?.isOwner ?? false);
     final convsAsync = ref.watch(conversationsProvider(schoolId));
     final typing = ref.watch(typingMapProvider(schoolId)).valueOrNull ?? const <String, List<String>>{};
     final details = ref.watch(teacherParentDetailsProvider(schoolId)).asData?.value ?? const <String, String>{};

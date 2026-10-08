@@ -7,6 +7,7 @@ import { OpenConversationDto, SendMessageDto } from './dto/conversation.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { StorageService } from '../../common/storage/storage.service';
+import { isSchoolLead } from '../../common/school-lead';
 
 @ApiTags('messages')
 @ApiBearerAuth('access-token')
@@ -55,7 +56,7 @@ export class MessagesController {
     if (body.kind === 'admin' || body.kind === 'teacher') {
       return this.messages.openScoped(schoolId, user.sub, user.role, body.kind, body.withUserId);
     }
-    if (user.role !== 'school_admin') {
+    if (!isSchoolLead(user.role)) {
       throw new ForbiddenException('Η συνομιλία ανοίγει μόνο με τη διαχείριση ή με τη δασκάλα του παιδιού');
     }
     const ids = [...new Set([...(body.participantIds ?? []), user.sub])];

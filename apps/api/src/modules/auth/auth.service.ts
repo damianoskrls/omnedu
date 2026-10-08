@@ -345,7 +345,8 @@ export class AuthService {
     if (role === 'parent') return 0;
     if (role === 'teacher') return 1;
     if (role === 'school_admin') return 2;
-    return 3;
+    if (role === 'owner') return 3;
+    return 4;
   }
 
   private async issuePhoneSession(selected: PhoneMembership, choices: PhoneMembership[]) {
