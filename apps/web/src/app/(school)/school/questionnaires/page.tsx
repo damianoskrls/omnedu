@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { questionnairesApi, studentsApi, classesApi, levelsApi } from '@/lib/api';
+import { questionnairesApi, schoolsApi, studentsApi, classesApi, levelsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
+import { LinkKind, Question, QuestionType, registrationQuestionnaire } from '@/lib/registration-questionnaire';
 import {
   ClipboardList, Plus, ChevronDown, ChevronUp, Pencil, Trash2, X, Save,
   Users, Clock, Send, CheckCircle2, Circle, ToggleLeft, List, AlignLeft,
-  Loader2,
+  Loader2, Heading, Calendar, Hash, CheckSquare, FileText,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { el } from 'date-fns/locale';
@@ -16,19 +17,23 @@ const CURRENT_YEAR = new Date().getFullYear();
 
 // ─── Question types ──────────────────────────────────────────────────────────
 
-type QuestionType = 'yesno' | 'choice' | 'text';
-
-type Question = {
-  id: string;
-  text: string;
-  type: QuestionType;
-  options?: string[];
+const Q_TYPE_META: Record<QuestionType, { label: string; icon: React.ReactNode }> = {
+  section: { label: 'Ενότητα', icon: <Heading className="w-4 h-4" /> },
+  text: { label: 'Κείμενο', icon: <AlignLeft className="w-4 h-4" /> },
+  long: { label: 'Μεγάλο κείμενο', icon: <FileText className="w-4 h-4" /> },
+  date: { label: 'Ημερομηνία', icon: <Calendar className="w-4 h-4" /> },
+  number: { label: 'Αριθμός', icon: <Hash className="w-4 h-4" /> },
+  yesno: { label: 'Ναι / Όχι', icon: <ToggleLeft className="w-4 h-4" /> },
+  choice: { label: 'Επιλογή', icon: <List className="w-4 h-4" /> },
+  agree: { label: 'Συμφωνώ', icon: <CheckSquare className="w-4 h-4" /> },
 };
 
-const Q_TYPE_META: Record<QuestionType, { label: string; icon: React.ReactNode }> = {
-  yesno:  { label: 'Ναι / Όχι', icon: <ToggleLeft className="w-4 h-4" /> },
-  choice: { label: 'Επιλογή',   icon: <List className="w-4 h-4" /> },
-  text:   { label: 'Κείμενο',   icon: <AlignLeft className="w-4 h-4" /> },
+const LINK_LABELS: Record<Exclude<LinkKind, ''>, string> = {
+  operating: 'Κανονισμός λειτουργίας',
+  financial: 'Οικονομικός κανονισμός',
+  medication: 'Πρωτόκολλο φαρμάκων',
+  text: 'Κείμενο για ανάγνωση',
+  url: 'Σύνδεσμος',
 };
 
 // ─── Data types ──────────────────────────────────────────────────────────────
@@ -141,6 +146,19 @@ export default function QuestionnairesPage() {
     deadline: '', status: 'draft',
   });
 
+  const openRegistration = () => {
+    const form = registrationQuestionnaire();
+    setEditModal({
+      title: form.title,
+      description: form.description,
+      academicYear: CURRENT_YEAR,
+      questions: form.questions,
+      audience: { audienceType: 'all', audienceIds: [] },
+      deadline: '',
+      status: 'draft',
+    });
+  };
+
   const openEdit = (q: Questionnaire) => setEditModal({
     id: q.id,
     title: q.title,
@@ -250,12 +268,20 @@ export default function QuestionnairesPage() {
           </p>
         </div>
         {isAdmin && (
-          <button
-            onClick={openNew}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700"
-          >
-            <Plus className="w-4 h-4" /> Νέο Ερωτηματολόγιο
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={openRegistration}
+              className="flex items-center gap-2 px-4 py-2 border border-[#77328D] text-[#77328D] rounded-xl text-sm font-medium hover:bg-[#77328D]/5"
+            >
+              <ClipboardList className="w-4 h-4" /> Αίτηση εγγραφής
+            </button>
+            <button
+              onClick={openNew}
+              className="flex items-center gap-2 px-4 py-2 bg-[#77328D] text-white rounded-xl text-sm font-medium hover:bg-[#642678]"
+            >
+              <Plus className="w-4 h-4" /> Νέο Ερωτηματολόγιο
+            </button>
+          </div>
         )}
       </div>
 
@@ -297,7 +323,7 @@ export default function QuestionnairesPage() {
                       <span className="flex items-center gap-1">
                         <Users className="w-3 h-3" />{audienceLabel(q.scopeType, q.scopeIds, classes, levels)}
                       </span>
-                      <span>{qs.length} ερωτήσεις</span>
+                      <span>{qs.filter((item) => item.type !== 'section').length} ερωτήσεις</span>
                       {q.deadline && (
                         <span className="flex items-center gap-1 text-orange-600">
                           <Clock className="w-3 h-3" />έως {format(new Date(q.deadline), 'd MMM yyyy', { locale: el })}
@@ -505,14 +531,60 @@ export default function QuestionnairesPage() {
                                   })}
                                   className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border font-medium transition-colors ${
                                     q.type === t
-                                      ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                                      : 'border-gray-200 text-gray-500 hover:border-indigo-200 bg-white'
+                                      ? 'border-[#77328D] bg-[#77328D]/10 text-[#77328D]'
+                                      : 'border-gray-200 text-gray-500 hover:border-[#77328D]/30 bg-white'
                                   }`}
                                 >
                                   {Q_TYPE_META[t].icon}{Q_TYPE_META[t].label}
                                 </button>
                               ))}
                             </div>
+                            <textarea
+                              rows={2}
+                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                              value={q.help ?? ''}
+                              onChange={e => updateQuestion(q.id, { help: e.target.value })}
+                              placeholder={q.type === 'section' ? 'Σύντομη περιγραφή της ενότητας...' : 'Επεξήγηση που βλέπει ο γονέας κάτω από την ερώτηση...'}
+                            />
+                            {(q.type === 'yesno' || q.type === 'agree') && (
+                              <div className="space-y-2">
+                                <select
+                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                                  value={q.linkKind ?? ''}
+                                  onChange={e => {
+                                    const linkKind = e.target.value as LinkKind;
+                                    updateQuestion(q.id, {
+                                      linkKind,
+                                      linkLabel: linkKind && linkKind !== 'url' ? LINK_LABELS[linkKind] : q.linkLabel,
+                                    });
+                                  }}
+                                >
+                                  <option value="">Χωρίς σύνδεσμο</option>
+                                  <option value="operating">Σύνδεσμος: κανονισμός λειτουργίας</option>
+                                  <option value="financial">Σύνδεσμος: οικονομικός κανονισμός</option>
+                                  <option value="medication">Σύνδεσμος: πρωτόκολλο φαρμάκων</option>
+                                  <option value="text">Σύνδεσμος: κείμενο για ανάγνωση</option>
+                                  <option value="url">Σύνδεσμος: διεύθυνση ιστοσελίδας</option>
+                                </select>
+                                {q.linkKind === 'url' && (
+                                  <input
+                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                                    value={q.linkUrl ?? ''}
+                                    onChange={e => updateQuestion(q.id, { linkUrl: e.target.value })}
+                                    placeholder="https://"
+                                  />
+                                )}
+                                {(q.linkKind === 'medication' || q.linkKind === 'text') && (
+                                  <textarea
+                                    rows={4}
+                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                                    value={q.document ?? ''}
+                                    onChange={e => updateQuestion(q.id, { document: e.target.value })}
+                                    placeholder="Το κείμενο που ανοίγει ο σύνδεσμος..."
+                                  />
+                                )}
+                              </div>
+                            )}
 
                             {q.type === 'choice' && (
                               <div className="space-y-1.5 ml-1">
@@ -597,61 +669,12 @@ export default function QuestionnairesPage() {
             </div>
 
             <div className="p-5 space-y-5">
-              {parseJson<Question[]>(fillModal.questionnaire.questions, []).map((q, idx) => (
-                <div key={q.id}>
-                  <p className="text-sm font-medium text-gray-800 mb-2">
-                    <span className="text-indigo-500 font-bold mr-1.5">{idx + 1}.</span>{q.text}
-                  </p>
-                  {q.type === 'yesno' && (
-                    <div className="flex gap-3">
-                      {['Ναι', 'Όχι'].map(opt => (
-                        <button
-                          key={opt}
-                          type="button"
-                          onClick={() => setFillAnswers(p => ({ ...p, [q.id]: opt }))}
-                          className={`flex-1 py-2.5 rounded-xl border-2 text-sm font-medium transition-colors ${
-                            fillAnswers[q.id] === opt
-                              ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                              : 'border-gray-200 text-gray-600 hover:border-indigo-200'
-                          }`}
-                        >
-                          {opt}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {q.type === 'choice' && (
-                    <div className="space-y-2">
-                      {(q.options ?? []).filter(o => o.trim()).map(opt => (
-                        <button
-                          key={opt}
-                          type="button"
-                          onClick={() => setFillAnswers(p => ({ ...p, [q.id]: opt }))}
-                          className={`w-full text-left px-3 py-2.5 rounded-xl border-2 text-sm transition-colors ${
-                            fillAnswers[q.id] === opt
-                              ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                              : 'border-gray-200 text-gray-600 hover:border-indigo-200'
-                          }`}
-                        >
-                          <span className={`inline-block w-4 h-4 rounded-full border-2 mr-2 align-middle transition-colors ${
-                            fillAnswers[q.id] === opt ? 'border-indigo-500 bg-indigo-500' : 'border-gray-300'
-                          }`} />
-                          {opt}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {q.type === 'text' && (
-                    <textarea
-                      rows={3}
-                      className={inputCls + ' resize-none'}
-                      value={fillAnswers[q.id] ?? ''}
-                      onChange={e => setFillAnswers(p => ({ ...p, [q.id]: e.target.value }))}
-                      placeholder="Απάντηση..."
-                    />
-                  )}
-                </div>
-              ))}
+              <QuestionFields
+                schoolId={schoolId}
+                questions={parseJson<Question[]>(fillModal.questionnaire.questions, [])}
+                answers={fillAnswers}
+                onChange={(questionId, value) => setFillAnswers(prev => ({ ...prev, [questionId]: value }))}
+              />
             </div>
 
             <div className="flex gap-3 p-5 border-t border-gray-100">
@@ -670,6 +693,151 @@ export default function QuestionnairesPage() {
                 {savingF ? 'Αποθήκευση...' : 'Αποθήκευση'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QuestionFields({
+  schoolId,
+  questions,
+  answers,
+  onChange,
+}: {
+  schoolId: string;
+  questions: Question[];
+  answers: Record<string, any>;
+  onChange: (id: string, value: string) => void;
+}) {
+  let number = 0;
+  return (
+    <>
+      {questions.map((question) => {
+        if (question.type === 'section') {
+          return (
+            <div key={question.id} className="pt-2">
+              <h3 className="text-base font-bold text-[#77328D]">{question.text}</h3>
+              {question.help && <p className="text-sm text-gray-500 mt-1">{question.help}</p>}
+            </div>
+          );
+        }
+        number += 1;
+        const value = answers[question.id] ?? '';
+        return (
+          <div key={question.id}>
+            <p className="text-sm font-medium text-gray-800 mb-1">
+              <span className="text-[#77328D] font-bold mr-1.5">{number}.</span>{question.text}
+            </p>
+            {question.help && <p className="text-xs text-gray-500 mb-2 leading-5">{question.help}</p>}
+            <DocumentButton schoolId={schoolId} question={question} />
+            {question.type === 'yesno' && (
+              <div className="flex gap-3">
+                {['Ναι', 'Όχι'].map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => onChange(question.id, opt)}
+                    className={`flex-1 py-2.5 rounded-xl border-2 text-sm font-medium ${
+                      value === opt ? 'border-[#77328D] bg-[#77328D]/10 text-[#77328D]' : 'border-gray-200 text-gray-600'
+                    }`}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            )}
+            {question.type === 'choice' && (
+              <div className="space-y-2">
+                {(question.options ?? []).filter((opt) => opt.trim()).map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => onChange(question.id, opt)}
+                    className={`w-full text-left px-3 py-2.5 rounded-xl border-2 text-sm ${
+                      value === opt ? 'border-[#77328D] bg-[#77328D]/10 text-[#77328D]' : 'border-gray-200 text-gray-600'
+                    }`}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            )}
+            {question.type === 'agree' && (
+              <button
+                type="button"
+                onClick={() => onChange(question.id, value === 'Συμφωνώ' ? '' : 'Συμφωνώ')}
+                className={`w-full text-left px-3 py-2.5 rounded-xl border-2 text-sm font-medium ${
+                  value === 'Συμφωνώ' ? 'border-[#77328D] bg-[#77328D]/10 text-[#77328D]' : 'border-gray-200 text-gray-700'
+                }`}
+              >
+                {value === 'Συμφωνώ' ? '✓ Συμφωνώ' : 'Συμφωνώ'}
+              </button>
+            )}
+            {(question.type === 'text' || question.type === 'number' || question.type === 'date') && (
+              <input
+                type={question.type === 'number' ? 'number' : question.type === 'date' ? 'date' : 'text'}
+                className={inputCls}
+                value={value}
+                onChange={(event) => onChange(question.id, event.target.value)}
+              />
+            )}
+            {question.type === 'long' && (
+              <textarea
+                rows={3}
+                className={inputCls + ' resize-none'}
+                value={value}
+                onChange={(event) => onChange(question.id, event.target.value)}
+              />
+            )}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function DocumentButton({ schoolId, question }: { schoolId: string; question: Question }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [loading, setLoading] = useState(false);
+  if (!question.linkKind) return null;
+  const label = question.linkLabel || LINK_LABELS[question.linkKind] || 'Διάβασε τους όρους';
+
+  async function openDocument() {
+    setLoading(true);
+    setOpen(true);
+    try {
+      if (question.linkKind === 'operating' || question.linkKind === 'financial') {
+        const data: any = await schoolsApi.getRegulations(schoolId);
+        const body = question.linkKind === 'financial' ? data?.financialRegulation : data?.operatingRegulation;
+        setText(body?.trim() || 'Ο διαχειριστής δεν έχει καταχωρίσει ακόμα αυτό το κείμενο.');
+      } else if (question.linkKind === 'url') {
+        setText(question.linkUrl || 'Δεν έχει οριστεί σύνδεσμος.');
+      } else {
+        setText(question.document?.trim() || question.help || 'Δεν έχει καταχωριστεί κείμενο.');
+      }
+    } catch {
+      setText('Το κείμενο δεν φορτώθηκε.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="mb-2">
+      <button type="button" onClick={openDocument} className="text-xs font-semibold text-[#E95926] underline">
+        {label}
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4" onClick={() => setOpen(false)}>
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[70vh] overflow-y-auto p-5" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-gray-900">{label}</h3>
+              <button onClick={() => setOpen(false)} className="text-gray-400"><X className="w-4 h-4" /></button>
+            </div>
+            {loading ? <p className="text-sm text-gray-400">Φόρτωση...</p> : <p className="text-sm text-gray-700 whitespace-pre-wrap">{text}</p>}
           </div>
         </div>
       )}

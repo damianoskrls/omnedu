@@ -17,6 +17,7 @@ const parentPushEvents = new Set([
   'parent_meeting_request',
   'parent_meeting_accepted',
   'teacher_absence',
+  'questionnaire',
 ]);
 
 interface BroadcastData {

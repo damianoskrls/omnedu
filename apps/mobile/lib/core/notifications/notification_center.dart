@@ -249,6 +249,21 @@ Future<void> openNotification(BuildContext context, WidgetRef ref, Map<String, d
     return;
   }
 
+  if (type == 'questionnaire') {
+    final studentId = data['studentId']?.toString() ?? '';
+    if (studentId.isEmpty) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => QuestionnairesScreen(
+          schoolId: schoolId,
+          child: {'id': studentId, 'fullName': data['studentName'] ?? 'Παιδί'},
+        ),
+      ),
+    );
+    return;
+  }
+
   if (type == 'daily_report') {
     final studentId = data['studentId'] as String? ?? '';
     if (studentId.isEmpty) return;

@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { v4 as uuidv4 } from 'uuid';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class QuestionnairesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notifications: NotificationsService,
+  ) {}
 
   async findAll(schoolId: string, academicYear?: number) {
     return this.prisma.questionnaire.findMany({
@@ -108,7 +112,7 @@ export class QuestionnairesService {
   }) {
     const q = await this.prisma.questionnaire.findFirst({ where: { id, schoolId } });
     if (!q) throw new NotFoundException('Questionnaire not found');
-    return this.prisma.questionnaire.update({
+    const updated = await this.prisma.questionnaire.update({
       where: { id },
       data: {
         ...(data.title !== undefined ? { title: data.title } : {}),
@@ -122,6 +126,40 @@ export class QuestionnairesService {
         ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
       },
     });
+    if (data.status === 'sent' && q.status !== 'sent') await this.tellParents(updated);
+    return updated;
+  }
+
+  private async tellParents(questionnaire: { id: string; schoolId: string; title: string; scopeType: string; scopeIds: string }) {
+    try {
+      const students = await this.prisma.student.findMany({
+        where: { schoolId: questionnaire.schoolId, isActive: true },
+        select: {
+          id: true,
+          fullName: true,
+          enrollments: { select: { classId: true, class: { select: { levelId: true } } } },
+        },
+      });
+      for (const student of students) {
+        const classIds = new Set(student.enrollments.map((row) => row.classId));
+        const levelIds = new Set(student.enrollments.map((row) => row.class?.levelId).filter((value): value is string => Boolean(value)));
+        if (!this.targetsStudent(questionnaire.scopeType, questionnaire.scopeIds, classIds, levelIds)) continue;
+        await this.notifications.notifyStudentParents(questionnaire.schoolId, student.id, {
+          event: 'questionnaire',
+          type: 'questionnaire',
+          title: 'Νέο ερωτηματολόγιο',
+          body: questionnaire.title,
+          data: {
+            screen: 'questionnaires',
+            studentId: student.id,
+            studentName: student.fullName,
+            questionnaireId: questionnaire.id,
+          },
+        });
+      }
+    } catch {
+      // The questionnaire stays sent even if a notice cannot be delivered.
+    }
   }
 
   async remove(id: string, schoolId: string) {

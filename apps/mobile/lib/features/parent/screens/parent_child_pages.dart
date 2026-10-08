@@ -1062,7 +1062,7 @@ class QuestionnairesScreen extends ConsumerStatefulWidget {
 class _QuestionnairesScreenState extends ConsumerState<QuestionnairesScreen> {
   @override
   Widget build(BuildContext context) {
-    final data = ref.watch(_questionnairesProvider(widget.schoolId));
+    final data = ref.watch(_questionnairesProvider((schoolId: widget.schoolId, studentId: widget.child['id']?.toString() ?? '')));
     return Scaffold(
       appBar: AppBar(title: const Text('Ερωτηματολόγια')),
       body: data.when(
@@ -1098,9 +1098,9 @@ class _QuestionnairesScreenState extends ConsumerState<QuestionnairesScreen> {
   }
 }
 
-final _questionnairesProvider = FutureProvider.family<List<dynamic>, String>((ref, schoolId) async {
+final _questionnairesProvider = FutureProvider.family<List<dynamic>, ({String schoolId, String studentId})>((ref, query) async {
   final dio = ref.read(dioProvider);
-  final resp = await dio.get('/schools/$schoolId/questionnaires');
+  final resp = await dio.get('/schools/${query.schoolId}/questionnaires/for-student/${query.studentId}');
   return resp.data is List ? resp.data as List<dynamic> : [];
 });
 
@@ -1122,6 +1122,19 @@ class QuestionnaireAnswerScreen extends ConsumerStatefulWidget {
 class _QuestionnaireAnswerScreenState extends ConsumerState<QuestionnaireAnswerScreen> {
   final _answers = <String, String>{};
   bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final response = widget.questionnaire['response'];
+    if (response is Map) {
+      final raw = response['answers'];
+      final decoded = raw is String ? jsonDecode(raw) : raw;
+      if (decoded is Map) {
+        decoded.forEach((key, value) => _answers[key.toString()] = value?.toString() ?? '');
+      }
+    }
+  }
 
   List<Map<String, dynamic>> get _questions {
     final raw = widget.questionnaire['questions'];
@@ -1152,34 +1165,250 @@ class _QuestionnaireAnswerScreenState extends ConsumerState<QuestionnaireAnswerS
     }
   }
 
+  Future<void> _pickDate(String id) async {
+    final current = DateTime.tryParse(_answers[id] ?? '');
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current ?? DateTime(2020),
+      firstDate: DateTime(1950),
+      lastDate: DateTime(DateTime.now().year + 2),
+    );
+    if (picked == null) return;
+    setState(() => _answers[id] = _iso(picked));
+  }
+
+  void _openDocument(Map<String, dynamic> question) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _QuestionnaireDocumentScreen(schoolId: widget.schoolId, question: question),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final questions = _questions;
+    var number = 0;
     return Scaffold(
+      backgroundColor: const Color(0xFFF6F3FA),
       appBar: AppBar(title: Text(widget.questionnaire['title'] as String? ?? 'Ερωτηματολόγιο')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: [
-          ...questions.map((q) {
-            final id = (q['id'] ?? q['text'] ?? '').toString();
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: TextField(
-                decoration: InputDecoration(
-                  labelText: q['text'] as String? ?? 'Ερώτηση',
-                  filled: true,
-                  fillColor: Colors.white,
+          if ((widget.questionnaire['description'] as String?)?.isNotEmpty == true)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Text(widget.questionnaire['description'] as String, style: const TextStyle(color: Color(0xFF6B7280), height: 1.4)),
+            ),
+          for (final question in questions) ...[
+            if (question['type'] == 'section')
+              Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(question['text']?.toString() ?? '', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF77328D))),
+                    if ((question['help'] as String?)?.isNotEmpty == true)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(question['help'].toString(), style: const TextStyle(color: Color(0xFF6B7280), height: 1.4)),
+                      ),
+                  ],
                 ),
-                onChanged: (v) => _answers[id] = v,
-              ),
-            );
-          }),
+              )
+            else ...[
+              () {
+                number += 1;
+                final shownNumber = number;
+                final id = (question['id'] ?? question['text'] ?? '').toString();
+                final type = question['type']?.toString() ?? 'text';
+                final help = question['help']?.toString() ?? '';
+                final value = _answers[id] ?? '';
+                final parsedDate = DateTime.tryParse(value);
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('$shownNumber. ${question['text'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF2C2422))),
+                      if (help.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Text(help, style: const TextStyle(fontSize: 13, height: 1.4, color: Color(0xFF6B7280)))),
+                      if ((question['linkKind'] as String?)?.isNotEmpty == true)
+                        TextButton(
+                          onPressed: () => _openDocument(question),
+                          style: TextButton.styleFrom(padding: EdgeInsets.zero, foregroundColor: const Color(0xFFE95926)),
+                          child: Text(question['linkLabel']?.toString().isNotEmpty == true ? question['linkLabel'].toString() : 'Διάβασε τους όρους'),
+                        ),
+                      const SizedBox(height: 8),
+                      if (type == 'yesno')
+                        Row(
+                          children: [
+                            for (final option in ['Ναι', 'Όχι'])
+                              Expanded(
+                                child: Padding(
+                                  padding: EdgeInsets.only(right: option == 'Ναι' ? 8 : 0),
+                                  child: _ChoiceButton(
+                                    label: option,
+                                    selected: value == option,
+                                    onTap: () => setState(() => _answers[id] = option),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        )
+                      else if (type == 'choice')
+                        Column(
+                          children: [
+                            for (final raw in (question['options'] as List? ?? const []))
+                              if (raw.toString().trim().isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: _ChoiceButton(
+                                    label: raw.toString(),
+                                    selected: value == raw.toString(),
+                                    onTap: () => setState(() => _answers[id] = raw.toString()),
+                                  ),
+                                ),
+                          ],
+                        )
+                      else if (type == 'agree')
+                        _ChoiceButton(
+                          label: value == 'Συμφωνώ' ? '✓ Συμφωνώ' : 'Συμφωνώ',
+                          selected: value == 'Συμφωνώ',
+                          onTap: () => setState(() => _answers[id] = value == 'Συμφωνώ' ? '' : 'Συμφωνώ'),
+                        )
+                      else if (type == 'date')
+                        _ChoiceButton(
+                          label: parsedDate == null ? 'Επιλογή ημερομηνίας' : _grDate(parsedDate),
+                          selected: parsedDate != null,
+                          onTap: () => _pickDate(id),
+                        )
+                      else
+                        _AnswerField(
+                          value: value,
+                          maxLines: type == 'long' ? 4 : 1,
+                          keyboard: type == 'number' ? TextInputType.number : TextInputType.text,
+                          onChanged: (next) => _answers[id] = next,
+                        ),
+                    ],
+                  ),
+                );
+              }(),
+            ],
+          ],
+          const SizedBox(height: 8),
           FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF77328D), minimumSize: const Size.fromHeight(48)),
             onPressed: _saving ? null : _save,
             child: Text(_saving ? 'Αποθήκευση...' : 'Αποστολή'),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _AnswerField extends StatefulWidget {
+  final String value;
+  final int maxLines;
+  final TextInputType keyboard;
+  final ValueChanged<String> onChanged;
+  const _AnswerField({required this.value, required this.maxLines, required this.keyboard, required this.onChanged});
+
+  @override
+  State<_AnswerField> createState() => _AnswerFieldState();
+}
+
+class _AnswerFieldState extends State<_AnswerField> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      keyboardType: widget.keyboard,
+      maxLines: widget.maxLines,
+      decoration: const InputDecoration(filled: true, fillColor: Color(0xFFF9FAFB), border: OutlineInputBorder()),
+      onChanged: widget.onChanged,
+    );
+  }
+}
+
+class _ChoiceButton extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  const _ChoiceButton({required this.label, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? const Color(0xFFF3E8F7) : const Color(0xFFF9FAFB),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: selected ? const Color(0xFF77328D) : const Color(0xFFE5E7EB), width: selected ? 2 : 1),
+          ),
+          child: Text(label, style: TextStyle(fontWeight: FontWeight.w600, color: selected ? const Color(0xFF77328D) : const Color(0xFF374151))),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuestionnaireDocumentScreen extends ConsumerWidget {
+  final String schoolId;
+  final Map<String, dynamic> question;
+  const _QuestionnaireDocumentScreen({required this.schoolId, required this.question});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final kind = question['linkKind']?.toString() ?? '';
+    final title = question['linkLabel']?.toString().isNotEmpty == true ? question['linkLabel'].toString() : 'Όροι';
+    if (kind == 'operating' || kind == 'financial') {
+      final data = ref.watch(_regulationsProvider((schoolId: schoolId, year: '')));
+      return Scaffold(
+        appBar: AppBar(title: Text(title)),
+        body: data.when(
+          loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFF77328D))),
+          error: (_, __) => const Center(child: Text('Το κείμενο δεν φορτώθηκε.')),
+          data: (row) {
+            final body = kind == 'financial' ? row['financialRegulation'] : row['operatingRegulation'];
+            return _documentBody(body?.toString().trim().isNotEmpty == true ? body.toString() : 'Ο διαχειριστής δεν έχει καταχωρίσει ακόμα αυτό το κείμενο.');
+          },
+        ),
+      );
+    }
+    final body = kind == 'url'
+        ? (question['linkUrl']?.toString() ?? '')
+        : (question['document']?.toString().trim().isNotEmpty == true ? question['document'].toString() : question['help']?.toString() ?? '');
+    return Scaffold(appBar: AppBar(title: Text(title)), body: _documentBody(body.isEmpty ? 'Δεν έχει καταχωριστεί κείμενο.' : body));
+  }
+
+  Widget _documentBody(String body) {
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [SelectableText(body, style: const TextStyle(fontSize: 15, height: 1.5, color: Color(0xFF374151)))],
     );
   }
 }
