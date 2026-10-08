@@ -40,7 +40,7 @@ PY
 
 if [ -z "${DEVICE}" ]; then
   echo "Δεν βλέπω iPhone στο καλώδιο. Ξεκλείδωσέ το, πάτα Trust, και τρέξε ξανά:"
-  echo "  bash apps/mobile/run_iphone.sh"
+  echo "  bash run_iphone.sh"
   flutter devices || true
   exit 1
 fi
