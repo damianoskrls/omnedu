@@ -6,7 +6,7 @@ import { staffApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
 import {
   ArrowLeft, Phone, Mail, MapPin, GraduationCap, Briefcase,
-  CheckCircle, Clock, XCircle, CalendarDays, Camera, Pencil, Trash2,
+  CheckCircle, Clock, XCircle, CalendarDays, Camera, Pencil, Trash2, Plus,
 } from 'lucide-react';
 
 const TABS = [
@@ -91,6 +91,7 @@ export default function StaffProfilePage() {
   const [form, setForm] = useState({
     fullName: '', email: '', phone: '', address: '', specialization: '',
     contractType: 'full_time', hireDate: '', bio: '', monthlyGross: '',
+    education: [] as { degree: string; institution: string; year: string }[],
   });
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const isAdmin = user?.role === 'school_admin';
@@ -106,6 +107,7 @@ export default function StaffProfilePage() {
 
   function startEdit() {
     const profile = member?.teacherProfile;
+    const studies = Array.isArray(profile?.education) ? profile.education : [];
     setForm({
       fullName: member?.user?.fullName ?? '',
       email: member?.user?.email ?? '',
@@ -116,18 +118,53 @@ export default function StaffProfilePage() {
       hireDate: profile?.hireDate ? String(profile.hireDate).slice(0, 10) : '',
       bio: profile?.bio ?? '',
       monthlyGross: profile?.monthlyGross != null ? String(Number(profile.monthlyGross)) : '',
+      education: studies.map((edu: any) => ({
+        degree: edu?.degree ?? '',
+        institution: edu?.institution ?? '',
+        year: edu?.year != null && edu.year !== '' ? String(edu.year) : '',
+      })),
     });
+    setLeaveDays(profile?.annualLeaveDays != null ? String(profile.annualLeaveDays) : '0');
+    setSalaryForm(emptySalary());
+    setLeaveForm(emptyLeave());
     setFormError('');
     setEditing(true);
     setTab('profile');
   }
 
+  function setStudy(index: number, patch: Partial<{ degree: string; institution: string; year: string }>) {
+    setForm({
+      ...form,
+      education: form.education.map((row, i) => (i === index ? { ...row, ...patch } : row)),
+    });
+  }
+
   async function saveProfile() {
     setSaving(true);
     setFormError('');
+    const education = form.education
+      .map((row) => ({
+        degree: row.degree.trim(),
+        institution: row.institution.trim(),
+        ...(row.year.trim() && Number.isFinite(Number(row.year)) ? { year: Number(row.year) } : {}),
+      }))
+      .filter((row) => row.degree || row.institution);
     try {
-      const updated = await staffApi.updateProfile(schoolId, memberId, form) as any;
+      const updated = await staffApi.updateProfile(schoolId, memberId, {
+        fullName: form.fullName,
+        email: form.email,
+        phone: form.phone,
+        address: form.address,
+        specialization: form.specialization,
+        contractType: form.contractType,
+        hireDate: form.hireDate,
+        bio: form.bio,
+        monthlyGross: form.monthlyGross,
+        annualLeaveDays: Number(leaveDays || 0),
+        education,
+      }) as any;
       setMember(updated);
+      setLeaveDays(updated?.teacherProfile?.annualLeaveDays != null ? String(updated.teacherProfile.annualLeaveDays) : '0');
       setEditing(false);
     } catch (error: any) {
       const message = error?.message;
@@ -426,6 +463,41 @@ export default function StaffProfilePage() {
               />
             </label>
           </div>
+          <div className="mt-6 pt-5 border-t border-gray-100">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-semibold text-gray-800 flex items-center gap-2">
+                <GraduationCap className="h-4 w-4 text-[#77328D]" /> Σπουδές
+              </h4>
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, education: [...form.education, { degree: '', institution: '', year: '' }] })}
+                className="flex items-center gap-1 text-sm font-medium text-[#77328D]"
+              >
+                <Plus className="h-4 w-4" /> Προσθήκη
+              </button>
+            </div>
+            {form.education.length === 0 ? (
+              <p className="text-sm text-gray-400">Δεν έχουν καταχωρηθεί σπουδές.</p>
+            ) : (
+              <div className="space-y-3">
+                {form.education.map((edu, index) => (
+                  <div key={index} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_7rem_auto] gap-2 items-end">
+                    <Field label="Τίτλος" value={edu.degree} onChange={(value) => setStudy(index, { degree: value })} />
+                    <Field label="Ίδρυμα" value={edu.institution} onChange={(value) => setStudy(index, { institution: value })} />
+                    <Field label="Έτος" type="number" value={edu.year} onChange={(value) => setStudy(index, { year: value })} />
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, education: form.education.filter((_, i) => i !== index) })}
+                      className="mb-0.5 p-2 rounded-lg text-red-600 hover:bg-red-50"
+                      aria-label="Αφαίρεση σπουδών"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="flex gap-2 mt-5">
             <button
               onClick={saveProfile}
@@ -460,6 +532,8 @@ export default function StaffProfilePage() {
               <Row label="Ειδικότητα" value={profile?.specialization ?? '—'} />
               <Row label="Σύμβαση" value={CONTRACT_LABELS[profile?.contractType] ?? '—'} />
               <Row label="Ημ. Πρόσληψης" value={profile?.hireDate ? new Date(profile.hireDate).toLocaleDateString('el-GR') : '—'} />
+              <Row label="Μισθός brutto" value={profile?.monthlyGross != null ? `€${Number(profile.monthlyGross).toFixed(0)} / μήνα` : '—'} />
+              <Row label="Κανονική άδεια" value={profile?.annualLeaveDays != null ? `${profile.annualLeaveDays} ημέρες` : '—'} />
             </dl>
             {profile?.bio && (
               <div className="mt-4 pt-4 border-t border-gray-100">
@@ -468,11 +542,13 @@ export default function StaffProfilePage() {
               </div>
             )}
           </div>
-          {education.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 md:col-span-2">
-              <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                <GraduationCap className="h-4 w-4 text-emerald-600" /> Σπουδές
-              </h3>
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 md:col-span-2">
+            <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+              <GraduationCap className="h-4 w-4 text-emerald-600" /> Σπουδές
+            </h3>
+            {education.length === 0 ? (
+              <p className="text-sm text-gray-400">Δεν έχουν καταχωρηθεί σπουδές.</p>
+            ) : (
               <div className="space-y-3">
                 {education.map((edu: any, i: number) => (
                   <div key={i} className="flex items-start gap-4 p-4 bg-gray-50 rounded-xl">
@@ -480,14 +556,14 @@ export default function StaffProfilePage() {
                       <GraduationCap className="h-4 w-4 text-emerald-600" />
                     </div>
                     <div>
-                      <div className="font-medium text-gray-900">{edu.degree}</div>
-                      <div className="text-sm text-gray-500">{edu.institution} · {edu.year}</div>
+                      <div className="font-medium text-gray-900">{edu.degree || '—'}</div>
+                      <div className="text-sm text-gray-500">{[edu.institution, edu.year].filter((part) => part != null && part !== '').join(' · ') || '—'}</div>
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
 
@@ -522,9 +598,10 @@ export default function StaffProfilePage() {
         </div>
       )}
 
-      {/* Tab: Μισθοδοσία */}
-      {tab === 'salary' && (
-        <div className="space-y-6">
+      {/* Tab: Μισθοδοσία — και μέσα στην επεξεργασία προφίλ */}
+      {(tab === 'salary' || (tab === 'profile' && editing)) && (
+        <div className={`space-y-6 ${tab === 'profile' ? 'mt-6' : ''}`}>
+          {tab === 'profile' && <h3 className="font-semibold text-gray-800">Μισθοδοσία</h3>}
           <div className="grid grid-cols-3 gap-4">
             <StatMini label="Σύνολο Καθαρών (ιστορικό)" value={`€${totalSalary.toFixed(2)}`} color="text-gray-900" />
             <StatMini label="Μισθός Brutto" value={profile?.monthlyGross ? `€${Number(profile.monthlyGross).toFixed(0)}/μήνα` : '—'} color="text-emerald-700" />
@@ -579,7 +656,10 @@ export default function StaffProfilePage() {
                   <tr><td colSpan={6} className="px-6 py-10 text-center text-gray-400">Δεν υπάρχουν εγγραφές μισθοδοσίας.</td></tr>
                 ) : member.teacherProfile.salaryRecords.map((r: any) => (
                   <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50">
-                    <td className="px-6 py-4 font-medium text-gray-900">{MONTH_NAMES[r.month]} {r.year}</td>
+                    <td className="px-6 py-4 font-medium text-gray-900">
+                      {MONTH_NAMES[r.month]} {r.year}
+                      {r.notes ? <div className="text-xs font-normal text-gray-400 mt-0.5">{r.notes}</div> : null}
+                    </td>
                     <td className="px-6 py-4 text-gray-700">€{Number(r.grossAmount).toFixed(2)}</td>
                     <td className="px-6 py-4 text-red-500">-€{Number(r.deductions).toFixed(2)}</td>
                     <td className="px-6 py-4 font-semibold text-gray-900">€{Number(r.netAmount).toFixed(2)}</td>
@@ -615,9 +695,10 @@ export default function StaffProfilePage() {
         </div>
       )}
 
-      {/* Tab: Άδειες */}
-      {tab === 'leaves' && (
-        <div className="space-y-4">
+      {/* Tab: Άδειες — και μέσα στην επεξεργασία προφίλ */}
+      {(tab === 'leaves' || (tab === 'profile' && editing)) && (
+        <div className={`space-y-4 ${tab === 'profile' ? 'mt-6' : ''}`}>
+          {tab === 'profile' && <h3 className="font-semibold text-gray-800">Άδειες</h3>}
           {isAdmin && (
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 space-y-4">
               <div className="flex flex-wrap items-end gap-3">
