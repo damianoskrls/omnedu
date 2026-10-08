@@ -53,10 +53,18 @@ class _TeacherShellState extends ConsumerState<TeacherShell> {
 }
 
 class _NavItem {
-  final IconData icon;
-  final IconData activeIcon;
+  final IconData? icon;
+  final IconData? activeIcon;
+  final String? asset;
+  final String? activeAsset;
   final String label;
-  const _NavItem({required this.icon, required this.activeIcon, required this.label});
+  const _NavItem({
+    this.icon,
+    this.activeIcon,
+    this.asset,
+    this.activeAsset,
+    required this.label,
+  });
 }
 
 class _FloatingNavBar extends StatelessWidget {
@@ -66,7 +74,11 @@ class _FloatingNavBar extends StatelessWidget {
   const _FloatingNavBar({required this.selectedIndex, required this.onTap});
 
   static const _items = [
-    _NavItem(icon: Icons.home_outlined, activeIcon: Icons.home_rounded, label: 'Αρχική'),
+    _NavItem(
+      asset: 'assets/images/nav_home_owl.png',
+      activeAsset: 'assets/images/nav_home_owl_active.png',
+      label: 'Αρχική',
+    ),
     _NavItem(icon: Icons.event_outlined, activeIcon: Icons.event_rounded, label: 'Εκδηλώσεις'),
   ];
 
@@ -132,11 +144,7 @@ class _FloatingNavBar extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        selected ? item.activeIcon : item.icon,
-                        size: 22,
-                        color: selected ? Colors.white : const Color(0xFFBBB8D4),
-                      ),
+                      _navGlyph(item, selected),
                       if (selected) ...[
                         const SizedBox(height: 2),
                         Text(
@@ -159,4 +167,27 @@ class _FloatingNavBar extends StatelessWidget {
       ),
     );
   }
+}
+
+Widget _navGlyph(_NavItem item, bool selected) {
+  final color = selected ? Colors.white : const Color(0xFFBBB8D4);
+  final asset = selected ? item.activeAsset : item.asset;
+  if (asset != null) {
+    return ColorFiltered(
+      key: ValueKey(selected),
+      colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+      child: Image.asset(
+        asset,
+        height: 30,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.medium,
+      ),
+    );
+  }
+  return Icon(
+    selected ? item.activeIcon : item.icon,
+    key: ValueKey(selected),
+    size: 22,
+    color: color,
+  );
 }
