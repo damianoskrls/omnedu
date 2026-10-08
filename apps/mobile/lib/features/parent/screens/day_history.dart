@@ -57,10 +57,7 @@ class DayHistoryPanel extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final studentId = child['id'] as String? ?? '';
-    final reportsAsync = ref.watch(childDayReportsProvider((schoolId: schoolId, studentId: studentId)));
     final menuAsync = ref.watch(dayHistoryMenuProvider(schoolId));
-    final todayStr = dayHistoryIso(DateTime.now());
     const colors = dayHistoryColors;
 
     return Column(
@@ -74,31 +71,13 @@ class DayHistoryPanel extends ConsumerWidget {
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF2C2422)),
             ),
           ),
-        _sectionTitle(Icons.today_rounded, 'Ενημέρωση Σήμερα', colors),
+        daySectionTitle(Icons.today_rounded, 'Ενημέρωση Σήμερα', colors),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-          child: reportsAsync.when(
-            loading: () => const DayHistoryLoadingCard(),
-            error: (e, _) => DayHistoryEmptyCard('Σφάλμα φόρτωσης', child: child),
-            data: (reports) {
-              Map<String, dynamic>? todayReport;
-              for (final raw in reports) {
-                if (raw is! Map) continue;
-                final date = raw['reportDate']?.toString() ?? '';
-                if (date.startsWith(todayStr)) {
-                  todayReport = Map<String, dynamic>.from(raw);
-                  break;
-                }
-              }
-              if (todayReport == null) {
-                return DayHistoryEmptyCard('Δεν υπάρχει ενημέρωση για σήμερα ακόμα', child: child);
-              }
-              return DayDiaryCard(report: todayReport, colors: colors, child: child);
-            },
-          ),
+          child: ChildTodayUpdate(schoolId: schoolId, child: child),
         ),
         if (showMenu) ...[
-          _sectionTitle(Icons.restaurant_rounded, 'Διατροφολόγιο Σήμερα', colors),
+          daySectionTitle(Icons.restaurant_rounded, 'Διατροφολόγιο Σήμερα', colors),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
             child: menuAsync.when(
@@ -110,56 +89,172 @@ class DayHistoryPanel extends ConsumerWidget {
             ),
           ),
         ],
-        _sectionTitle(Icons.history_rounded, 'Πρόσφατες Ενημερώσεις', colors),
+        daySectionTitle(Icons.history_rounded, 'Πρόσφατες Ενημερώσεις', colors),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-          child: reportsAsync.when(
-            loading: () => const DayHistoryLoadingCard(),
-            error: (_, __) => const SizedBox.shrink(),
-            data: (reports) {
-              final recent = reports.where((r) {
-                final d = r is Map ? r['reportDate'] as String? ?? '' : '';
-                return !d.startsWith(todayStr);
-              }).take(10).toList();
-              if (recent.isEmpty) {
-                return DayHistoryEmptyCard('Δεν υπάρχουν προηγούμενες ενημερώσεις', child: child);
-              }
-              return Column(
-                children: [
-                  for (final raw in recent)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: DayDiaryCard(
-                        report: Map<String, dynamic>.from(raw as Map),
-                        colors: colors,
-                        child: child,
-                      ),
-                    ),
-                ],
-              );
-            },
-          ),
+          child: ChildRecentUpdates(schoolId: schoolId, child: child),
         ),
         _InstructionsBlock(child: child, colors: colors),
         _EventsBlock(child: child, colors: colors),
       ],
     );
   }
+}
 
-  Widget _sectionTitle(IconData icon, String title, List<Color> colors) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-      child: Row(
-        children: [
-          Icon(icon, color: colors[0], size: 20),
+Widget daySectionTitle(IconData icon, String title, List<Color> colors, {String? badge}) {
+  return Padding(
+    padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+    child: Row(
+      children: [
+        Icon(icon, color: colors[0], size: 20),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: colors[0]),
+        ),
+        if (badge != null && badge.isNotEmpty) ...[
           const SizedBox(width: 8),
-          Text(
-            title,
-            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: colors[0]),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(color: const Color(0xFFE95926), borderRadius: BorderRadius.circular(20)),
+            child: Text(badge, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
           ),
         ],
-      ),
+      ],
+    ),
+  );
+}
+
+class ChildTodayUpdate extends ConsumerWidget {
+  final String schoolId;
+  final Map<String, dynamic> child;
+  const ChildTodayUpdate({super.key, required this.schoolId, required this.child});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final studentId = child['id'] as String? ?? '';
+    final reportsAsync = ref.watch(childDayReportsProvider((schoolId: schoolId, studentId: studentId)));
+    final todayStr = dayHistoryIso(DateTime.now());
+    const colors = dayHistoryColors;
+    return reportsAsync.when(
+      loading: () => const DayHistoryLoadingCard(),
+      error: (_, __) => DayHistoryEmptyCard('Σφάλμα φόρτωσης', child: child),
+      data: (reports) {
+        Map<String, dynamic>? todayReport;
+        for (final raw in reports) {
+          if (raw is! Map) continue;
+          final date = raw['reportDate']?.toString() ?? '';
+          if (date.startsWith(todayStr)) {
+            todayReport = Map<String, dynamic>.from(raw);
+            break;
+          }
+        }
+        if (todayReport == null) {
+          return DayHistoryEmptyCard('Δεν υπάρχει ενημέρωση για σήμερα ακόμα', child: child);
+        }
+        return DayDiaryCard(report: todayReport, colors: colors, child: child);
+      },
     );
+  }
+}
+
+class ChildRecentUpdates extends ConsumerWidget {
+  final String schoolId;
+  final Map<String, dynamic> child;
+  const ChildRecentUpdates({super.key, required this.schoolId, required this.child});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final studentId = child['id'] as String? ?? '';
+    final reportsAsync = ref.watch(childDayReportsProvider((schoolId: schoolId, studentId: studentId)));
+    final todayStr = dayHistoryIso(DateTime.now());
+    const colors = dayHistoryColors;
+    return reportsAsync.when(
+      loading: () => const DayHistoryLoadingCard(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (reports) {
+        final recent = reports.where((raw) {
+          final date = raw is Map ? raw['reportDate'] as String? ?? '' : '';
+          return !date.startsWith(todayStr);
+        }).take(10).toList();
+        if (recent.isEmpty) {
+          return DayHistoryEmptyCard('Δεν υπάρχουν προηγούμενες ενημερώσεις', child: child);
+        }
+        return Column(
+          children: [
+            for (final raw in recent)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: DayDiaryCard(
+                  report: Map<String, dynamic>.from(raw as Map),
+                  colors: colors,
+                  child: child,
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class SharedTodayMenu extends ConsumerWidget {
+  final String schoolId;
+  final List<Map<String, dynamic>> children;
+  const SharedTodayMenu({super.key, required this.schoolId, required this.children});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final menuAsync = ref.watch(dayHistoryMenuProvider(schoolId));
+    return menuAsync.when(
+      loading: () => const DayHistoryLoadingCard(),
+      error: (_, __) => DayHistoryEmptyCard('Δεν υπάρχει καταχωρημένο μενού', children: children),
+      data: (menu) => menu == null
+          ? DayHistoryEmptyCard('Δεν υπάρχει καταχωρημένο μενού για σήμερα', children: children)
+          : DayMenuCard(menu: menu, colors: dayHistoryColors, children: children),
+    );
+  }
+}
+
+bool childHasInstructions(Map<String, dynamic> child) {
+  final enrollments = child['enrollments'] as List? ?? [];
+  if (enrollments.isEmpty || enrollments.first is! Map) return false;
+  final instructions = enrollments.first['class']?['instructions'];
+  return instructions is List && instructions.isNotEmpty;
+}
+
+bool childHasEvents(Map<String, dynamic> child) {
+  final events = child['eventEnrollments'];
+  return events is List && events.isNotEmpty;
+}
+
+int childPendingEvents(Map<String, dynamic> child) {
+  final events = child['eventEnrollments'];
+  if (events is! List) return 0;
+  return events.where((row) {
+    if (row is! Map) return false;
+    final status = row['status'] as String?;
+    return status == 'pending_consent' || status == 'pending_payment';
+  }).length;
+}
+
+class ChildInstructionCards extends StatelessWidget {
+  final Map<String, dynamic> child;
+  const ChildInstructionCards({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return _InstructionsBlock(child: child, colors: dayHistoryColors, showTitle: false);
+  }
+}
+
+class ChildEventCards extends StatelessWidget {
+  final Map<String, dynamic> child;
+  const ChildEventCards({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return _EventsBlock(child: child, colors: dayHistoryColors, showTitle: false);
   }
 }
 
@@ -179,17 +274,25 @@ class DayHistoryLoadingCard extends StatelessWidget {
 class DayHistoryEmptyCard extends StatelessWidget {
   final String message;
   final Map<String, dynamic>? child;
-  const DayHistoryEmptyCard(this.message, {super.key, this.child});
+  final List<Map<String, dynamic>> children;
+  const DayHistoryEmptyCard(this.message, {super.key, this.child, this.children = const []});
 
   @override
   Widget build(BuildContext context) {
+    final people = (children.isNotEmpty ? children : [if (child != null) child!])
+        .map(ChildMention.fromMap)
+        .whereType<ChildMention>()
+        .toList();
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (child != null) _childLabel(child!),
+          if (people.isNotEmpty) ...[
+            ChildMentions(people: people),
+            const SizedBox(height: 10),
+          ],
           Row(
             children: [
               const Icon(Icons.info_outline_rounded, color: Color(0xFF77328D), size: 20),
@@ -208,7 +311,8 @@ class DayHistoryEmptyCard extends StatelessWidget {
 class _InstructionsBlock extends StatelessWidget {
   final Map<String, dynamic> child;
   final List<Color> colors;
-  const _InstructionsBlock({required this.child, required this.colors});
+  final bool showTitle;
+  const _InstructionsBlock({required this.child, required this.colors, this.showTitle = true});
 
   @override
   Widget build(BuildContext context) {
@@ -217,19 +321,7 @@ class _InstructionsBlock extends StatelessWidget {
         ? (enrollments.first['class']?['instructions'] as List<dynamic>? ?? [])
         : <dynamic>[];
     if (instructions.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            Icon(Icons.assignment_rounded, color: colors[0], size: 20),
-            const SizedBox(width: 8),
-            Text('Οδηγίες από το Σχολείο',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: colors[0])),
-          ]),
-          const SizedBox(height: 12),
-          ...instructions.map((instr) {
+    final cards = instructions.map((instr) {
             final i = instr as Map<String, dynamic>;
             return Container(
               margin: const EdgeInsets.only(bottom: 10),
@@ -262,9 +354,22 @@ class _InstructionsBlock extends StatelessWidget {
                     style: const TextStyle(fontSize: 13, color: Color(0xFF4B3A36))),
               ]),
             );
-          }),
-        ],
-      ),
+    });
+    if (!showTitle) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+        child: Column(children: cards.toList()),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        daySectionTitle(Icons.assignment_rounded, 'Οδηγίες από το Σχολείο', colors),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+          child: Column(children: cards.toList()),
+        ),
+      ],
     );
   }
 }
@@ -272,36 +377,15 @@ class _InstructionsBlock extends StatelessWidget {
 class _EventsBlock extends StatelessWidget {
   final Map<String, dynamic> child;
   final List<Color> colors;
-  const _EventsBlock({required this.child, required this.colors});
+  final bool showTitle;
+  const _EventsBlock({required this.child, required this.colors, this.showTitle = true});
 
   @override
   Widget build(BuildContext context) {
     final eventEnrollments = child['eventEnrollments'] as List<dynamic>? ?? [];
     if (eventEnrollments.isEmpty) return const SizedBox.shrink();
-    final pending = eventEnrollments.where((e) =>
-        (e['status'] as String?) == 'pending_consent' ||
-        (e['status'] as String?) == 'pending_payment').toList();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            Icon(Icons.event_rounded, color: colors[0], size: 20),
-            const SizedBox(width: 8),
-            Text('Εκδηλώσεις', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: colors[0])),
-            if (pending.isNotEmpty) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(color: const Color(0xFFE95926), borderRadius: BorderRadius.circular(20)),
-                child: Text('${pending.length} εκκρεμεί',
-                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
-              ),
-            ],
-          ]),
-          const SizedBox(height: 12),
-          ...eventEnrollments.take(5).map((enr) {
+    final pending = childPendingEvents(child);
+    final cards = eventEnrollments.take(5).map((enr) {
             final e = enr as Map<String, dynamic>;
             final event = e['event'] as Map<String, dynamic>? ?? {};
             final status = e['status'] as String? ?? '';
@@ -347,9 +431,23 @@ class _EventsBlock extends StatelessWidget {
               ]),
               ]),
             );
-          }),
-        ],
-      ),
+    });
+    final list = Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      child: Column(children: cards.toList()),
+    );
+    if (!showTitle) return list;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        daySectionTitle(
+          Icons.event_rounded,
+          'Εκδηλώσεις',
+          colors,
+          badge: pending > 0 ? '$pending εκκρεμεί' : null,
+        ),
+        list,
+      ],
     );
   }
 
@@ -553,7 +651,8 @@ class DayMenuCard extends StatelessWidget {
   final Map<String, dynamic> menu;
   final List<Color> colors;
   final Map<String, dynamic>? child;
-  const DayMenuCard({super.key, required this.menu, required this.colors, this.child});
+  final List<Map<String, dynamic>> children;
+  const DayMenuCard({super.key, required this.menu, required this.colors, this.child, this.children = const []});
 
   @override
   Widget build(BuildContext context) {
@@ -566,8 +665,12 @@ class DayMenuCard extends StatelessWidget {
 
     final filled = items.where((i) => i.$3 != null && (i.$3 as String).isNotEmpty).toList();
     if (filled.isEmpty) {
-      return DayHistoryEmptyCard('Δεν υπάρχει καταχωρημένο μενού για σήμερα', child: child);
+      return DayHistoryEmptyCard('Δεν υπάρχει καταχωρημένο μενού για σήμερα', child: child, children: children);
     }
+    final people = (children.isNotEmpty ? children : [if (child != null) child!])
+        .map(ChildMention.fromMap)
+        .whereType<ChildMention>()
+        .toList();
 
     return Container(
       decoration: BoxDecoration(
@@ -579,10 +682,10 @@ class DayMenuCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          if (child != null)
+          if (people.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
-              child: Align(alignment: Alignment.centerLeft, child: _childLabel(child!)),
+              child: Align(alignment: Alignment.centerLeft, child: ChildMentions(people: people)),
             ),
           ...filled.map((item) {
             final isLast = filled.last == item && (menu['notes'] == null || (menu['notes'] as String).isEmpty);

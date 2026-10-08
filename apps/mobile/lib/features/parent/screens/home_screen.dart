@@ -172,17 +172,40 @@ class HomeScreen extends ConsumerWidget {
                           },
                         ),
                       ),
-                      for (var i = 0; i < cards.length; i++) ...[
-                        DayHistoryPanel(
-                          schoolId: schoolId,
-                          child: cards[i],
+                      daySectionTitle(Icons.today_rounded, 'Ενημέρωση Σήμερα', dayHistoryColors),
+                      for (final child in cards)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                          child: ChildTodayUpdate(schoolId: schoolId, child: child),
                         ),
-                        _HomeExtras(
-                          child: cards[i],
-                          thematic: _thematicFor(plans, cards[i]),
-                          meeting: acceptedMeetingFor(meetings, cards[i]['id']?.toString()),
+                      daySectionTitle(Icons.restaurant_rounded, 'Διατροφολόγιο Σήμερα', dayHistoryColors),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                        child: SharedTodayMenu(schoolId: schoolId, children: cards),
+                      ),
+                      daySectionTitle(Icons.history_rounded, 'Πρόσφατες Ενημερώσεις', dayHistoryColors),
+                      for (final child in cards)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                          child: ChildRecentUpdates(schoolId: schoolId, child: child),
                         ),
+                      if (cards.any(childHasInstructions)) ...[
+                        daySectionTitle(Icons.assignment_rounded, 'Οδηγίες από το Σχολείο', dayHistoryColors),
+                        for (final child in cards) ChildInstructionCards(child: child),
                       ],
+                      if (cards.any(childHasEvents)) ...[
+                        daySectionTitle(
+                          Icons.event_rounded,
+                          'Εκδηλώσεις',
+                          dayHistoryColors,
+                          badge: () {
+                            final pending = cards.fold<int>(0, (sum, child) => sum + childPendingEvents(child));
+                            return pending > 0 ? '$pending εκκρεμεί' : null;
+                          }(),
+                        ),
+                        for (final child in cards) ChildEventCards(child: child),
+                      ],
+                      _GroupedExtras(children: cards, plans: plans, meetings: meetings),
                     ],
                   );
                 },
@@ -352,44 +375,49 @@ class _ChildEntryCard extends StatelessWidget {
   }
 }
 
-class _HomeExtras extends StatelessWidget {
-  final Map<String, dynamic> child;
-  final Map<String, dynamic>? thematic;
-  final Map<String, dynamic>? meeting;
-  const _HomeExtras({required this.child, required this.thematic, required this.meeting});
+class _GroupedExtras extends StatelessWidget {
+  final List<Map<String, dynamic>> children;
+  final List<dynamic> plans;
+  final List<dynamic> meetings;
+  const _GroupedExtras({required this.children, required this.plans, required this.meetings});
 
   @override
   Widget build(BuildContext context) {
-    final title = thematic == null
-        ? 'Δεν έχει ανέβει ακόμα για αυτόν τον μήνα.'
-        : (thematic!['title']?.toString().trim().isNotEmpty == true ? thematic!['title'].toString() : 'Διαθεματικό');
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-      child: Column(
-        children: [
-          if (meeting != null)
-            _extraRow(
-              Icons.event_available_rounded,
-              'Επερχόμενη συνάντηση',
-              '${meetingDay(meeting!['meetingDate'])} στις ${meeting!['acceptedSlot'] ?? ''}',
-              child,
+    final month = thematicMonthLabel(thematicMonthKey(DateTime.now()));
+    final meetingRows = <MapEntry<Map<String, dynamic>, Map<String, dynamic>>>[];
+    for (final child in children) {
+      final meeting = acceptedMeetingFor(meetings, child['id']?.toString());
+      if (meeting != null) meetingRows.add(MapEntry(child, meeting));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (meetingRows.isNotEmpty) ...[
+          daySectionTitle(Icons.event_available_rounded, 'Επερχόμενη συνάντηση', dayHistoryColors),
+          for (final row in meetingRows)
+            _childLine(
+              row.key,
+              '${meetingDay(row.value['meetingDate'])} στις ${row.value['acceptedSlot'] ?? ''}',
             ),
-          _extraRow(
-            Icons.auto_stories_rounded,
-            'Διαθεματικό ${thematicMonthLabel(thematicMonthKey(DateTime.now()))}',
-            title,
-            child,
-          ),
         ],
-      ),
+        daySectionTitle(Icons.auto_stories_rounded, 'Διαθεματικό $month', dayHistoryColors),
+        for (final child in children)
+          _childLine(child, _thematicTitle(_thematicFor(plans, child))),
+      ],
     );
   }
 
-  Widget _extraRow(IconData icon, String label, String value, Map<String, dynamic> child) {
+  String _thematicTitle(Map<String, dynamic>? thematic) {
+    if (thematic == null) return 'Δεν έχει ανέβει ακόμα για αυτόν τον μήνα.';
+    final title = thematic['title']?.toString().trim() ?? '';
+    return title.isNotEmpty ? title : 'Διαθεματικό';
+  }
+
+  Widget _childLine(Map<String, dynamic> child, String value) {
     final mention = ChildMention.fromMap(child);
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.fromLTRB(20, 12, 20, 0),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -403,22 +431,7 @@ class _HomeExtras extends StatelessWidget {
             ChildMentions(people: [mention]),
             const SizedBox(height: 8),
           ],
-          Row(
-            children: [
-              Icon(icon, color: const Color(0xFFE95926), size: 18),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF77328D))),
-                    const SizedBox(height: 2),
-                    Text(value, style: const TextStyle(fontSize: 13, color: Color(0xFF374151))),
-                  ],
-                ),
-              ),
-            ],
-          ),
+          Text(value, style: const TextStyle(fontSize: 13, color: Color(0xFF374151))),
         ],
       ),
     );
