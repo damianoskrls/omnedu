@@ -2,12 +2,17 @@ import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { feeRuleForMonth, isOpenMonth, quoteStudentMonth, schoolYearBounds, subsidyRevision } from './billing-quote';
 import { NotificationsService } from '../notifications/notifications.service';
+import { StudentsService } from '../students/students.service';
 
 const monthNames = ['', 'Ιανουάριο', 'Φεβρουάριο', 'Μάρτιο', 'Απρίλιο', 'Μάιο', 'Ιούνιο', 'Ιούλιο', 'Αύγουστο', 'Σεπτέμβριο', 'Οκτώβριο', 'Νοέμβριο', 'Δεκέμβριο'];
 
 @Injectable()
 export class BillingService implements OnModuleInit {
-  constructor(private prisma: PrismaService, private notifications: NotificationsService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notifications: NotificationsService,
+    private students: StudentsService,
+  ) {}
 
   async onModuleInit() {
     await this.ensureFeeHistory();
@@ -277,6 +282,7 @@ export class BillingService implements OnModuleInit {
   }
 
   async getMyCharges(parentUserId: string, schoolId: string) {
+    await this.students.ensureParentChildren(parentUserId, schoolId);
     const children = await this.prisma.student.findMany({
       where: { schoolId, isActive: true, parents: { some: { userId: parentUserId } } },
       select: { id: true, fullName: true, avatarUrl: true },

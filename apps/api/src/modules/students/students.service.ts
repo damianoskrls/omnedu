@@ -1,7 +1,7 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
-import { normalizePhone } from '../auth/phone';
+import { normalizePhone, phoneKey } from '../auth/phone';
 import { CreateStudentDto } from './dto/create-student.dto';
 
 const activityDetailSelect = {
@@ -49,6 +49,7 @@ export class StudentsService {
   }
 
   async findOne(id: string, schoolId: string, parentUserId?: string) {
+    if (parentUserId) await this.ensureParentChildren(parentUserId, schoolId);
     const student = await this.prisma.student.findFirst({
       where: { id, schoolId },
       include: {
@@ -138,12 +139,14 @@ export class StudentsService {
   }
 
   async findByParent(parentUserId: string, schoolId: string) {
+    await this.ensureParentChildren(parentUserId, schoolId);
     return this.prisma.student.findMany({
       where: {
         schoolId,
         isActive: true,
         parents: { some: { userId: parentUserId } },
       },
+      orderBy: { fullName: 'asc' },
       include: {
         enrollments: {
           include: {
@@ -221,8 +224,7 @@ export class StudentsService {
           const p = dto.parents[i];
           // Use provided email or generate a placeholder
           const email = p.email?.trim() || `parent-${randomBytes(8).toString('hex')}@omnedu.placeholder`;
-          // Check if user with this email already exists
-          let user = p.email ? await tx.user.findUnique({ where: { email } }) : null;
+          let user = await this.findUserByContact(tx, p.email, p.phone);
           if (!user) {
             user = await tx.user.create({
               data: {
@@ -238,14 +240,17 @@ export class StudentsService {
           if (!existing) {
             await tx.schoolMember.create({ data: { schoolId, userId: user.id, role: 'parent' } });
           }
-          await tx.studentParent.create({
-            data: {
-              studentId: student.id,
-              userId: user.id,
-              relation: p.relation || 'parent',
-              isPrimary: i === 0,
-            },
-          });
+          const alreadyLinked = await tx.studentParent.findFirst({ where: { studentId: student.id, userId: user.id } });
+          if (!alreadyLinked) {
+            await tx.studentParent.create({
+              data: {
+                studentId: student.id,
+                userId: user.id,
+                relation: p.relation || 'parent',
+                isPrimary: i === 0,
+              },
+            });
+          }
         }
       }
 
@@ -312,7 +317,7 @@ export class StudentsService {
       if (!student) throw new Error('Student not found');
 
       const email = data.email?.trim() || `parent-${randomBytes(8).toString('hex')}@omnedu.placeholder`;
-      let user = data.email?.trim() ? await tx.user.findUnique({ where: { email: data.email.trim() } }) : null;
+      let user = await this.findUserByContact(tx, data.email, data.phone);
       if (!user) {
         user = await tx.user.create({
           data: { email, fullName: data.fullName, phone: normalizePhone(data.phone), passwordHash: randomBytes(32).toString('hex') },
@@ -397,6 +402,7 @@ export class StudentsService {
       this.prisma.student.findFirst({ where: { id: siblingId, schoolId } }),
     ]);
     if (!s1 || !s2) throw new Error('Student not found');
+    await this.shareParents(studentId, siblingId);
     // Create bidirectional link (both directions, ignore duplicates)
     await this.prisma.$transaction([
       this.prisma.studentSibling.upsert({
@@ -441,5 +447,100 @@ export class StudentsService {
       data: { studentId, classId, academicYearId: cls.academicYearId },
       include: { class: { include: { level: true } } },
     });
+  }
+
+  /** Same phone is the same parent, even if a second account was created. Siblings of those children count too. */
+  async ensureParentChildren(parentUserId: string, schoolId: string) {
+    const userIds = await this.accountUserIds(parentUserId);
+    const direct = await this.prisma.student.findMany({
+      where: { schoolId, isActive: true, parents: { some: { userId: { in: userIds } } } },
+      select: { id: true },
+    });
+    const directIds = direct.map((row) => row.id);
+    if (!directIds.length) return;
+
+    const links = await this.prisma.studentSibling.findMany({
+      where: { OR: [{ studentId: { in: directIds } }, { siblingId: { in: directIds } }] },
+      select: { studentId: true, siblingId: true },
+    });
+    const siblingIds = new Set<string>();
+    for (const link of links) {
+      if (!directIds.includes(link.studentId)) siblingIds.add(link.studentId);
+      if (!directIds.includes(link.siblingId)) siblingIds.add(link.siblingId);
+    }
+    const extras = siblingIds.size
+      ? await this.prisma.student.findMany({
+          where: { schoolId, isActive: true, id: { in: [...siblingIds] } },
+          select: { id: true },
+        })
+      : [];
+    const studentIds = [...new Set([...directIds, ...extras.map((row) => row.id)])];
+    const existing = await this.prisma.studentParent.findMany({
+      where: { studentId: { in: studentIds }, userId: { in: userIds } },
+      select: { studentId: true, userId: true, relation: true },
+    });
+    const have = new Set(existing.map((row) => `${row.studentId}:${row.userId}`));
+    const data: { studentId: string; userId: string; relation: string; isPrimary: boolean }[] = [];
+    for (const studentId of studentIds) {
+      const relation = existing.find((row) => row.studentId === studentId)?.relation
+        ?? existing[0]?.relation
+        ?? 'γονέας';
+      for (const userId of userIds) {
+        if (have.has(`${studentId}:${userId}`)) continue;
+        data.push({ studentId, userId, relation, isPrimary: false });
+      }
+    }
+    if (data.length) await this.prisma.studentParent.createMany({ data, skipDuplicates: true });
+  }
+
+  private async accountUserIds(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { phone: true } });
+    const key = phoneKey(user?.phone);
+    if (!key) return [userId];
+    const users = await this.prisma.user.findMany({
+      where: { isActive: true, phone: { not: null } },
+      select: { id: true, phone: true },
+    });
+    const ids = users.filter((row) => phoneKey(row.phone) === key).map((row) => row.id);
+    return ids.length ? ids : [userId];
+  }
+
+  private async shareParents(studentId: string, siblingId: string) {
+    const links = await this.prisma.studentParent.findMany({
+      where: { studentId: { in: [studentId, siblingId] } },
+    });
+    const data: { studentId: string; userId: string; relation: string; isPrimary: boolean }[] = [];
+    for (const link of links) {
+      const otherId = link.studentId === studentId ? siblingId : studentId;
+      if (links.some((row) => row.studentId === otherId && row.userId === link.userId)) continue;
+      if (data.some((row) => row.studentId === otherId && row.userId === link.userId)) continue;
+      data.push({
+        studentId: otherId,
+        userId: link.userId,
+        relation: link.relation ?? 'γονέας',
+        isPrimary: false,
+      });
+    }
+    if (data.length) await this.prisma.studentParent.createMany({ data, skipDuplicates: true });
+  }
+
+  private async findUserByContact(
+    db: { user: PrismaService['user'] },
+    email?: string | null,
+    phone?: string | null,
+  ) {
+    const trimmed = email?.trim();
+    if (trimmed) {
+      const byEmail = await db.user.findUnique({ where: { email: trimmed } });
+      if (byEmail) return byEmail;
+    }
+    const key = phoneKey(phone);
+    if (!key) return null;
+    const candidates = await db.user.findMany({
+      where: { isActive: true, phone: { not: null } },
+      select: { id: true, phone: true },
+    });
+    const match = candidates.find((row) => phoneKey(row.phone) === key);
+    return match ? db.user.findUnique({ where: { id: match.id } }) : null;
   }
 }

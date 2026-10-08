@@ -227,7 +227,9 @@ export class AuthService {
         },
       },
     });
-    return users.find((row) => phoneKey(row.phone) === key) ?? null;
+    const matches = users.filter((row) => phoneKey(row.phone) === key);
+    matches.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    return matches[0] ?? null;
   }
 
   private async ensureParentMemberships(userId: string) {
