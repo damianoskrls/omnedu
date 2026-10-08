@@ -57,6 +57,7 @@ model School {
   teacherAbsences      TeacherAbsence[]
   activityInstructors  ActivityInstructor[]
   schoolPosts          SchoolPost[]
+  classAssignments     ClassAssignment[]
   schoolEvents         SchoolEvent[]
   questionnaires       Questionnaire[]
   thematicPlans        ThematicPlan[]
@@ -135,6 +136,7 @@ model User {
   acknowledgedMedications  MedicationRequest[]   @relation("MedicationAcknowledged")
   sentBroadcasts           NotificationBroadcast[] @relation("BroadcastSentBy")
   schoolPosts              SchoolPost[]
+  classAssignments         ClassAssignment[]
   createdEvents            SchoolEvent[]
   eventTeacherAssignments  SchoolEventTeacher[]
   uploadedEventMedia       SchoolEventMedia[]
@@ -308,8 +310,27 @@ model Class {
   notifBroadcasts NotificationBroadcast[]
   instructions   ClassInstruction[]
   thematicPlans  ThematicPlan[]
+  assignments    ClassAssignment[]
 
   @@map("classes")
+}
+
+model ClassAssignment {
+  id           String   @id @default(uuid())
+  schoolId     String   @map("school_id")
+  classId      String   @map("class_id")
+  authorId     String   @map("author_id")
+  title        String
+  instructions String?  @db.Text
+  fileUrls     String[] @default([]) @map("file_urls")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  class  Class  @relation(fields: [classId], references: [id], onDelete: Cascade)
+  author User   @relation(fields: [authorId], references: [id])
+
+  @@index([schoolId, classId, createdAt(sort: Desc)])
+  @@map("class_assignments")
 }
 
 model ClassInstruction {

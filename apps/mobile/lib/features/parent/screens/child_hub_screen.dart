@@ -10,6 +10,7 @@ import 'child_detail_screen.dart';
 import 'parent_child_pages.dart';
 import 'parent_meetings_screen.dart';
 import 'thematic_screen.dart';
+import 'assignments_screen.dart';
 
 class ChildHubScreen extends StatelessWidget {
   final String schoolId;
@@ -80,6 +81,18 @@ class ChildHubScreen extends StatelessWidget {
               className: className,
               studentId: child['id']?.toString() ?? '',
               studentName: name,
+            ),
+          ),
+        );
+      }),
+      _Tile('Εργασίες', Icons.assignment_rounded, const Color(0xFF77328D), () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ParentAssignmentsScreen(
+              schoolId: schoolId,
+              studentId: child['id']?.toString(),
+              childName: name,
             ),
           ),
         );

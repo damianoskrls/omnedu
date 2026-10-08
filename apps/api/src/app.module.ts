@@ -26,6 +26,7 @@ import { SchoolEventsModule } from './modules/school-events/school-events.module
 import { ThematicPlansModule } from './modules/thematic-plans/thematic-plans.module';
 import { CelebrationsModule } from './modules/celebrations/celebrations.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { AssignmentsModule } from './modules/assignments/assignments.module';
 import { StorageModule } from './common/storage/storage.module';
 import { HealthController } from './modules/health/health.controller';
 
@@ -58,6 +59,7 @@ import { HealthController } from './modules/health/health.controller';
     ThematicPlansModule,
     CelebrationsModule,
     ReportsModule,
+    AssignmentsModule,
     StorageModule,
   ],
 })

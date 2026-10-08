@@ -43,6 +43,18 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       EXCEPTION
         WHEN duplicate_object THEN NULL;
       END $$`,
+      `CREATE TABLE IF NOT EXISTS "class_assignments" (
+        "id" TEXT NOT NULL,
+        "school_id" TEXT NOT NULL,
+        "class_id" TEXT NOT NULL,
+        "author_id" TEXT NOT NULL,
+        "title" TEXT NOT NULL,
+        "instructions" TEXT,
+        "file_urls" TEXT[] DEFAULT ARRAY[]::TEXT[],
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "class_assignments_pkey" PRIMARY KEY ("id")
+      )`,
+      `CREATE INDEX IF NOT EXISTS "class_assignments_school_id_class_id_created_at_idx" ON "class_assignments"("school_id", "class_id", "created_at" DESC)`,
     ];
     for (const sql of statements) {
       try {

@@ -12,6 +12,7 @@ const parentPushEvents = new Set([
   'school_event',
   'celebration',
   'school_post',
+  'assignment',
   'thematic_plan',
   'parent_meeting',
   'parent_meeting_request',

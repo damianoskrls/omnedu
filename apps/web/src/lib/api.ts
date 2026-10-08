@@ -555,3 +555,18 @@ export const schoolPostsApi = {
     });
   },
 };
+
+export const assignmentsApi = {
+  list: (schoolId: string, classId?: string) =>
+    api.get(`/schools/${schoolId}/assignments`, { params: classId ? { classId } : {} }),
+  create: (schoolId: string, data: { classId: string; title: string; instructions?: string; fileUrls?: string[] }) =>
+    api.post(`/schools/${schoolId}/assignments`, data),
+  remove: (schoolId: string, id: string) => api.delete(`/schools/${schoolId}/assignments/${id}`),
+  uploadMedia: (schoolId: string, file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post(`/schools/${schoolId}/assignments/media`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+};

@@ -12,10 +12,10 @@ export class StorageService {
     });
   }
 
-  async upload(file: Express.Multer.File, folder: string): Promise<string> {
+  async upload(file: Express.Multer.File, folder: string, resourceType: 'auto' | 'image' | 'raw' = 'auto'): Promise<string> {
     return new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
-        { folder: `omnedu/${folder}`, resource_type: 'auto' },
+        { folder: `omnedu/${folder}`, resource_type: resourceType },
         (error, result) => {
           if (error) return reject(error);
           resolve(result!.secure_url);

@@ -10,10 +10,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../features/medications/medications_screen.dart';
 import '../../features/messages/conversation_ui.dart';
+import '../../features/parent/screens/assignments_screen.dart';
 import '../../features/parent/screens/celebration_detail_screen.dart';
 import '../../features/parent/screens/events_screen.dart';
 import '../../features/parent/screens/school_posts_screen.dart';
 import '../../features/parent/screens/teacher_absences_screen.dart';
+import '../../features/teacher/screens/assignments_screen.dart';
 import '../../features/teacher/screens/teacher_leaves_screen.dart';
 import '../../features/parent/screens/parent_meetings_screen.dart';
 import '../../features/parent/screens/billing_screen.dart';
@@ -435,6 +437,19 @@ Future<void> openNotification(BuildContext context, WidgetRef ref, Map<String, d
     return;
   }
 
+  if (type == 'assignment') {
+    final role = ref.read(authProvider).user?.role;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => role == 'parent'
+            ? ParentAssignmentsScreen(schoolId: schoolId, studentId: data['studentId']?.toString())
+            : TeacherAssignmentsScreen(schoolId: schoolId, initialClassId: data['classId']?.toString()),
+      ),
+    );
+    return;
+  }
+
   if (type == 'thematic') {
     final classId = data['classId'] as String? ?? '';
     if (classId.isEmpty) return;
@@ -560,6 +575,7 @@ class InboxScreen extends ConsumerWidget {
     if (type == 'leave') return Icons.beach_access_rounded;
     if (type == 'medication') return Icons.medication_rounded;
     if (type == 'thematic') return Icons.auto_stories_rounded;
+    if (type == 'assignment') return Icons.assignment_rounded;
     if (type == 'parent_meeting' || type == 'parent_meeting_request' || type == 'parent_meeting_accepted') {
       return Icons.event_available_rounded;
     }
