@@ -14,7 +14,15 @@ fi
 
 echo "Φέρνω την τελευταία έκδοση από το main..."
 git fetch origin main
+# Xcode and Flutter rewrite the iOS project locally. Those edits block the update.
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  echo "Αποθηκεύω προσωρινά τις τοπικές αλλαγές ώστε να περάσει η ενημέρωση..."
+  git stash push -m "run_iphone πριν την εγκατάσταση"
+fi
 git checkout main
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  git stash push -m "run_iphone πριν την εγκατάσταση"
+fi
 git pull --ff-only origin main
 
 cd "$ROOT/apps/mobile"
@@ -48,6 +56,6 @@ fi
 echo "Σβήνω την παλιά εγκατάσταση από το iPhone..."
 xcrun devicectl device uninstall app --device "$DEVICE" com.omnedu.omnedu >/dev/null 2>&1 || true
 
-echo "Εγκαθιστώ την έκδοση 8 Οκτ 2026 στο iPhone ($DEVICE)..."
-echo "Όταν ανοίξει, κάτω από το λογότυπο πρέπει να γράφει: Έκδοση 8 Οκτ 2026"
+echo "Εγκαθιστώ την έκδοση 8 Οκτ 2026 · 2 στο iPhone ($DEVICE)..."
+echo "Όταν ανοίξει, κάτω από το λογότυπο πρέπει να γράφει: Έκδοση 8 Οκτ 2026 · 2"
 flutter run --release -d "$DEVICE"
