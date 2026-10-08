@@ -146,6 +146,10 @@ export class NotificationsService implements OnModuleInit {
                 collapseKey: 'oneirochora-broadcast',
                 notification: { channelId: 'oneirochora', sound: 'default', tag: 'oneirochora-broadcast' },
               },
+              apns: {
+                headers: { 'apns-priority': '10' },
+                payload: { aps: { sound: 'default' } },
+              },
             });
             pushDelivered += res.successCount;
             recipientCount += res.successCount;
@@ -331,6 +335,10 @@ export class NotificationsService implements OnModuleInit {
             priority: 'high',
             collapseKey: 'oneirochora-event',
             notification: { channelId: 'oneirochora', sound: 'default', tag: `oneirochora-${payload.type || 'event'}` },
+          },
+          apns: {
+            headers: { 'apns-priority': '10' },
+            payload: { aps: { sound: 'default' } },
           },
         });
         const stale: string[] = [];

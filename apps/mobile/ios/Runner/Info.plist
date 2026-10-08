@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Omnedu</string>
+	<string>Ονειροχώρα</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>omnedu</string>
+	<string>Ονειροχώρα</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -26,10 +26,21 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>NSCameraUsageDescription</key>
+	<string>Η Ονειροχώρα χρησιμοποιεί την κάμερα για φωτογραφίες και βίντεο σε μηνύματα και εκδηλώσεις.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Η Ονειροχώρα χρησιμοποιεί το μικρόφωνο όταν τραβάτε βίντεο για μια εκδήλωση.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Η Ονειροχώρα αποθηκεύει φωτογραφίες και βίντεο εκδρομών στη συλλογή του κινητού.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Η Ονειροχώρα αποθηκεύει φωτογραφίες και βίντεο εκδρομών στη συλλογή του κινητού.</string>
+	<string>Η Ονειροχώρα διαλέγει φωτογραφίες και βίντεο από τη συλλογή για μηνύματα και εκδηλώσεις.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

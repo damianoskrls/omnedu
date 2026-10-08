@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -68,7 +70,11 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
           if (existing == null || existing.isEmpty) await prefs.setString('push_device_id', deviceId);
           await ref.read(dioProvider).post(
             '/schools/${widget.schoolId}/notifications/device',
-            data: {'token': token, 'platform': 'android', 'deviceId': deviceId},
+            data: {
+              'token': token,
+              'platform': !kIsWeb && Platform.isIOS ? 'ios' : 'android',
+              'deviceId': deviceId,
+            },
           );
         } catch (_) {}
       },
@@ -106,6 +112,9 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
       await _plugin
           .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
           ?.requestNotificationsPermission();
+      await _plugin
+          .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
+          ?.requestPermissions(alert: true, badge: true, sound: true);
       _pluginReady = true;
       final launch = await _plugin.getNotificationAppLaunchDetails();
       final payload = launch?.notificationResponse?.payload;

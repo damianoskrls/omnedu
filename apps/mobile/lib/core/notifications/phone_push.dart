@@ -1,21 +1,31 @@
+import 'dart:io';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
-/// Public Firebase app values. Closed-app notifications stay off until these
-/// match the school's Firebase Android app.
+/// Public Firebase app values. The iPhone uses its own Firebase app id.
+/// Until that id is filled in, the iPhone app still runs and the closed-app
+/// push stays off.
 class PhonePushConfig {
   static const projectId = 'omnedu';
   static const apiKey = 'AIzaSyDvo-iDhEqne6Eo5DPZO1AjbjggSzhkzCw';
   static const appId = '1:668958037429:android:57a1f64fb0a64b698335fc';
+  static const iosAppId = '';
   static const messagingSenderId = '668958037429';
 
-  static bool get ready =>
-      projectId.isNotEmpty && apiKey.isNotEmpty && appId.isNotEmpty && messagingSenderId.isNotEmpty;
+  static bool get _ios => !kIsWeb && Platform.isIOS;
 
-  static const options = FirebaseOptions(
+  static bool get ready {
+    if (projectId.isEmpty || apiKey.isEmpty || messagingSenderId.isEmpty) return false;
+    if (_ios) return iosAppId.isNotEmpty;
+    return appId.isNotEmpty;
+  }
+
+  static FirebaseOptions get options => FirebaseOptions(
     apiKey: apiKey,
-    appId: appId,
+    appId: _ios ? iosAppId : appId,
     messagingSenderId: messagingSenderId,
     projectId: projectId,
     storageBucket: 'omnedu.firebasestorage.app',
