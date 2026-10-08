@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, UseInterceptors, UploadedFile, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -19,13 +19,18 @@ export class SchoolPostsController {
   ) {}
 
   @Get()
-  findAll(@Param('schoolId') schoolId: string, @Query('type') type?: string) {
-    return this.service.findAll(schoolId, type);
+  findAll(
+    @Param('schoolId') schoolId: string,
+    @CurrentUser() user: JwtPayload,
+    @Query('type') type?: string,
+    @Query('studentId') studentId?: string,
+  ) {
+    return this.service.findAll(schoolId, type, user, studentId);
   }
 
   @Get(':id')
-  findOne(@Param('schoolId') schoolId: string, @Param('id') id: string) {
-    return this.service.findOne(id, schoolId);
+  findOne(@Param('schoolId') schoolId: string, @Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.service.findOne(id, schoolId, user);
   }
 
   @Post()
@@ -34,24 +39,26 @@ export class SchoolPostsController {
     @CurrentUser() user: JwtPayload,
     @Body() body: { title: string; content?: string; postType?: string; mediaUrls?: string[]; publishedAt?: string; audienceType?: string; audienceIds?: string[] | string },
   ) {
-    return this.service.create(schoolId, user.sub, body);
+    return this.service.create(schoolId, user.sub, user.role, body);
   }
 
   @Post('media')
   @UseInterceptors(FileInterceptor('file', {
     storage: memoryStorage(),
     fileFilter: (_req, file, cb) => {
-      if (!file.mimetype.match(/^image\/(jpeg|jpg|png|webp|gif)$/)) {
-        return cb(new BadRequestException('Only image files are allowed'), false);
+      if (!file.mimetype.match(/^(image\/(jpeg|jpg|png|webp|gif|heic|heif)|video\/(mp4|quicktime|mov|avi|webm|m4v))$/)) {
+        return cb(new BadRequestException('Επιτρέπονται φωτογραφίες και βίντεο'), false);
       }
       cb(null, true);
     },
-    limits: { fileSize: 10 * 1024 * 1024 },
+    limits: { fileSize: 80 * 1024 * 1024 },
   }))
-  async uploadMedia(@UploadedFile() file: Express.Multer.File) {
+  async uploadMedia(@UploadedFile() file: Express.Multer.File, @CurrentUser() user: JwtPayload) {
+    if (user.role === 'parent') throw new ForbiddenException('Οι γονείς δεν ανεβάζουν αρχεία.');
     if (!file) throw new BadRequestException('No file uploaded');
     const url = await this.storage.upload(file, 'posts');
-    return { url };
+    const mediaType = file.mimetype.startsWith('video') ? 'video' : 'image';
+    return { url, mediaType };
   }
 
   @Put(':id')

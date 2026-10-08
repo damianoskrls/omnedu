@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../core/widgets/person_face.dart';
 import '../../medications/medications_screen.dart';
 import 'bulletin_screen.dart';
+import 'school_posts_screen.dart';
 import 'child_detail_screen.dart';
 import 'parent_child_pages.dart';
 import 'parent_meetings_screen.dart';
@@ -34,6 +35,18 @@ class ChildHubScreen extends StatelessWidget {
     final tiles = <_Tile>[
       _Tile('Ημερήσιο Δελτίο', Icons.menu_book_rounded, const Color(0xFF77328D), () {
         Navigator.push(context, MaterialPageRoute(builder: (_) => BulletinScreen(schoolId: schoolId, child: child)));
+      }),
+      _Tile('Στιγμές', Icons.photo_camera_rounded, const Color(0xFFBE185D), () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => SchoolPostsScreen(
+              schoolId: schoolId,
+              studentId: child['id']?.toString(),
+              title: 'Στιγμές',
+            ),
+          ),
+        );
       }),
       _Tile('Συναντήσεις', Icons.event_available_rounded, const Color(0xFF0F766E), () {
         Navigator.push(

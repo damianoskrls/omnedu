@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
@@ -6,22 +6,26 @@ import { NotificationsService } from '../notifications/notifications.service';
 export class SchoolPostsService {
   constructor(private prisma: PrismaService, private notifications: NotificationsService) {}
 
-  async findAll(schoolId: string, type?: string) {
-    return this.prisma.schoolPost.findMany({
+  async findAll(schoolId: string, type?: string, viewer?: { sub: string; role?: string }, studentId?: string) {
+    const posts = await this.prisma.schoolPost.findMany({
       where: {
         schoolId,
         publishedAt: { not: null },
-        ...(type ? { postType: type } : {}),
+        ...(type === 'moment' ? { postType: { in: ['birthday', 'nameday', 'classroom'] } } : {}),
+        ...(type && type !== 'moment' ? { postType: type } : {}),
       },
       include: {
         author: { select: { id: true, fullName: true, avatarUrl: true } },
       },
       orderBy: { publishedAt: 'desc' },
-      take: 50,
+      take: 80,
     });
+    if (viewer?.role !== 'parent') return posts;
+    const scope = await this.parentScope(schoolId, viewer.sub);
+    return posts.filter((post) => this.visibleToParent(post, scope, studentId));
   }
 
-  async findOne(id: string, schoolId: string) {
+  async findOne(id: string, schoolId: string, viewer?: { sub: string; role?: string }) {
     const post = await this.prisma.schoolPost.findFirst({
       where: { id, schoolId },
       include: {
@@ -29,10 +33,14 @@ export class SchoolPostsService {
       },
     });
     if (!post) throw new NotFoundException('Post not found');
+    if (viewer?.role === 'parent') {
+      const scope = await this.parentScope(schoolId, viewer.sub);
+      if (!this.visibleToParent(post, scope)) throw new NotFoundException('Post not found');
+    }
     return post;
   }
 
-  async create(schoolId: string, authorId: string, data: {
+  async create(schoolId: string, authorId: string, role: string | null | undefined, data: {
     title: string;
     content?: string;
     postType?: string;
@@ -41,17 +49,27 @@ export class SchoolPostsService {
     audienceType?: string;
     audienceIds?: string[] | string;
   }) {
+    if (role === 'parent') throw new ForbiddenException('Οι γονείς δεν δημοσιεύουν αναρτήσεις.');
+    const title = data.title?.trim() ?? '';
+    if (!title) throw new BadRequestException('Γράψε έναν τίτλο.');
+    const audienceType = ['all', 'class', 'level', 'teachers', 'student'].includes(data.audienceType ?? '')
+      ? data.audienceType!
+      : 'all';
+    const audienceIds = this.audienceIds(data.audienceIds);
+    if ((audienceType === 'student' || audienceType === 'class') && this.parseIds(audienceIds).length === 0) {
+      throw new BadRequestException(audienceType === 'student' ? 'Διάλεξε παιδί.' : 'Διάλεξε τάξη.');
+    }
     const created = await this.prisma.schoolPost.create({
       data: {
         schoolId,
         authorId,
-        title: data.title,
-        content: data.content,
+        title,
+        content: data.content?.trim() || null,
         postType: data.postType ?? 'general',
         mediaUrls: data.mediaUrls ?? [],
         publishedAt: data.publishedAt ? new Date(data.publishedAt) : new Date(),
-        audienceType: data.audienceType ?? 'all',
-        audienceIds: this.audienceIds(data.audienceIds),
+        audienceType,
+        audienceIds,
       },
       include: {
         author: { select: { id: true, fullName: true, avatarUrl: true } },
@@ -109,8 +127,13 @@ export class SchoolPostsService {
   }) {
     const userIds = await this.recipientIds(schoolId, post.audienceType, post.audienceIds);
     const text = (post.content ?? '').replace(/\s+/g, ' ').trim();
+    const videos = post.mediaUrls.some((url) => isVideoUrl(url));
     const photos = post.mediaUrls.length
-      ? (post.postType === 'excursion' ? 'Νέες φωτογραφίες από την εκδρομή.' : 'Νέες φωτογραφίες.')
+      ? (post.postType === 'excursion'
+          ? 'Νέες φωτογραφίες από την εκδρομή.'
+          : videos
+            ? 'Νέες φωτογραφίες και βίντεο.'
+            : 'Νέες φωτογραφίες.')
       : '';
     const body = [text, photos].filter(Boolean).join(' ').slice(0, 180) || 'Νέα ανάρτηση του σχολείου.';
     await this.notifications.notifyUsers(schoolId, userIds, {
@@ -127,13 +150,7 @@ export class SchoolPostsService {
   }
 
   private async recipientIds(schoolId: string, audienceType: string, audienceIds: string) {
-    let ids: string[] = [];
-    try {
-      const parsed = JSON.parse(audienceIds || '[]');
-      ids = Array.isArray(parsed) ? parsed.map((id) => String(id)) : [];
-    } catch {
-      ids = [];
-    }
+    const ids = this.parseIds(audienceIds);
     if (audienceType === 'teachers') {
       const members = await this.prisma.schoolMember.findMany({
         where: { schoolId, role: 'teacher', isActive: true },
@@ -148,11 +165,88 @@ export class SchoolPostsService {
           isActive: true,
           ...(audienceType === 'class' ? { enrollments: { some: { classId: { in: ids } } } } : {}),
           ...(audienceType === 'level' ? { enrollments: { some: { class: { levelId: { in: ids } } } } } : {}),
+          ...(audienceType === 'student' ? { id: { in: ids } } : {}),
         },
       },
       select: { userId: true },
     });
-    return parents.map((parent) => parent.userId);
+    return [...new Set(parents.map((parent) => parent.userId))];
+  }
+
+  private async parentScope(schoolId: string, userId: string) {
+    const students = await this.prisma.student.findMany({
+      where: { schoolId, isActive: true, parents: { some: { userId } } },
+      select: {
+        id: true,
+        enrollments: {
+          select: {
+            academicYear: { select: { isCurrent: true } },
+            class: { select: { id: true, levelId: true } },
+          },
+        },
+      },
+    });
+    const studentIds = new Set<string>();
+    const classIds = new Set<string>();
+    const levelIds = new Set<string>();
+    const classIdsByStudent = new Map<string, Set<string>>();
+    const levelIdsByStudent = new Map<string, Set<string>>();
+    for (const student of students) {
+      studentIds.add(student.id);
+      const current = student.enrollments.filter((row) => row.academicYear?.isCurrent);
+      const rows = current.length ? current : student.enrollments;
+      const classes = new Set<string>();
+      const levels = new Set<string>();
+      for (const row of rows) {
+        if (!row.class) continue;
+        classes.add(row.class.id);
+        classIds.add(row.class.id);
+        if (row.class.levelId) {
+          levels.add(row.class.levelId);
+          levelIds.add(row.class.levelId);
+        }
+      }
+      classIdsByStudent.set(student.id, classes);
+      levelIdsByStudent.set(student.id, levels);
+    }
+    return { studentIds, classIds, levelIds, classIdsByStudent, levelIdsByStudent };
+  }
+
+  private visibleToParent(
+    post: { audienceType: string; audienceIds: string },
+    scope: {
+      studentIds: Set<string>;
+      classIds: Set<string>;
+      levelIds: Set<string>;
+      classIdsByStudent: Map<string, Set<string>>;
+      levelIdsByStudent: Map<string, Set<string>>;
+    },
+    studentId?: string,
+  ) {
+    if (studentId && !scope.studentIds.has(studentId)) return false;
+    const ids = this.parseIds(post.audienceIds);
+    if (post.audienceType === 'teachers') return false;
+    if (post.audienceType === 'student') {
+      return studentId ? ids.includes(studentId) : ids.some((id) => scope.studentIds.has(id));
+    }
+    if (post.audienceType === 'class') {
+      if (studentId) return ids.some((id) => scope.classIdsByStudent.get(studentId)?.has(id));
+      return ids.some((id) => scope.classIds.has(id));
+    }
+    if (post.audienceType === 'level') {
+      if (studentId) return ids.some((id) => scope.levelIdsByStudent.get(studentId)?.has(id));
+      return ids.some((id) => scope.levelIds.has(id));
+    }
+    return !studentId;
+  }
+
+  private parseIds(audienceIds: string) {
+    try {
+      const parsed = JSON.parse(audienceIds || '[]');
+      return Array.isArray(parsed) ? parsed.map((id) => String(id)) : [];
+    } catch {
+      return [];
+    }
   }
 
   private audienceIds(value?: string[] | string) {
@@ -165,4 +259,8 @@ export class SchoolPostsService {
     if (!post) throw new NotFoundException('Post not found');
     return this.prisma.schoolPost.delete({ where: { id } });
   }
+}
+
+function isVideoUrl(url: string) {
+  return /\/video\/upload\//i.test(url) || /\.(mp4|mov|m4v|webm|avi)(\?|$)/i.test(url);
 }

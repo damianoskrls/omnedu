@@ -9,6 +9,7 @@ import 'teacher_meetings_screen.dart';
 import 'teacher_notify_screen.dart';
 import '../../medications/medications_screen.dart';
 import 'teacher_leaves_screen.dart';
+import 'class_moment_screen.dart';
 final _myClassesProvider = FutureProvider.family<List<dynamic>, String>(
   (ref, schoolId) async {
     final dio = ref.read(dioProvider);
@@ -271,6 +272,33 @@ class _TeacherHomeScreenState extends ConsumerState<TeacherHomeScreen> {
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFBE185D)),
+                            onPressed: () => _openMoment(classes, forClass: false),
+                            icon: const Icon(Icons.cake_rounded),
+                            label: const Text('Γενέθλια'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: FilledButton.icon(
+                            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF0F766E)),
+                            onPressed: () => _openMoment(classes, forClass: true),
+                            icon: const Icon(Icons.photo_library_rounded),
+                            label: const Text('Σήμερα'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              if (_selectedClassId != null)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
                     child: FilledButton.icon(
                       style: FilledButton.styleFrom(backgroundColor: const Color(0xFF642678)),
                       onPressed: () {
@@ -321,6 +349,23 @@ class _TeacherHomeScreenState extends ConsumerState<TeacherHomeScreen> {
         },
       ),
     );
+  }
+
+  void _openMoment(List<dynamic> classes, {required bool forClass}) {
+    final classId = _selectedClassId;
+    if (classId == null) return;
+    Map? klass;
+    for (final raw in classes) {
+      if (raw is Map && raw['id'] == classId) klass = raw;
+    }
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ClassMomentScreen(
+        schoolId: widget.schoolId,
+        classId: classId,
+        className: klass?['name']?.toString() ?? '',
+        forClass: forClass,
+      ),
+    ));
   }
 
 }

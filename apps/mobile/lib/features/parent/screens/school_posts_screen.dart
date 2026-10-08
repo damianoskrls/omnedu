@@ -3,12 +3,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/widgets/app_image.dart';
 import '../../../core/widgets/person_face.dart';
+import 'event_gallery_screen.dart';
 
-final schoolPostsProvider = FutureProvider.family<List<dynamic>, ({String schoolId, String? type})>(
+bool postMediaIsVideo(String url) {
+  final value = url.toLowerCase();
+  return value.contains('/video/upload/') || value.contains('.mp4') || value.contains('.mov') || value.contains('.m4v') || value.contains('.webm');
+}
+
+final schoolPostsProvider = FutureProvider.family<List<dynamic>, ({String schoolId, String? type, String? studentId})>(
   (ref, args) async {
     final dio = ref.read(dioProvider);
-    final params = args.type != null ? {'type': args.type} : null;
-    final resp = await dio.get('/schools/${args.schoolId}/posts', queryParameters: params);
+    final params = <String, String>{};
+    if (args.type != null) params['type'] = args.type!;
+    if (args.studentId != null && args.studentId!.isNotEmpty) params['studentId'] = args.studentId!;
+    final resp = await dio.get('/schools/${args.schoolId}/posts', queryParameters: params.isEmpty ? null : params);
     final data = resp.data;
     return data is List ? data : [];
   },
@@ -16,7 +24,9 @@ final schoolPostsProvider = FutureProvider.family<List<dynamic>, ({String school
 
 class SchoolPostsScreen extends ConsumerStatefulWidget {
   final String schoolId;
-  const SchoolPostsScreen({super.key, required this.schoolId});
+  final String? studentId;
+  final String title;
+  const SchoolPostsScreen({super.key, required this.schoolId, this.studentId, this.title = 'Νέα & Εκδηλώσεις'});
 
   @override
   ConsumerState<SchoolPostsScreen> createState() => _SchoolPostsScreenState();
@@ -27,6 +37,7 @@ class _SchoolPostsScreenState extends ConsumerState<SchoolPostsScreen>
   late TabController _tabCtrl;
   final _tabs = const [
     (label: 'Όλα', type: null),
+    (label: 'Στιγμές', type: 'moment'),
     (label: 'Εκδρομές', type: 'excursion'),
     (label: 'Θέατρο', type: 'theater'),
     (label: 'Εκδηλώσεις', type: 'event'),
@@ -51,8 +62,10 @@ class _SchoolPostsScreenState extends ConsumerState<SchoolPostsScreen>
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: const Text('Νέα & Εκδηλώσεις', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
-        bottom: TabBar(
+        title: Text(widget.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+        bottom: widget.studentId != null
+            ? null
+            : TabBar(
           controller: _tabCtrl,
           isScrollable: true,
           labelColor: const Color(0xFF77328D),
@@ -62,13 +75,15 @@ class _SchoolPostsScreenState extends ConsumerState<SchoolPostsScreen>
           tabs: _tabs.map((t) => Tab(text: t.label)).toList(),
         ),
       ),
-      body: TabBarView(
-        controller: _tabCtrl,
-        children: _tabs.map((t) => _PostsList(
-          schoolId: widget.schoolId,
-          type: t.type,
-        )).toList(),
-      ),
+      body: widget.studentId != null
+          ? _PostsList(schoolId: widget.schoolId, studentId: widget.studentId, emptyLabel: 'Δεν υπάρχουν ακόμα στιγμές για αυτό το παιδί.')
+          : TabBarView(
+              controller: _tabCtrl,
+              children: _tabs.map((t) => _PostsList(
+                schoolId: widget.schoolId,
+                type: t.type,
+              )).toList(),
+            ),
     );
   }
 }
@@ -76,11 +91,13 @@ class _SchoolPostsScreenState extends ConsumerState<SchoolPostsScreen>
 class _PostsList extends ConsumerWidget {
   final String schoolId;
   final String? type;
-  const _PostsList({required this.schoolId, this.type});
+  final String? studentId;
+  final String emptyLabel;
+  const _PostsList({required this.schoolId, this.type, this.studentId, this.emptyLabel = 'Δεν υπάρχουν αναρτήσεις'});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final args = (schoolId: schoolId, type: type);
+    final args = (schoolId: schoolId, type: type, studentId: studentId);
     final postsAsync = ref.watch(schoolPostsProvider(args));
 
     return postsAsync.when(
@@ -88,13 +105,13 @@ class _PostsList extends ConsumerWidget {
       error: (e, _) => Center(child: Text('Σφάλμα φόρτωσης')),
       data: (posts) {
         if (posts.isEmpty) {
-          return const Center(
+          return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.photo_library_outlined, size: 64, color: Color(0xFFD1D5DB)),
-                SizedBox(height: 16),
-                Text('Δεν υπάρχουν αναρτήσεις', style: TextStyle(color: Color(0xFF9CA3AF))),
+                const Icon(Icons.photo_library_outlined, size: 64, color: Color(0xFFD1D5DB)),
+                const SizedBox(height: 16),
+                Text(emptyLabel, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF9CA3AF))),
               ],
             ),
           );
@@ -121,6 +138,9 @@ class _PostCard extends StatelessWidget {
     'theater': (bg: Color(0xFFFAF5FF), icon: Color(0xFF7C3AED), label: 'Θέατρο'),
     'event': (bg: Color(0xFFFFF7ED), icon: Color(0xFFEA580C), label: 'Εκδήλωση'),
     'general': (bg: Color(0xFFEFF6FF), icon: Color(0xFF2563EB), label: 'Γενικό'),
+    'birthday': (bg: Color(0xFFFDF2F8), icon: Color(0xFFBE185D), label: 'Γενέθλια'),
+    'nameday': (bg: Color(0xFFFFF7ED), icon: Color(0xFFE95926), label: 'Γιορτή'),
+    'classroom': (bg: Color(0xFFF3E8F7), icon: Color(0xFF77328D), label: 'Τάξη'),
   };
 
   @override
@@ -231,8 +251,7 @@ class _MediaPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (urls.length == 1) {
-      return AppImage(urls[0], height: 200, width: double.infinity, fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => const SizedBox.shrink());
+      return SizedBox(height: 200, width: double.infinity, child: _PostThumb(url: urls[0]));
     }
     return SizedBox(
       height: 180,
@@ -240,10 +259,25 @@ class _MediaPreview extends StatelessWidget {
         crossAxisCount: urls.length == 2 ? 2 : 3,
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        children: urls.take(6).map((url) => AppImage(url, fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Container(color: const Color(0xFFF3F4F6)))).toList(),
+        children: urls.take(6).map((url) => _PostThumb(url: url)).toList(),
       ),
     );
+  }
+}
+
+class _PostThumb extends StatelessWidget {
+  final String url;
+  const _PostThumb({required this.url});
+
+  @override
+  Widget build(BuildContext context) {
+    if (postMediaIsVideo(url)) {
+      return const ColoredBox(
+        color: Color(0xFF3D1152),
+        child: Center(child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 42)),
+      );
+    }
+    return AppImage(url, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: const Color(0xFFF3F4F6)));
   }
 }
 
@@ -316,10 +350,9 @@ class _PostDetailScreen extends StatelessWidget {
                 ? FlexibleSpaceBar(
                     background: PageView.builder(
                       itemCount: mediaUrls.length,
-                      itemBuilder: (_, i) => AppImage(
-                        mediaUrls[i],
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(color: const Color(0xFFF3F4F6)),
+                      itemBuilder: (_, i) => GestureDetector(
+                        onTap: () => _openMedia(context, mediaUrls[i]),
+                        child: _PostThumb(url: mediaUrls[i]),
                       ),
                     ),
                   )
@@ -344,8 +377,8 @@ class _PostDetailScreen extends StatelessWidget {
                   ],
                   if (mediaUrls.length > 1) ...[
                     const SizedBox(height: 24),
-                    const Text('Φωτογραφίες',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF111827))),
+                    Text(mediaUrls.any(postMediaIsVideo) ? 'Φωτογραφίες και βίντεο' : 'Φωτογραφίες',
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF111827))),
                     const SizedBox(height: 12),
                     GridView.builder(
                       shrinkWrap: true,
@@ -357,11 +390,10 @@ class _PostDetailScreen extends StatelessWidget {
                       ),
                       itemCount: mediaUrls.length,
                       itemBuilder: (_, i) => GestureDetector(
-                        onTap: () => _openFullscreen(context, mediaUrls, i),
+                        onTap: () => _openMedia(context, mediaUrls[i]),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: AppImage(mediaUrls[i], fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Container(color: const Color(0xFFF3F4F6))),
+                          child: _PostThumb(url: mediaUrls[i]),
                         ),
                       ),
                     ),
@@ -376,9 +408,9 @@ class _PostDetailScreen extends StatelessWidget {
     );
   }
 
-  void _openFullscreen(BuildContext context, List<String> urls, int index) {
+  void _openMedia(BuildContext context, String url) {
     Navigator.push(context, MaterialPageRoute(
-      builder: (_) => _FullscreenGallery(urls: urls, initialIndex: index),
+      builder: (_) => EventMediaViewer(url: url, isVideo: postMediaIsVideo(url)),
     ));
   }
 
@@ -391,56 +423,5 @@ class _PostDetailScreen extends StatelessWidget {
     } catch (_) {
       return '';
     }
-  }
-}
-
-class _FullscreenGallery extends StatefulWidget {
-  final List<String> urls;
-  final int initialIndex;
-  const _FullscreenGallery({required this.urls, required this.initialIndex});
-
-  @override
-  State<_FullscreenGallery> createState() => _FullscreenGalleryState();
-}
-
-class _FullscreenGalleryState extends State<_FullscreenGallery> {
-  late PageController _pageCtrl;
-  late int _current;
-
-  @override
-  void initState() {
-    super.initState();
-    _current = widget.initialIndex;
-    _pageCtrl = PageController(initialPage: widget.initialIndex);
-  }
-
-  @override
-  void dispose() {
-    _pageCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        title: Text('${_current + 1} / ${widget.urls.length}',
-            style: const TextStyle(color: Colors.white, fontSize: 14)),
-      ),
-      body: PageView.builder(
-        controller: _pageCtrl,
-        itemCount: widget.urls.length,
-        onPageChanged: (i) => setState(() => _current = i),
-        itemBuilder: (_, i) => InteractiveViewer(
-          child: Center(
-            child: AppImage(widget.urls[i],
-                errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.white60, size: 64)),
-          ),
-        ),
-      ),
-    );
   }
 }
