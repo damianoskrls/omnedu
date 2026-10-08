@@ -4,11 +4,10 @@ import '../../../core/api/api_client.dart';
 import '../../../core/widgets/person_face.dart';
 import 'owner_profiles.dart';
 
-const _kinds = <(String, String)>[
-  ('overview', 'Γενική εικόνα'),
-  ('owing', 'Οφειλές'),
-  ('parents', 'Γονείς'),
+const _schoolKinds = <(String, String)>[
+  ('overview', 'Εικόνα'),
   ('children', 'Παιδιά'),
+  ('parents', 'Γονείς'),
   ('staff', 'Προσωπικό'),
 ];
 
@@ -23,8 +22,10 @@ final ownerReportProvider = FutureProvider.family<Map<String, dynamic>, String>(
   final schoolId = parts.isEmpty ? '' : parts[0];
   final query = <String, String>{};
   if (parts.length > 1 && parts[1].isNotEmpty) query['academicYearId'] = parts[1];
-  if (parts.length > 2 && parts[2].isNotEmpty) query['month'] = parts[2];
-  if (parts.length > 3 && parts[3].isNotEmpty) query['year'] = parts[3];
+  if (parts.length > 2 && parts[2].isNotEmpty) query['fromMonth'] = parts[2];
+  if (parts.length > 3 && parts[3].isNotEmpty) query['fromYear'] = parts[3];
+  if (parts.length > 4 && parts[4].isNotEmpty) query['toMonth'] = parts[4];
+  if (parts.length > 5 && parts[5].isNotEmpty) query['toYear'] = parts[5];
   final dio = ref.read(dioProvider);
   final resp = await dio.get('/schools/$schoolId/reports/overview', queryParameters: query);
   final data = resp.data;
@@ -41,14 +42,17 @@ class OwnerHome extends ConsumerStatefulWidget {
 }
 
 class _OwnerHomeState extends ConsumerState<OwnerHome> {
+  String _section = 'school';
   String _yearId = '';
-  String _month = '';
-  String _calendarYear = '';
+  String _fromMonth = '';
+  String _fromYear = '';
+  String _toMonth = '';
+  String _toYear = '';
   String _kind = 'overview';
 
   @override
   Widget build(BuildContext context) {
-    final report = ref.watch(ownerReportProvider('${widget.schoolId}|$_yearId|$_month|$_calendarYear'));
+    final report = ref.watch(ownerReportProvider('${widget.schoolId}|$_yearId|$_fromMonth|$_fromYear|$_toMonth|$_toYear'));
     return Scaffold(
       backgroundColor: const Color(0xFFF8F4FC),
       body: report.when(
@@ -57,17 +61,16 @@ class _OwnerHomeState extends ConsumerState<OwnerHome> {
         data: (data) => _Report(
           schoolId: widget.schoolId,
           data: data,
+          section: _section,
           kind: _kind,
+          onSection: (section) => setState(() => _section = section),
           onKind: (kind) => setState(() => _kind = kind),
-          onYear: (id) => setState(() {
-            _yearId = id;
-            _month = '';
-            _calendarYear = '';
-          }),
-          onMonth: (month, year) => setState(() {
-            _yearId = data['academicYearId']?.toString() ?? _yearId;
-            _month = month;
-            _calendarYear = year;
+          onYear: (id) => setState(() => _yearId = id),
+          onRange: (fromMonth, fromYear, toMonth, toYear) => setState(() {
+            _fromMonth = fromMonth;
+            _fromYear = fromYear;
+            _toMonth = toMonth;
+            _toYear = toYear;
           }),
         ),
       ),
@@ -78,18 +81,22 @@ class _OwnerHomeState extends ConsumerState<OwnerHome> {
 class _Report extends StatelessWidget {
   final String schoolId;
   final Map<String, dynamic> data;
+  final String section;
   final String kind;
+  final ValueChanged<String> onSection;
   final ValueChanged<String> onKind;
   final ValueChanged<String> onYear;
-  final void Function(String month, String year) onMonth;
+  final void Function(String fromMonth, String fromYear, String toMonth, String toYear) onRange;
 
   const _Report({
     required this.schoolId,
     required this.data,
+    required this.section,
     required this.kind,
+    required this.onSection,
     required this.onKind,
     required this.onYear,
-    required this.onMonth,
+    required this.onRange,
   });
 
   @override
@@ -97,90 +104,156 @@ class _Report extends StatelessWidget {
     final years = data['years'] is List ? data['years'] as List : const [];
     final months = data['months'] is List ? data['months'] as List : const [];
     final yearId = data['academicYearId']?.toString() ?? '';
-    final month = '${data['month'] ?? ''}';
-    final calendarYear = '${data['year'] ?? ''}';
+    final fromMonth = '${data['fromMonth'] ?? data['month'] ?? ''}';
+    final fromYear = '${data['fromYear'] ?? data['year'] ?? ''}';
+    final toMonth = '${data['toMonth'] ?? data['month'] ?? ''}';
+    final toYear = '${data['toYear'] ?? data['year'] ?? ''}';
     final counts = data['counts'] is Map ? Map<String, dynamic>.from(data['counts'] as Map) : <String, dynamic>{};
     final finances = data['finances'] is Map ? Map<String, dynamic>.from(data['finances'] as Map) : <String, dynamic>{};
-    final monthLabel = months.cast<dynamic>().whereType<Map>().map((row) => Map<String, dynamic>.from(row)).where((row) => '${row['month']}' == month && '${row['year']}' == calendarYear).map((row) => row['label']?.toString() ?? '').firstOrNull ?? '$month/$calendarYear';
+    final rangeLabel = data['rangeLabel']?.toString().isNotEmpty == true ? data['rangeLabel'].toString() : '$fromMonth/$fromYear';
+    List<DropdownMenuItem<String>> monthItems() => [
+      for (final raw in months)
+        if (raw is Map)
+          DropdownMenuItem(
+            value: '${raw['month']}|${raw['year']}',
+            child: Text('${raw['label'] ?? ''}', overflow: TextOverflow.ellipsis),
+          ),
+    ];
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       children: [
         const Text('Αναφορές', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF3D1152))),
-        const SizedBox(height: 4),
-        Text('Σχολικό έτος ${data['schoolYear'] ?? ''}', style: const TextStyle(color: Color(0xFF6B7280))),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(child: _Filter(
-              label: 'Έτος',
-              value: yearId,
-              items: [
-                for (final raw in years)
-                  if (raw is Map)
-                    DropdownMenuItem(value: '${raw['id']}', child: Text('${raw['label'] ?? ''}', overflow: TextOverflow.ellipsis)),
-              ],
-              onChanged: (value) {
-                if (value != null && value.isNotEmpty) onYear(value);
-              },
-            )),
-            const SizedBox(width: 8),
-            Expanded(child: _Filter(
-              label: 'Μήνας',
-              value: '$month|$calendarYear',
-              items: [
-                for (final raw in months)
-                  if (raw is Map)
-                    DropdownMenuItem(
-                      value: '${raw['month']}|${raw['year']}',
-                      child: Text('${raw['label'] ?? ''}', overflow: TextOverflow.ellipsis),
-                    ),
-              ],
-              onChanged: (value) {
-                if (value == null || !value.contains('|')) return;
-                final parts = value.split('|');
-                onMonth(parts[0], parts[1]);
-              },
-            )),
-          ],
-        ),
         const SizedBox(height: 12),
         Wrap(
           spacing: 8,
           runSpacing: 8,
           children: [
-            for (final item in _kinds)
-              ChoiceChip(
-                label: Text(item.$2),
-                selected: kind == item.$1,
-                selectedColor: const Color(0xFFF3E8F7),
-                labelStyle: TextStyle(
-                  color: kind == item.$1 ? const Color(0xFF77328D) : const Color(0xFF374151),
-                  fontWeight: FontWeight.w700,
-                ),
-                onSelected: (_) => onKind(item.$1),
-              ),
+            ChoiceChip(
+              label: const Text('Το σχολείο'),
+              selected: section == 'school',
+              selectedColor: const Color(0xFFF3E8F7),
+              labelStyle: TextStyle(color: section == 'school' ? const Color(0xFF77328D) : const Color(0xFF374151), fontWeight: FontWeight.w700),
+              onSelected: (_) => onSection('school'),
+            ),
+            ChoiceChip(
+              label: const Text('Οικονομικά'),
+              selected: section == 'money',
+              selectedColor: const Color(0xFFFFF1EA),
+              labelStyle: TextStyle(color: section == 'money' ? const Color(0xFFE95926) : const Color(0xFF374151), fontWeight: FontWeight.w700),
+              onSelected: (_) => onSection('money'),
+            ),
           ],
         ),
-        const SizedBox(height: 16),
-        if (kind == 'overview') ...[
+        const SizedBox(height: 12),
+        if (section == 'school') ...[
+          _Filter(
+            label: 'Σχολικό έτος',
+            value: yearId,
+            items: [
+              for (final raw in years)
+                if (raw is Map)
+                  DropdownMenuItem(value: '${raw['id']}', child: Text('${raw['label'] ?? ''}', overflow: TextOverflow.ellipsis)),
+            ],
+            onChanged: (value) {
+              if (value != null && value.isNotEmpty) onYear(value);
+            },
+          ),
+          const SizedBox(height: 8),
+          Text('Παιδιά, τάξεις και προσωπικό για το σχολικό έτος ${data['schoolYear'] ?? ''}.', style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13)),
+          const SizedBox(height: 12),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              _Stat('Μαθητές', counts['students'], onTap: () => onKind('children')),
-              _Stat('Τάξεις', counts['classes'], onTap: () => onKind('children')),
-              _Stat('Γονείς', counts['parents'], onTap: () => onKind('parents')),
-              _Stat('Προσωπικό', counts['staff'], onTap: () => onKind('staff')),
-              _Stat('Σχολικό', counts['onBus']),
-              _Stat('Αλλεργίες', counts['withAllergies']),
-              _Stat('Χωρίς τάξη', counts['unassigned'], onTap: () => onKind('children')),
-              _Stat('Αδέλφια', counts['siblingFamilies']),
+              for (final item in _schoolKinds)
+                ChoiceChip(
+                  label: Text(item.$2),
+                  selected: kind == item.$1,
+                  selectedColor: const Color(0xFFF3E8F7),
+                  labelStyle: TextStyle(color: kind == item.$1 ? const Color(0xFF77328D) : const Color(0xFF374151), fontWeight: FontWeight.w700),
+                  onSelected: (_) => onKind(item.$1),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (kind == 'overview') ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _Stat('Μαθητές', counts['students'], onTap: () => onKind('children')),
+                _Stat('Τάξεις', counts['classes'], onTap: () => onKind('children')),
+                _Stat('Γονείς', counts['parents'], onTap: () => onKind('parents')),
+                _Stat('Προσωπικό', counts['staff'], onTap: () => onKind('staff')),
+                _Stat('Σχολικό', counts['onBus']),
+                _Stat('Αλλεργίες', counts['withAllergies']),
+                _Stat('Χωρίς τάξη', counts['unassigned'], onTap: () => onKind('children')),
+                _Stat('Αδέλφια', counts['siblingFamilies']),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _Panel(
+              title: 'Μαθητές ανά τάξη',
+              child: OwnerHBars(
+                color: ownerPurple,
+                rows: [
+                  for (final row in ownerList(data['classes']))
+                    (label: row['name']?.toString() ?? '', value: _num(row['students'])),
+                ],
+              ),
+            ),
+          ],
+          if (kind == 'parents') _Parents(schoolId: schoolId, rows: data['parents'] is List ? data['parents'] as List : const []),
+          if (kind == 'children') _ChildrenBoard(
+            schoolId: schoolId,
+            classes: ownerList(data['classes']),
+            unassigned: ownerList(data['unassigned']),
+          ),
+          if (kind == 'staff') _People(
+            title: 'Προσωπικό',
+            rows: data['staff'] is List ? data['staff'] as List : const [],
+            photo: (row) => row['avatarUrl']?.toString(),
+            subtitle: (row) => row['phone']?.toString() ?? '',
+            trailing: (row) => _roles[row['role']?.toString()] ?? '',
+            empty: 'Δεν υπάρχει προσωπικό.',
+            onTap: (row) => openOwnerStaff(context, schoolId, row['id']?.toString() ?? ''),
+          ),
+        ],
+        if (section == 'money') ...[
+          Row(
+            children: [
+              Expanded(child: _Filter(
+                label: 'Από',
+                value: '$fromMonth|$fromYear',
+                items: monthItems(),
+                onChanged: (value) => _changeRange(value, from: true, fromMonth: fromMonth, fromYear: fromYear, toMonth: toMonth, toYear: toYear),
+              )),
+              const SizedBox(width: 8),
+              Expanded(child: _Filter(
+                label: 'Έως',
+                value: '$toMonth|$toYear',
+                items: monthItems(),
+                onChanged: (value) => _changeRange(value, from: false, fromMonth: fromMonth, fromYear: fromYear, toMonth: toMonth, toYear: toYear),
+              )),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(rangeLabel, style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _Stat('Χρέωση', ownerMoney(finances['rangeDue'] ?? finances['monthDue'])),
+              _Stat('Πληρωμές', ownerMoney(finances['rangePaid'] ?? finances['monthPaid'])),
+              _Stat('Υπόλοιπο', ownerMoney(finances['rangeRemaining'] ?? finances['monthRemaining'])),
+              _Stat('Ανοιχτοί', finances['openCount']),
             ],
           ),
           const SizedBox(height: 12),
           _Panel(
-            title: 'Χρεώσεις έτους',
+            title: 'Χρεώσεις',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -192,61 +265,64 @@ class _Report extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 8),
-                OwnerMonthChart(series: ownerList(data['monthSeries']), month: month, year: calendarYear),
-                const SizedBox(height: 8),
-                Text('$monthLabel · χρέωση ${ownerMoney(finances['monthDue'])} · πληρωμές ${ownerMoney(finances['monthPaid'])} · υπόλοιπο ${ownerMoney(finances['monthRemaining'])}', style: const TextStyle(color: ownerMuted, fontSize: 12)),
-                const SizedBox(height: 4),
-                Text('Ανοιχτοί λογαριασμοί ${finances['openCount'] ?? 0}', style: const TextStyle(color: ownerMuted, fontSize: 12)),
+                OwnerMonthChart(series: ownerList(data['monthSeries']), month: toMonth, year: toYear),
               ],
             ),
           ),
           const SizedBox(height: 12),
           _Panel(
-            title: 'Ανάλυση χρεώσεων έτους',
+            title: 'Ανάλυση',
             child: OwnerSplitBar(parts: [
-              (label: 'Δίδακτρα', value: _num(finances['schoolFees']), color: ownerOrange),
-              (label: 'Σχολικό', value: _num(finances['busFees']), color: ownerPurple),
-              (label: 'Δραστηριότητες', value: _num(finances['activityFees']), color: const Color(0xFFC084FC)),
+              (label: 'Δίδακτρα', value: _num(finances['rangeSchoolFees'] ?? finances['schoolFees']), color: ownerOrange),
+              (label: 'Σχολικό', value: _num(finances['rangeBusFees'] ?? finances['busFees']), color: ownerPurple),
+              (label: 'Δραστηριότητες', value: _num(finances['rangeActivityFees'] ?? finances['activityFees']), color: const Color(0xFFC084FC)),
             ]),
           ),
           const SizedBox(height: 12),
-          _Panel(
-            title: 'Μαθητές ανά τάξη',
-            child: OwnerHBars(
-              color: ownerPurple,
-              rows: [
-                for (final row in ownerList(data['classes']))
-                  (label: row['name']?.toString() ?? '', value: _num(row['students'])),
-              ],
-            ),
+          _People(
+            title: 'Ποιοι χρωστάνε · $rangeLabel',
+            rows: data['owing'] is List ? data['owing'] as List : const [],
+            subtitle: (row) => row['className']?.toString() ?? '',
+            trailing: (row) => ownerMoney(row['remaining']),
+            empty: 'Δεν υπάρχουν οφειλές για αυτό το διάστημα.',
+            onTap: (row) => openOwnerStudent(context, schoolId, row['id']?.toString() ?? ''),
           ),
         ],
-        if (kind == 'owing') _People(
-          title: 'Ποιοι χρωστάνε · $monthLabel',
-          rows: data['owing'] is List ? data['owing'] as List : const [],
-          subtitle: (row) => row['className']?.toString() ?? '',
-          trailing: (row) => ownerMoney(row['remaining']),
-          empty: 'Δεν υπάρχουν οφειλές για αυτόν τον μήνα.',
-          onTap: (row) => openOwnerStudent(context, schoolId, row['id']?.toString() ?? ''),
-        ),
-        if (kind == 'parents') _Parents(schoolId: schoolId, rows: data['parents'] is List ? data['parents'] as List : const []),
-        if (kind == 'children') _ChildrenBoard(
-          schoolId: schoolId,
-          classes: ownerList(data['classes']),
-          unassigned: ownerList(data['unassigned']),
-        ),
-        if (kind == 'staff') _People(
-          title: 'Προσωπικό',
-          rows: data['staff'] is List ? data['staff'] as List : const [],
-          photo: (row) => row['avatarUrl']?.toString(),
-          subtitle: (row) => row['phone']?.toString() ?? '',
-          trailing: (row) => _roles[row['role']?.toString()] ?? '',
-          empty: 'Δεν υπάρχει προσωπικό.',
-          onTap: (row) => openOwnerStaff(context, schoolId, row['id']?.toString() ?? ''),
-        ),
       ],
     );
   }
+
+  void _changeRange(
+    String? value, {
+    required bool from,
+    required String fromMonth,
+    required String fromYear,
+    required String toMonth,
+    required String toYear,
+  }) {
+    if (value == null || !value.contains('|')) return;
+    final parts = value.split('|');
+    var nextFromMonth = from ? parts[0] : fromMonth;
+    var nextFromYear = from ? parts[1] : fromYear;
+    var nextToMonth = from ? toMonth : parts[0];
+    var nextToYear = from ? toYear : parts[1];
+    if (_later(nextFromMonth, nextFromYear, nextToMonth, nextToYear)) {
+      if (from) {
+        nextToMonth = nextFromMonth;
+        nextToYear = nextFromYear;
+      } else {
+        nextFromMonth = nextToMonth;
+        nextFromYear = nextToYear;
+      }
+    }
+    onRange(nextFromMonth, nextFromYear, nextToMonth, nextToYear);
+  }
+}
+
+bool _later(String month, String year, String otherMonth, String otherYear) {
+  final left = (int.tryParse(year) ?? 0) * 12 + (int.tryParse(month) ?? 0);
+  final right = (int.tryParse(otherYear) ?? 0) * 12 + (int.tryParse(otherMonth) ?? 0);
+  return left > right;
 }
 
 class _Filter extends StatelessWidget {
@@ -298,7 +374,11 @@ class _Stat extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('${value ?? 0}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: ownerInk)),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text('${value ?? 0}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: ownerInk)),
+              ),
               const SizedBox(height: 2),
               Text(label, style: const TextStyle(fontSize: 11, color: ownerMuted)),
             ],

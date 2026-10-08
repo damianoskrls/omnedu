@@ -16,11 +16,19 @@ export class ReportsController {
     @Query('academicYearId') academicYearId?: string,
     @Query('month') month?: string,
     @Query('year') year?: string,
+    @Query('fromMonth') fromMonth?: string,
+    @Query('fromYear') fromYear?: string,
+    @Query('toMonth') toMonth?: string,
+    @Query('toYear') toYear?: string,
   ) {
     return this.reports.overview(schoolId, {
       academicYearId,
       month: month ? Number(month) : undefined,
       year: year ? Number(year) : undefined,
+      fromMonth: fromMonth ? Number(fromMonth) : undefined,
+      fromYear: fromYear ? Number(fromYear) : undefined,
+      toMonth: toMonth ? Number(toMonth) : undefined,
+      toYear: toYear ? Number(toYear) : undefined,
     });
   }
 }

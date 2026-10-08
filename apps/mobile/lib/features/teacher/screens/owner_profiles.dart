@@ -108,7 +108,7 @@ class OwnerMonthChart extends StatelessWidget {
       return due > max ? due : (paid > max ? paid : max);
     });
     if (series.isEmpty || maxValue <= 0) {
-      return const Text('Δεν υπάρχουν χρεώσεις για αυτό το έτος.', style: TextStyle(color: ownerMuted));
+      return const Text('Δεν υπάρχουν χρεώσεις για αυτό το διάστημα.', style: TextStyle(color: ownerMuted));
     }
     return SizedBox(
       height: 148,

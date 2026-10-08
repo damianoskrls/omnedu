@@ -15,7 +15,15 @@ type StudentRow = {
 export class ReportsService {
   constructor(private prisma: PrismaService) {}
 
-  async overview(schoolId: string, query: { academicYearId?: string; month?: number; year?: number } = {}) {
+  async overview(schoolId: string, query: {
+    academicYearId?: string;
+    month?: number;
+    year?: number;
+    fromMonth?: number;
+    fromYear?: number;
+    toMonth?: number;
+    toYear?: number;
+  } = {}) {
     const today = athensToday();
     const now = new Date(`${today}T12:00:00.000Z`);
     const years = await this.prisma.academicYear.findMany({
@@ -24,22 +32,22 @@ export class ReportsService {
       orderBy: { startsOn: 'desc' },
     });
     const selectedYear = years.find((row) => row.id === query.academicYearId) ?? years.find((row) => row.isCurrent) ?? years[0];
-    const months = selectedYear ? monthsBetween(selectedYear.startsOn, selectedYear.endsOn) : schoolYearBounds(now).months.map((row) => ({
-      ...row,
-      label: `${MONTHS[row.month]} ${row.year}`,
-    }));
-    const requested = months.find((row) => row.month === query.month && row.year === query.year);
+    const months = financeMonths(today);
     const currentMonth = Number(today.slice(5, 7));
     const currentYear = Number(today.slice(0, 4));
-    const picked = requested
-      ?? months.find((row) => row.month === currentMonth && row.year === currentYear)
-      ?? [...months].reverse().find((row) => row.year < currentYear || (row.year === currentYear && row.month <= currentMonth))
-      ?? months[0];
-    const month = picked?.month ?? currentMonth;
-    const year = picked?.year ?? currentYear;
-    const schoolYear = selectedYear
-      ? { label: selectedYear.label, months: months.map((row) => ({ month: row.month, year: row.year })) }
-      : schoolYearBounds(now);
+    const current = months.find((row) => row.month === currentMonth && row.year === currentYear) ?? months[months.length - 1];
+    const from = resolveMonth(months, query.fromMonth ?? query.month, query.fromYear ?? query.year, current);
+    let to = resolveMonth(months, query.toMonth ?? query.month, query.toYear ?? query.year, current);
+    const fromIndex = monthIndex(from);
+    if (monthIndex(to) < fromIndex) to = from;
+    const range = months.filter((row) => monthIndex(row) >= fromIndex && monthIndex(row) <= monthIndex(to));
+    const month = to.month;
+    const year = to.year;
+    const schoolMonths = schoolYearBounds(now).months;
+    const schoolYear = {
+      label: selectedYear?.label ?? schoolYearBounds(now).label,
+      months: schoolMonths,
+    };
 
     const [students, classes, charges, yearCharges, parents, staff, inactive, monthGroups] = await Promise.all([
       this.prisma.student.findMany({
@@ -82,18 +90,21 @@ export class ReportsService {
         orderBy: { name: 'asc' },
       }),
       this.prisma.monthlyCharge.findMany({
-        where: { schoolId, month, year },
+        where: { schoolId, OR: range.map((row) => ({ month: row.month, year: row.year })) },
         select: {
           status: true,
           totalDue: true,
           paidAmount: true,
+          schoolFee: true,
+          busFee: true,
+          activityFees: true,
           student: { select: { id: true, fullName: true } },
         },
       }),
       this.prisma.monthlyCharge.aggregate({
         where: {
           schoolId,
-          OR: schoolYear.months.map((row) => ({ month: row.month, year: row.year })),
+          OR: schoolMonths.map((row) => ({ month: row.month, year: row.year })),
         },
         _sum: { totalDue: true, paidAmount: true, subsidyTotal: true, schoolFee: true, busFee: true, activityFees: true },
       }),
@@ -108,10 +119,10 @@ export class ReportsService {
         orderBy: { user: { fullName: 'asc' } },
       }),
       this.prisma.student.count({ where: { schoolId, isActive: false } }),
-      schoolYear.months.length
+      range.length
         ? this.prisma.monthlyCharge.groupBy({
             by: ['month', 'year'],
-            where: { schoolId, OR: schoolYear.months.map((row) => ({ month: row.month, year: row.year })) },
+            where: { schoolId, OR: range.map((row) => ({ month: row.month, year: row.year })) },
             _sum: { totalDue: true, paidAmount: true },
           })
         : Promise.resolve([]),
@@ -155,21 +166,34 @@ export class ReportsService {
     }
     const sortPeople = (a: { fullName: string }, b: { fullName: string }) => a.fullName.localeCompare(b.fullName, 'el');
 
-    const owing = charges
-      .filter((row) => row.status === 'unpaid' || row.status === 'partial')
-      .map((row) => ({
+    const owingByStudent = new Map<string, { id: string; fullName: string; className: string; status: string; totalDue: number; paidAmount: number; remaining: number }>();
+    for (const row of charges) {
+      if (row.status !== 'unpaid' && row.status !== 'partial') continue;
+      const remaining = Number(row.totalDue) - Number(row.paidAmount);
+      const current = owingByStudent.get(row.student.id) ?? {
         id: row.student.id,
         fullName: row.student.fullName,
         className: enrolled.find((student) => student.id === row.student.id)?.enrollments[0]?.class.name ?? '',
         status: row.status,
-        totalDue: Number(row.totalDue),
-        paidAmount: Number(row.paidAmount),
-        remaining: Number(row.totalDue) - Number(row.paidAmount),
-      }))
+        totalDue: 0,
+        paidAmount: 0,
+        remaining: 0,
+      };
+      current.totalDue += Number(row.totalDue);
+      current.paidAmount += Number(row.paidAmount);
+      current.remaining += remaining;
+      if (row.status === 'unpaid') current.status = 'unpaid';
+      owingByStudent.set(row.student.id, current);
+    }
+    const owing = [...owingByStudent.values()]
+      .filter((row) => row.remaining > 0)
       .sort((a, b) => b.remaining - a.remaining || a.fullName.localeCompare(b.fullName, 'el'));
 
     const monthDue = charges.reduce((sum, row) => sum + Number(row.totalDue), 0);
     const monthPaid = charges.reduce((sum, row) => sum + Number(row.paidAmount), 0);
+    const rangeSchoolFees = charges.reduce((sum, row) => sum + Number(row.schoolFee), 0);
+    const rangeBusFees = charges.reduce((sum, row) => sum + Number(row.busFee), 0);
+    const rangeActivityFees = charges.reduce((sum, row) => sum + Number(row.activityFees), 0);
     const siblings = siblingFamilies(enrolled);
     const parentRows = new Map<string, { id: string; fullName: string; phone: string | null; children: { id: string; fullName: string }[] }>();
     for (const member of parents) {
@@ -220,6 +244,11 @@ export class ReportsService {
     return {
       month,
       year,
+      fromMonth: from.month,
+      fromYear: from.year,
+      toMonth: to.month,
+      toYear: to.year,
+      rangeLabel: from.month === to.month && from.year === to.year ? from.label : `${from.label} – ${to.label}`,
       academicYearId: selectedYear?.id ?? null,
       schoolYear: schoolYear.label,
       years: years.map((row) => ({ id: row.id, label: row.label, isCurrent: row.isCurrent })),
@@ -261,8 +290,14 @@ export class ReportsService {
         schoolFees: Number(yearCharges._sum.schoolFee ?? 0),
         busFees: Number(yearCharges._sum.busFee ?? 0),
         activityFees: Number(yearCharges._sum.activityFees ?? 0),
+        rangeDue: monthDue,
+        rangePaid: monthPaid,
+        rangeRemaining: monthDue - monthPaid,
+        rangeSchoolFees,
+        rangeBusFees,
+        rangeActivityFees,
       },
-      monthSeries: months.map((row) => {
+      monthSeries: range.map((row) => {
         const hit = monthGroups.find((group) => group.month === row.month && group.year === row.year);
         const short = ['', 'Ιαν', 'Φεβ', 'Μάρ', 'Απρ', 'Μάι', 'Ιουν', 'Ιουλ', 'Αυγ', 'Σεπ', 'Οκτ', 'Νοε', 'Δεκ'];
         return {
@@ -340,22 +375,37 @@ function siblingFamilies(students: {
 
 const MONTHS = ['', 'Ιανουάριος', 'Φεβρουάριος', 'Μάρτιος', 'Απρίλιος', 'Μάιος', 'Ιούνιος', 'Ιούλιος', 'Αύγουστος', 'Σεπτέμβριος', 'Οκτώβριος', 'Νοέμβριος', 'Δεκέμβριος'];
 
-function monthsBetween(startsOn: Date, endsOn: Date) {
+function monthIndex(row: { month: number; year: number }) {
+  return row.year * 12 + row.month;
+}
+
+function financeMonths(today: string) {
+  const currentMonth = Number(today.slice(5, 7));
+  const currentYear = Number(today.slice(0, 4));
+  const schoolStart = currentMonth >= 9 ? currentYear : currentYear - 1;
+  let year = schoolStart - 3;
+  let month = 9;
   const months: { month: number; year: number; label: string }[] = [];
-  let year = startsOn.getUTCFullYear();
-  let month = startsOn.getUTCMonth() + 1;
-  const endYear = endsOn.getUTCFullYear();
-  const endMonth = endsOn.getUTCMonth() + 1;
-  while (year < endYear || (year === endYear && month <= endMonth)) {
+  while (year < currentYear || (year === currentYear && month <= currentMonth)) {
     months.push({ month, year, label: `${MONTHS[month]} ${year}` });
     month += 1;
     if (month > 12) {
       month = 1;
       year += 1;
     }
-    if (months.length > 24) break;
+    if (months.length > 80) break;
   }
   return months;
+}
+
+function resolveMonth(
+  months: { month: number; year: number; label: string }[],
+  month: number | undefined,
+  year: number | undefined,
+  fallback: { month: number; year: number; label: string },
+) {
+  if (!month || !year) return fallback;
+  return months.find((row) => row.month === month && row.year === year) ?? fallback;
 }
 
 function athensToday() {
