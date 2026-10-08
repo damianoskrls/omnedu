@@ -169,6 +169,7 @@ class TeacherMessagesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final asAdmin = ref.watch(authProvider).user?.isSchoolAdmin ?? false;
     final convsAsync = ref.watch(conversationsProvider(schoolId));
+    final typing = ref.watch(typingMapProvider(schoolId)).valueOrNull ?? const <String, List<String>>{};
     final details = ref.watch(teacherParentDetailsProvider(schoolId)).asData?.value ?? const <String, String>{};
 
     return Scaffold(
@@ -226,10 +227,12 @@ class TeacherMessagesScreen extends ConsumerWidget {
                               .whereType<String>()
                               .firstOrNull;
                           final localDetail = parentId == null ? null : details[parentId];
+                          final phrase = typingPhrase(typing[conv['id']?.toString() ?? ''] ?? const []);
                           return ConversationTile(
                             conv: conv,
                             userId: userId,
                             detail: localDetail,
+                            typingLabel: phrase.isEmpty ? null : phrase,
                             onTap: () => openChat(
                               context,
                               ref,

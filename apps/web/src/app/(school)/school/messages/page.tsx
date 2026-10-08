@@ -32,7 +32,9 @@ export default function MessagesPage() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [query, setQuery] = useState('');
+  const [typing, setTyping] = useState<{ conversationId: string; name: string }[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+  const lastTypingPost = useRef(0);
 
   const loadConversations = () => {
     if (!schoolId) return Promise.resolve();
@@ -51,6 +53,41 @@ export default function MessagesPage() {
       }).catch(() => { setParents([]); setTeachers([]); }),
     ]).finally(() => setLoading(false));
   }, [schoolId]);
+
+  useEffect(() => {
+    if (!schoolId) return;
+    let stopped = false;
+    const loadTyping = () => {
+      api.get(`/schools/${schoolId}/conversations/typing`).then((data: any) => {
+        if (!stopped) setTyping(Array.isArray(data) ? data : []);
+      }).catch(() => {
+        if (!stopped) setTyping([]);
+      });
+    };
+    loadTyping();
+    const timer = window.setInterval(loadTyping, 1500);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [schoolId]);
+
+  const pulseTyping = (active: boolean) => {
+    if (!schoolId || !activeId) return;
+    const now = Date.now();
+    if (active && now - lastTypingPost.current < 2000) return;
+    lastTypingPost.current = active ? now : 0;
+    api.post(`/schools/${schoolId}/conversations/${activeId}/typing`, { active }).catch(() => {});
+  };
+
+  const namesTyping = (conversationId: string | null) => {
+    if (!conversationId) return [];
+    const names: string[] = [];
+    for (const row of typing) {
+      if (row.conversationId === conversationId && row.name && !names.includes(row.name)) names.push(row.name);
+    }
+    return names;
+  };
 
   const openConversation = async (id: string) => {
     setActiveId(id);
@@ -95,6 +132,7 @@ export default function MessagesPage() {
       }
       setDraft('');
       setEmojisOpen(false);
+      pulseTyping(false);
       openConversation(activeId);
       loadConversations();
     } finally {
@@ -181,6 +219,7 @@ export default function MessagesPage() {
                 {visibleConvos.map((convo) => {
                   const last = convo.messages?.[0];
                   const preview = last?.body || (last?.mediaUrl ? 'Εικόνα' : 'Χωρίς μήνυμα');
+                  const live = namesTyping(convo.id);
                   return (
                     <button key={convo.id} onClick={() => openConversation(convo.id)} className={`flex w-full items-center gap-2 px-4 py-3 text-left ${activeId === convo.id ? 'bg-[#faf5fc]' : 'hover:bg-gray-50'}`}>
                       <span className="min-w-0 flex-1">
@@ -188,7 +227,14 @@ export default function MessagesPage() {
                           <span className="truncate text-sm font-semibold text-gray-900">{titleOf(convo)}</span>
                           {tagsOf(convo).map((tag) => <RoleTag key={tag} tag={tag} />)}
                         </span>
-                        <span className="block truncate text-xs text-gray-500">{preview}</span>
+                        {live.length > 0 ? (
+                          <span className="mt-0.5 flex items-center gap-1.5 text-xs font-medium text-[#77328D]">
+                            <TypingDots />
+                            <span className="truncate">{typingPhrase(live)}</span>
+                          </span>
+                        ) : (
+                          <span className="block truncate text-xs text-gray-500">{preview}</span>
+                        )}
                       </span>
                       {convo.unread && (
                         <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#E95926] ring-4 ring-[#fff1ec]" aria-label="Αδιάβαστο" />
@@ -209,6 +255,12 @@ export default function MessagesPage() {
                 <span className="truncate">{titleOf(active)}</span>
                 {tagsOf(active).map((tag) => <RoleTag key={tag} tag={tag} />)}
               </div>
+              {namesTyping(active.id).length > 0 && (
+                <div className="flex items-center gap-2 border-b border-gray-100 bg-[#faf5fc] px-5 py-2 text-sm font-medium text-[#77328D]">
+                  <TypingDots />
+                  <span>{typingPhrase(namesTyping(active.id))}</span>
+                </div>
+              )}
               <div className="flex-1 space-y-2 overflow-y-auto px-5 py-4">
                 {messages.map((message) => {
                   const mine = message.senderId === user?.id;
@@ -265,7 +317,11 @@ export default function MessagesPage() {
                   />
                   <input
                     value={draft}
-                    onChange={(event) => setDraft(event.target.value)}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setDraft(value);
+                      pulseTyping(value.trim().length > 0);
+                    }}
                     onKeyDown={(event) => { if (event.key === 'Enter') send(); }}
                     placeholder="Γράψε μήνυμα"
                     className="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm"
@@ -280,6 +336,22 @@ export default function MessagesPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function typingPhrase(names: string[]) {
+  if (names.length <= 1) return `${names[0] ?? 'Κάποιος'} γράφει τώρα`;
+  if (names.length === 2) return `${names[0]} και ${names[1]} γράφουν τώρα`;
+  return `${names[0]} και άλλοι γράφουν τώρα`;
+}
+
+function TypingDots() {
+  return (
+    <span className="inline-flex items-end gap-0.5" aria-hidden>
+      <span className="typing-dot" />
+      <span className="typing-dot" style={{ animationDelay: '0.15s' }} />
+      <span className="typing-dot" style={{ animationDelay: '0.3s' }} />
+    </span>
   );
 }
 

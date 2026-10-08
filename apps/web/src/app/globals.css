@@ -72,4 +72,18 @@
   .app-main :where(table thead tr) {
     background: rgba(250, 245, 252, 0.8);
   }
+
+  .typing-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: #77328d;
+    animation: typing-bounce 1s infinite ease-in-out;
+  }
+
+  @keyframes typing-bounce {
+    0%, 70%, 100% { transform: translateY(0); opacity: 0.35; }
+    35% { transform: translateY(-4px); opacity: 1; }
+  }
 }

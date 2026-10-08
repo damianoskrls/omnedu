@@ -10,6 +10,8 @@ const userCard = {
 
 @Injectable()
 export class MessagesService {
+  private readonly typing = new Map<string, Map<string, { name: string; at: number }>>();
+
   constructor(private prisma: PrismaService, private notifications: NotificationsService) {}
 
   async getConversations(userId: string, schoolId: string, role?: string | null) {
@@ -501,6 +503,53 @@ export class MessagesService {
       labels.set(link.userId, list);
     }
     return labels;
+  }
+
+  async pulseTyping(schoolId: string, conversationId: string, userId: string, active = true) {
+    const conversation = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, schoolId },
+      select: { id: true },
+    });
+    if (!conversation) throw new NotFoundException();
+    await this.assertParticipant(conversationId, userId);
+    this.pruneTyping();
+    const room = this.typing.get(conversationId) ?? new Map<string, { name: string; at: number }>();
+    this.typing.set(conversationId, room);
+    if (!active) {
+      room.delete(userId);
+      return { ok: true };
+    }
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { fullName: true } });
+    room.set(userId, { name: user?.fullName?.trim() || 'Κάποιος', at: Date.now() });
+    return { ok: true };
+  }
+
+  async whoIsTyping(schoolId: string, userId: string) {
+    this.pruneTyping();
+    const mine = await this.prisma.conversationParticipant.findMany({
+      where: { userId, conversation: { schoolId } },
+      select: { conversationId: true },
+    });
+    const items: { conversationId: string; userId: string; name: string }[] = [];
+    for (const row of mine) {
+      const room = this.typing.get(row.conversationId);
+      if (!room) continue;
+      for (const [id, person] of room) {
+        if (id === userId) continue;
+        items.push({ conversationId: row.conversationId, userId: id, name: person.name });
+      }
+    }
+    return items;
+  }
+
+  private pruneTyping() {
+    const freshAfter = Date.now() - 4500;
+    for (const [conversationId, room] of this.typing) {
+      for (const [userId, person] of room) {
+        if (person.at < freshAfter) room.delete(userId);
+      }
+      if (!room.size) this.typing.delete(conversationId);
+    }
   }
 
   private uniquePeople(people: { id: string; name: string }[]) {

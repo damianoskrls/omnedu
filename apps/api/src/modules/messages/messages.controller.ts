@@ -27,6 +27,11 @@ export class MessagesController {
     return this.messages.contacts(user.sub, schoolId, user.role);
   }
 
+  @Get('typing')
+  typing(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
+    return this.messages.whoIsTyping(schoolId, user.sub);
+  }
+
   @Get('unread-count')
   unreadCount(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
     return this.messages.unreadCount(user.sub, schoolId, user.role).then((count) => ({ count }));
@@ -55,6 +60,16 @@ export class MessagesController {
     }
     const ids = [...new Set([...(body.participantIds ?? []), user.sub])];
     return this.messages.getOrCreateConversation(schoolId, ids);
+  }
+
+  @Post(':conversationId/typing')
+  pulseTyping(
+    @Param('schoolId') schoolId: string,
+    @Param('conversationId') conversationId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { active?: boolean },
+  ) {
+    return this.messages.pulseTyping(schoolId, conversationId, user.sub, body?.active !== false);
   }
 
   @Get(':conversationId/messages')

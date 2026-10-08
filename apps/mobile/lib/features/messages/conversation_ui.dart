@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +12,42 @@ import '../../core/widgets/person_face.dart';
 const _emojis = ['😀', '😁', '😂', '😊', '😍', '🤗', '👍', '👏', '🙏', '❤️', '🎉', '🌟', '✅', '📷'];
 
 const brandPurple = Color(0xFF77328D);
+
+final typingMapProvider = StreamProvider.family<Map<String, List<String>>, String>((ref, schoolId) async* {
+  final dio = ref.read(dioProvider);
+  while (true) {
+    yield await _loadTyping(dio, schoolId);
+    await Future<void>.delayed(const Duration(milliseconds: 1500));
+  }
+});
+
+Future<Map<String, List<String>>> _loadTyping(Dio dio, String schoolId) async {
+  try {
+    final resp = await dio.get('/schools/$schoolId/conversations/typing');
+    final map = <String, List<String>>{};
+    final data = resp.data;
+    if (data is List) {
+      for (final row in data) {
+        if (row is! Map) continue;
+        final id = row['conversationId']?.toString() ?? '';
+        final name = row['name']?.toString().trim() ?? '';
+        if (id.isEmpty || name.isEmpty) continue;
+        final names = map.putIfAbsent(id, () => []);
+        if (!names.contains(name)) names.add(name);
+      }
+    }
+    return map;
+  } catch (_) {
+    return {};
+  }
+}
+
+String typingPhrase(List<String> names) {
+  if (names.isEmpty) return '';
+  if (names.length == 1) return '${names.first} γράφει τώρα';
+  if (names.length == 2) return '${names[0]} και ${names[1]} γράφουν τώρα';
+  return '${names.first} και άλλοι γράφουν τώρα';
+}
 
 final conversationsProvider = FutureProvider.family<List<dynamic>, String>(
   (ref, schoolId) async {
@@ -188,7 +226,8 @@ class ConversationTile extends StatelessWidget {
   final String userId;
   final VoidCallback onTap;
   final String? detail;
-  const ConversationTile({super.key, required this.conv, required this.userId, required this.onTap, this.detail});
+  final String? typingLabel;
+  const ConversationTile({super.key, required this.conv, required this.userId, required this.onTap, this.detail, this.typingLabel});
 
   @override
   Widget build(BuildContext context) {
@@ -235,12 +274,28 @@ class ConversationTile extends StatelessWidget {
                   Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
                   if (subtitle.isNotEmpty)
                     Text(subtitle, style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 11)),
-                  Text(
-                    _lastLine(lastMsg),
-                    style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  if (typingLabel != null && typingLabel!.isNotEmpty)
+                    Row(
+                      children: [
+                        const TypingDots(size: 5),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            typingLabel!,
+                            style: const TextStyle(color: brandPurple, fontSize: 12, fontWeight: FontWeight.w600),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    Text(
+                      _lastLine(lastMsg),
+                      style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                 ],
               ),
             ),
@@ -285,11 +340,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _sending = false;
   bool _emojisOpen = false;
   String? _error;
+  DateTime _lastTyping = DateTime.fromMillisecondsSinceEpoch(0);
 
   @override
   void dispose() {
     _ctrl.dispose();
     super.dispose();
+  }
+
+  void _pulse(bool active) {
+    final now = DateTime.now();
+    if (active && now.difference(_lastTyping) < const Duration(seconds: 2)) return;
+    _lastTyping = active ? now : DateTime.fromMillisecondsSinceEpoch(0);
+    final dio = ref.read(dioProvider);
+    dio.post(
+      '/schools/${widget.schoolId}/conversations/${widget.convId}/typing',
+      data: {'active': active},
+    ).then((_) {}, onError: (_) {});
   }
 
   Future<void> _send({XFile? image}) async {
@@ -311,6 +378,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         );
       }
       _ctrl.clear();
+      _pulse(false);
       _error = null;
       if (mounted) setState(() => _emojisOpen = false);
       ref.invalidate(messagesProvider(ConvKey(widget.schoolId, widget.convId)));
@@ -344,6 +412,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
     }
     final showPhoto = widget.title != 'Διαχείριση' && photoUrl != null && photoUrl.isNotEmpty;
+    final live = ref.watch(typingMapProvider(widget.schoolId)).valueOrNull?[widget.convId] ?? const <String>[];
+    final liveText = typingPhrase(live);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAFB),
@@ -400,6 +470,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Text(_error!, style: const TextStyle(color: Color(0xFFB91C1C), fontSize: 13)),
             ),
+          if (liveText.isNotEmpty)
+            Container(
+              width: double.infinity,
+              color: const Color(0xFFFAF5FC),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: Row(
+                children: [
+                  const TypingDots(),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(liveText, style: const TextStyle(color: brandPurple, fontSize: 13, fontWeight: FontWeight.w600)),
+                  ),
+                ],
+              ),
+            ),
           Container(
             padding: EdgeInsets.fromLTRB(8, 8, 8, 8 + systemBottomInset(context)),
             decoration: const BoxDecoration(
@@ -451,6 +536,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         ),
                         maxLines: null,
                         textCapitalization: TextCapitalization.sentences,
+                        onChanged: (value) => _pulse(value.trim().isNotEmpty),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -470,6 +556,51 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class TypingDots extends StatefulWidget {
+  final double size;
+  const TypingDots({super.key, this.size = 7});
+
+  @override
+  State<TypingDots> createState() => _TypingDotsState();
+}
+
+class _TypingDotsState extends State<TypingDots> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (_, __) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < 3; i++)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 1.5),
+              child: Transform.translate(
+                offset: Offset(0, -4 * math.sin(((_controller.value + i * 0.18) % 1) * math.pi)),
+                child: Opacity(
+                  opacity: 0.35 + 0.65 * math.sin(((_controller.value + i * 0.18) % 1) * math.pi),
+                  child: Container(
+                    width: widget.size,
+                    height: widget.size,
+                    decoration: const BoxDecoration(color: brandPurple, shape: BoxShape.circle),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

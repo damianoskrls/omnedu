@@ -130,6 +130,7 @@ class ParentMessagesScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final convsAsync = ref.watch(conversationsProvider(schoolId));
+    final typing = ref.watch(typingMapProvider(schoolId)).valueOrNull ?? const <String, List<String>>{};
 
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAFB),
@@ -177,9 +178,11 @@ class ParentMessagesScreen extends ConsumerWidget {
                   itemCount: convs.length,
                   itemBuilder: (_, i) {
                     final conv = Map<String, dynamic>.from(convs[i] as Map);
+                    final phrase = typingPhrase(typing[conv['id']?.toString() ?? ''] ?? const []);
                     return ConversationTile(
                       conv: conv,
                       userId: userId,
+                      typingLabel: phrase.isEmpty ? null : phrase,
                       onTap: () => openChat(context, ref, schoolId: schoolId, userId: userId, conv: conv),
                     );
                   },
