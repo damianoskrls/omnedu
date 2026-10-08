@@ -1,0 +1,72 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:omnedu/core/widgets/person_face.dart';
+import 'package:omnedu/features/parent/screens/child_hub_screen.dart';
+
+void main() {
+  testWidgets('child header centers photo, name, class, level, and teacher', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: ChildHubScreen(
+            schoolId: 'school-1',
+            child: {
+              'id': 'child-1',
+              'fullName': 'Σοφία Γεωργίου',
+              'enrollments': [
+                {
+                  'academicYear': {'isCurrent': true},
+                  'class': {
+                    'id': 'class-1',
+                    'name': 'Αστεράκια',
+                    'level': {'name': 'Νηπιαγωγείο'},
+                    'teachers': [
+                      {
+                        'user': {'id': 'teacher-1', 'fullName': 'Γιώργος Αλεξίου'},
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final width = tester.getSize(find.byType(Scaffold)).width;
+    void expectCentered(Finder finder) {
+      expect(finder, findsOneWidget);
+      expect(tester.getCenter(finder).dx, closeTo(width / 2, 1));
+    }
+
+    expectCentered(find.byWidgetPredicate((widget) => widget is PersonFace && widget.size == 64));
+    expectCentered(find.byWidgetPredicate((widget) => widget is Text && widget.data == 'Σοφία Γεωργίου' && widget.style?.fontSize == 20));
+    expectCentered(find.text('Τάξη Αστεράκια'));
+    expectCentered(find.text('Βαθμίδα Νηπιαγωγείο'));
+    expectCentered(
+      find.ancestor(
+        of: find.text('Γιώργος Αλεξίου'),
+        matching: find.byWidgetPredicate((widget) => widget is Material && widget.borderRadius == BorderRadius.circular(20)),
+      ),
+    );
+
+    final back = tester.getCenter(find.byIcon(Icons.arrow_back_rounded));
+    expect(back.dx, lessThan(40));
+    expect(back.dx, lessThan(width / 2 - 80));
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -500));
+    await tester.pump();
+
+    final collapsedName = find.byWidgetPredicate((widget) => widget is Text && widget.data == 'Σοφία Γεωργίου' && widget.style?.fontSize == 16);
+    expectCentered(find.ancestor(of: collapsedName, matching: find.byType(Row)));
+    expect(tester.getCenter(find.byIcon(Icons.arrow_back_rounded)).dx, lessThan(40));
+  });
+}

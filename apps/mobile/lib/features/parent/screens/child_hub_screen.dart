@@ -264,94 +264,107 @@ class _ChildHeaderDelegate extends SliverPersistentHeaderDelegate {
     return ColoredBox(
       color: const Color(0xFF77328D),
       child: Stack(
+        fit: StackFit.expand,
         children: [
-          IgnorePointer(
-            ignoring: expandedOpacity < 0.2,
-            child: Opacity(
-              opacity: expandedOpacity,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    PersonFace(
-                      name: name,
-                      photoUrl: photoUrl,
-                      size: 64,
-                      radius: 22,
-                      fontSize: 22,
-                      background: Colors.white,
-                      foreground: const Color(0xFF77328D),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800),
-                    ),
-                    if (className.isNotEmpty)
-                      Text('Τάξη $className', maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
-                    if (levelName.isNotEmpty)
-                      Text('Βαθμίδα $levelName', maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFFF3E8F7), fontWeight: FontWeight.w600, fontSize: 13)),
-                    if (teachers.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Wrap(
-                        alignment: WrapAlignment.center,
-                        spacing: 8,
-                        runSpacing: 6,
-                        children: [
-                          for (final teacher in teachers) _TeacherChip(schoolId: schoolId, teacher: teacher),
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          ),
-          IgnorePointer(
-            ignoring: collapsedOpacity < 0.2,
-            child: Opacity(
-              opacity: collapsedOpacity,
-              child: Center(
+          Positioned.fill(
+            child: IgnorePointer(
+              ignoring: expandedOpacity < 0.2,
+              child: Opacity(
+                opacity: expandedOpacity,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 52),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      PersonFace(
-                        name: name,
-                        photoUrl: photoUrl,
-                        size: 36,
-                        radius: 12,
-                        fontSize: 14,
-                        background: Colors.white,
-                        foreground: const Color(0xFF77328D),
-                      ),
-                      const SizedBox(width: 10),
-                      Flexible(
-                        child: Text(
+                  padding: const EdgeInsets.fromLTRB(56, 4, 56, 10),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        PersonFace(
+                          name: name,
+                          photoUrl: photoUrl,
+                          size: 64,
+                          radius: 22,
+                          fontSize: 22,
+                          background: Colors.white,
+                          foreground: const Color(0xFF77328D),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
                           name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
+                          style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800),
                         ),
-                      ),
-                    ],
+                        if (className.isNotEmpty)
+                          Text('Τάξη $className', maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
+                        if (levelName.isNotEmpty)
+                          Text('Βαθμίδα $levelName', maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFFF3E8F7), fontWeight: FontWeight.w600, fontSize: 13)),
+                        if (teachers.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Wrap(
+                            alignment: WrapAlignment.center,
+                            spacing: 8,
+                            runSpacing: 6,
+                            children: [
+                              for (final teacher in teachers) _TeacherChip(schoolId: schoolId, teacher: teacher),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: IconButton(
-              onPressed: () => Navigator.of(context).maybePop(),
-              icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+          Positioned.fill(
+            child: IgnorePointer(
+              ignoring: collapsedOpacity < 0.2,
+              child: Opacity(
+                opacity: collapsedOpacity,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 56),
+                  child: Center(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        PersonFace(
+                          name: name,
+                          photoUrl: photoUrl,
+                          size: 36,
+                          radius: 12,
+                          fontSize: 14,
+                          background: Colors.white,
+                          foreground: const Color(0xFF77328D),
+                        ),
+                        const SizedBox(width: 10),
+                        ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: (MediaQuery.sizeOf(context).width - 158).clamp(48.0, 2000.0)),
+                          child: Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: Center(
+              child: IconButton(
+                onPressed: () => Navigator.of(context).maybePop(),
+                icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+              ),
             ),
           ),
         ],
