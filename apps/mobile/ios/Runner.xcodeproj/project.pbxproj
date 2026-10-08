@@ -245,7 +245,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" embed_and_thin";
+			shellScript = "set -e\nif [ -z \"${FLUTTER_ROOT:-}\" ] || [ ! -x \"$FLUTTER_ROOT/bin/flutter\" ]; then\n  for candidate in \"$HOME/flutter\" \"$HOME/development/flutter\" \"$HOME/sdk/flutter\" \"$HOME/fvm/default\" \"/opt/homebrew/share/flutter\" \"/usr/local/flutter\"; do\n    if [ -x \"$candidate/bin/flutter\" ]; then export FLUTTER_ROOT=\"$candidate\"; break; fi\n  done\nfi\n/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" embed_and_thin\n";
 		};
 		9740EEB61CF901F6004384FC /* Run Script */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -260,7 +260,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" build";
+			shellScript = "set -e\nif [ -z \"${FLUTTER_ROOT:-}\" ] || [ ! -x \"$FLUTTER_ROOT/bin/flutter\" ]; then\n  for candidate in \"$HOME/flutter\" \"$HOME/development/flutter\" \"$HOME/sdk/flutter\" \"$HOME/fvm/default\" \"/opt/homebrew/share/flutter\" \"/usr/local/flutter\"; do\n    if [ -x \"$candidate/bin/flutter\" ]; then export FLUTTER_ROOT=\"$candidate\"; break; fi\n  done\nfi\n/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" build\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
