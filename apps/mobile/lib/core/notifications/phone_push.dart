@@ -73,10 +73,9 @@ Future<void> startPhonePush({
   await FirebaseMessaging.instance.requestPermission(alert: true, badge: true, sound: true);
   if (Platform.isIOS) {
     await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(alert: true, badge: true, sound: true);
-    for (var attempt = 0; attempt < 6; attempt++) {
-      final apns = await FirebaseMessaging.instance.getAPNSToken();
-      if (apns != null && apns.isNotEmpty) break;
-      await Future<void>.delayed(const Duration(seconds: 1));
+    final apns = await FirebaseMessaging.instance.getAPNSToken();
+    if (apns == null || apns.isEmpty) {
+      await Future<void>.delayed(const Duration(milliseconds: 400));
     }
   }
   FirebaseMessaging.onMessage.listen((message) {
