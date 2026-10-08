@@ -18,24 +18,70 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+let refreshPromise: Promise<string> | null = null;
+
+function currentContext() {
+  if (typeof window === 'undefined') return {};
+  const token = localStorage.getItem('access_token');
+  if (!token) return {};
+  try {
+    const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '=='.slice(0, (4 - (b64.length % 4)) % 4);
+    const bytes = Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
+    const payload = JSON.parse(new TextDecoder().decode(bytes));
+    return {
+      ...(payload.schoolId ? { schoolId: payload.schoolId as string } : {}),
+      ...(payload.role ? { role: payload.role as string } : {}),
+    };
+  } catch {
+    return {};
+  }
+}
+
+function refreshAccessToken() {
+  if (refreshPromise) return refreshPromise;
+  const refreshToken = localStorage.getItem('refresh_token');
+  if (!refreshToken) return Promise.reject(new Error('no refresh'));
+  refreshPromise = axios
+    .post(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/auth/refresh`, { refreshToken, ...currentContext() })
+    .then(({ data }) => {
+      const access = data?.data?.accessToken as string | undefined;
+      const next = (data?.data?.refreshToken as string | undefined) || refreshToken;
+      if (!access) throw new Error('no access');
+      localStorage.setItem('access_token', access);
+      localStorage.setItem('refresh_token', next);
+      window.dispatchEvent(new Event('auth-changed'));
+      return access;
+    })
+    .finally(() => {
+      refreshPromise = null;
+    });
+  return refreshPromise;
+}
+
 api.interceptors.response.use(
   (res) => res.data?.data ?? res.data,
   async (error) => {
-    if (error.response?.status === 401 && typeof window !== 'undefined') {
-      const refreshToken = localStorage.getItem('refresh_token');
-      if (refreshToken) {
-        try {
-          const { data } = await axios.post(
-            `${process.env.NEXT_PUBLIC_API_URL}/auth/refresh`,
-            { refreshToken },
-          );
-          localStorage.setItem('access_token', data.data.accessToken);
-          error.config.headers.Authorization = `Bearer ${data.data.accessToken}`;
-          return axios(error.config);
-        } catch {
-          localStorage.clear();
-          window.location.href = '/login';
-        }
+    const config = error.config as (typeof error.config & { _retry?: boolean }) | undefined;
+    const url = String(config?.url ?? '');
+    if (
+      error.response?.status === 401 &&
+      config &&
+      !config._retry &&
+      typeof window !== 'undefined' &&
+      !url.includes('/auth/refresh') &&
+      !url.includes('/auth/login')
+    ) {
+      config._retry = true;
+      try {
+        const access = await refreshAccessToken();
+        config.headers = config.headers ?? {};
+        config.headers.Authorization = `Bearer ${access}`;
+        return api(config);
+      } catch {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        if (!window.location.pathname.startsWith('/login')) window.location.href = '/login';
       }
     }
     return Promise.reject(error.response?.data ?? error);

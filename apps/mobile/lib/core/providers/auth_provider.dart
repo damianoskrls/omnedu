@@ -21,6 +21,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
   final Ref _ref;
 
   AuthNotifier(this._storage, this._ref) : super(const AuthState(isLoading: true)) {
+    onSessionExpired = () {
+      state = const AuthState();
+    };
     _restoreSession();
   }
 
@@ -129,18 +132,18 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> _refreshToken() async {
-    final refreshToken = await _storage.getRefreshToken();
-    if (refreshToken == null) {
+    final access = await refreshSession(_storage);
+    if (access != null) {
+      state = AuthState(user: AuthUser.fromTokenPayload(_decodeJwt(access)));
+      return;
+    }
+    final stored = await _storage.getAccessToken();
+    if (stored == null) {
       state = const AuthState();
       return;
     }
     try {
-      final dio = _ref.read(dioProvider);
-      final resp = await dio.post('/auth/refresh', data: {'refreshToken': refreshToken});
-      final newToken = (resp.data as Map<String, dynamic>)['accessToken'] as String;
-      await _storage.storeTokens(accessToken: newToken, refreshToken: refreshToken);
-      final payload = _decodeJwt(newToken);
-      state = AuthState(user: AuthUser.fromTokenPayload(payload));
+      state = AuthState(user: AuthUser.fromTokenPayload(_decodeJwt(stored)));
     } catch (_) {
       state = const AuthState();
     }

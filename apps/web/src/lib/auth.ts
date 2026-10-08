@@ -20,7 +20,6 @@ export function getStoredUser(): AuthUser | null {
     const padded = b64 + '=='.slice(0, (4 - b64.length % 4) % 4);
     const bytes = Uint8Array.from(atob(padded), c => c.charCodeAt(0));
     const payload = JSON.parse(new TextDecoder().decode(bytes));
-    if (payload.exp && Date.now() / 1000 > payload.exp) return null;
     return {
       id: payload.sub,
       email: payload.email,

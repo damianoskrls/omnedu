@@ -95,7 +95,7 @@ export class AuthService {
     return { id: user.id, email: user.email, fullName: user.fullName };
   }
 
-  async refresh(token: string) {
+  async refresh(token: string, schoolId?: string, role?: string) {
     const stored = await this.prisma.refreshToken.findUnique({
       where: { token },
       include: {
@@ -117,7 +117,9 @@ export class AuthService {
     const user = stored.user;
     if (!user.isActive) throw new UnauthorizedException();
 
-    await this.prisma.refreshToken.delete({ where: { token } });
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+    await this.prisma.refreshToken.update({ where: { token }, data: { expiresAt } });
 
     const memberships = user.schoolMemberships.map((m) => ({
       schoolId: m.schoolId,
@@ -125,21 +127,28 @@ export class AuthService {
       role: m.role,
     }));
 
-    const primaryMembership = user.schoolMemberships[0] ?? null;
+    const preferred = user.schoolMemberships.find((m) =>
+      (!schoolId || m.schoolId === schoolId) && (!role || m.role === role),
+    ) ?? user.schoolMemberships.find((m) => schoolId && m.schoolId === schoolId)
+      ?? user.schoolMemberships[0]
+      ?? null;
 
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
       fullName: user.fullName,
       isSuperAdmin: user.isSuperAdmin,
-      schoolId: primaryMembership?.schoolId ?? null,
-      role: primaryMembership?.role ?? null,
-      schoolLogoUrl: primaryMembership?.school?.logoUrl ?? null,
-      schoolPrimaryColor: primaryMembership?.school?.primaryColor ?? null,
+      schoolId: preferred?.schoolId ?? null,
+      role: preferred?.role ?? null,
+      schoolLogoUrl: preferred?.school?.logoUrl ?? null,
+      schoolPrimaryColor: preferred?.school?.primaryColor ?? null,
       memberships,
     };
 
-    return this.generateTokens(payload);
+    const accessToken = this.jwt.sign(await this.withTerms(payload), {
+      expiresIn: this.config.get<string>('jwt.accessExpires', '15m'),
+    });
+    return { accessToken, refreshToken: token };
   }
 
   async switchContext(currentUser: JwtPayload, dto: SwitchContextDto) {

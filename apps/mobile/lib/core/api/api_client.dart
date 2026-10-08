@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../storage/secure_storage.dart';
@@ -26,6 +28,69 @@ String fixMediaUrl(String? url) {
       .replaceFirst(RegExp(r'https?://127\.0\.0\.1:\d+'), _apiOrigin);
 }
 
+void Function()? onSessionExpired;
+Future<String?>? _refreshing;
+
+Map<String, dynamic>? _payload(String token) {
+  try {
+    final parts = token.split('.');
+    if (parts.length < 2) return null;
+    return jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1])))) as Map<String, dynamic>;
+  } catch (_) {
+    return null;
+  }
+}
+
+bool _expired(String token) {
+  final payload = _payload(token);
+  final exp = payload?['exp'];
+  if (exp is! int) return false;
+  final expiry = DateTime.fromMillisecondsSinceEpoch(exp * 1000);
+  return DateTime.now().isAfter(expiry.subtract(const Duration(seconds: 30)));
+}
+
+Future<String?> refreshSession(SecureStorageService storage) {
+  final current = _refreshing;
+  if (current != null) return current;
+  final run = _refreshSession(storage);
+  _refreshing = run;
+  return run.whenComplete(() {
+    if (identical(_refreshing, run)) _refreshing = null;
+  });
+}
+
+Future<String?> _refreshSession(SecureStorageService storage) async {
+  final refreshToken = await storage.getRefreshToken();
+  if (refreshToken == null || refreshToken.isEmpty) return null;
+  final current = await storage.getAccessToken();
+  final payload = current == null ? null : _payload(current);
+  try {
+    final resp = await Dio().post(
+      '$_baseUrl/auth/refresh',
+      data: {
+        'refreshToken': refreshToken,
+        if (payload?['schoolId'] is String) 'schoolId': payload!['schoolId'],
+        if (payload?['role'] is String) 'role': payload!['role'],
+      },
+    );
+    final data = resp.data is Map ? resp.data['data'] : null;
+    if (data is! Map || data['accessToken'] is! String) return null;
+    final access = data['accessToken'] as String;
+    final nextRefresh = data['refreshToken'] is String ? data['refreshToken'] as String : refreshToken;
+    await storage.storeTokens(accessToken: access, refreshToken: nextRefresh);
+    return access;
+  } on DioException catch (error) {
+    final code = error.response?.statusCode;
+    if (code == 401 || code == 403) {
+      await storage.clearAll();
+      onSessionExpired?.call();
+    }
+    return null;
+  } catch (_) {
+    return null;
+  }
+}
+
 final dioProvider = Provider<Dio>((ref) {
   final storage = ref.read(secureStorageProvider);
   final dio = Dio(BaseOptions(
@@ -38,8 +103,11 @@ final dioProvider = Provider<Dio>((ref) {
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (options, handler) async {
-        final token = await storage.getAccessToken();
-        if (token != null) options.headers['Authorization'] = 'Bearer $token';
+        var token = await storage.getAccessToken();
+        if (token != null && _expired(token)) {
+          token = await refreshSession(storage) ?? token;
+        }
+        if (token != null && token.isNotEmpty) options.headers['Authorization'] = 'Bearer $token';
         handler.next(options);
       },
       onResponse: (response, handler) {
@@ -49,24 +117,17 @@ final dioProvider = Provider<Dio>((ref) {
         handler.next(response);
       },
       onError: (error, handler) async {
-        if (error.response?.statusCode == 401) {
-          final refreshToken = await storage.getRefreshToken();
-          if (refreshToken != null) {
+        final already = error.requestOptions.extra['retried'] == true;
+        if (error.response?.statusCode == 401 && !already) {
+          final access = await refreshSession(storage);
+          if (access != null) {
+            error.requestOptions.extra['retried'] = true;
+            error.requestOptions.headers['Authorization'] = 'Bearer $access';
             try {
-              final resp = await Dio().post(
-                '$_baseUrl/auth/refresh',
-                data: {'refreshToken': refreshToken},
-              );
-              final newToken = resp.data['data']['accessToken'] as String;
-              await storage.storeTokens(
-                accessToken: newToken,
-                refreshToken: refreshToken,
-              );
-              error.requestOptions.headers['Authorization'] = 'Bearer $newToken';
               final retried = await dio.fetch(error.requestOptions);
               return handler.resolve(retried);
-            } catch (_) {
-              await storage.clearAll();
+            } catch (retryError) {
+              if (retryError is DioException) return handler.next(retryError);
             }
           }
         }

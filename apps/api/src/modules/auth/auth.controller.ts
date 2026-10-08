@@ -36,7 +36,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Exchange refresh token for a new access token' })
   refresh(@Body() dto: RefreshTokenDto) {
-    return this.auth.refresh(dto.refreshToken);
+    return this.auth.refresh(dto.refreshToken, dto.schoolId, dto.role);
   }
 
   @Post('switch-context')
