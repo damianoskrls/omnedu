@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "sh -c \"if [ -f scripts/start-production.sh ]; then sh scripts/start-production.sh; else sh ../../scripts/start-production.sh; fi\"",
+    "startCommand": "sh -c \"if [ -f scripts/start-production.sh ]; then sh scripts/start-production.sh; elif [ -f ../scripts/start-production.sh ]; then sh ../scripts/start-production.sh; else node dist/main; fi\"",
     "healthcheckPath": "/api/v1/health",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3

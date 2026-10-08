@@ -2,6 +2,7 @@
 const nextConfig = {
   typescript: { ignoreBuildErrors: true },
   eslint: { ignoreDuringBuilds: true },
+  experimental: { cpus: 1, workerThreads: false },
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: '**.r2.dev' },

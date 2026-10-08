@@ -14,8 +14,10 @@ cd "$ROOT"
 
 if [ ! -d "$ROOT/apps/web/.next" ]; then
   echo 'web build missing, starting the API only'
+  printf 'web-missing\n' > "$ROOT/apps/api/web-build-status.txt"
   exec node "$ROOT/apps/api/dist/main"
 fi
+echo 'web build found, starting the site and the API'
 
 PUBLIC_PORT="${PORT:-${API_PORT:-3001}}"
 export API_PORT=3011

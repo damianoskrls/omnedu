@@ -8,7 +8,8 @@ cmds = ["npm install -g pnpm@9.12.0", "pnpm install --frozen-lockfile"]
 cmds = [
   "pnpm --filter @omnedu/api exec prisma generate",
   "pnpm --filter @omnedu/api build",
-  "NODE_OPTIONS=--max-old-space-size=3072 NEXT_PUBLIC_API_URL=https://omneduapi-production.up.railway.app/api/v1 pnpm --filter @omnedu/web build || echo 'web build failed, API will start without the site'"
+  "NODE_OPTIONS=--max-old-space-size=2048 NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_API_URL=https://omneduapi-production.up.railway.app/api/v1 pnpm --filter @omnedu/web build > apps/web/.web-build.log 2>&1 || true",
+  "if [ -f apps/web/.next/BUILD_ID ]; then echo web-ok > apps/api/web-build-status.txt; else { echo web-failed; tail -80 apps/web/.web-build.log; } > apps/api/web-build-status.txt; fi"
 ]
 
 [start]
