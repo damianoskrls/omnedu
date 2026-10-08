@@ -55,6 +55,25 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         CONSTRAINT "class_assignments_pkey" PRIMARY KEY ("id")
       )`,
       `CREATE INDEX IF NOT EXISTS "class_assignments_school_id_class_id_created_at_idx" ON "class_assignments"("school_id", "class_id", "created_at" DESC)`,
+      `DO $$ BEGIN
+        ALTER TYPE "Role" ADD VALUE 'driver';
+      EXCEPTION
+        WHEN duplicate_object THEN NULL;
+      END $$`,
+      `ALTER TABLE "extra_services" ADD COLUMN IF NOT EXISTS "driver_user_id" TEXT`,
+      `CREATE TABLE IF NOT EXISTS "bus_positions" (
+        "id" TEXT NOT NULL,
+        "school_id" TEXT NOT NULL,
+        "service_id" TEXT NOT NULL,
+        "driver_user_id" TEXT NOT NULL,
+        "latitude" DOUBLE PRECISION NOT NULL,
+        "longitude" DOUBLE PRECISION NOT NULL,
+        "heading" DOUBLE PRECISION,
+        "speed" DOUBLE PRECISION,
+        "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "bus_positions_pkey" PRIMARY KEY ("id")
+      )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS "bus_positions_service_id_key" ON "bus_positions"("service_id")`,
     ];
     for (const sql of statements) {
       try {

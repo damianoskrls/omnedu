@@ -194,6 +194,8 @@ String _roleAccusative(String role) {
       return 'διαχειριστή';
     case 'owner':
       return 'ιδιοκτήτη';
+    case 'driver':
+      return 'οδηγό';
     default:
       return 'άλλο ρόλο';
   }
@@ -205,6 +207,8 @@ IconData _roleIcon(String role) {
       return Icons.family_restroom_rounded;
     case 'teacher':
       return Icons.school_rounded;
+    case 'driver':
+      return Icons.directions_bus_rounded;
     default:
       return Icons.admin_panel_settings_rounded;
   }

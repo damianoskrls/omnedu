@@ -93,6 +93,7 @@ class AuthUser extends Equatable {
   bool get isParent => role == 'parent';
   bool get isSchoolAdmin => role == 'school_admin';
   bool get isOwner => role == 'owner';
+  bool get isDriver => role == 'driver';
   bool get usesStaffShell => isTeacher || isSchoolAdmin || isOwner;
 
   factory AuthUser.fromTokenPayload(Map<String, dynamic> payload) => AuthUser(

@@ -28,6 +28,8 @@
 	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Η Ονειροχώρα χρησιμοποιεί την τοποθεσία του οδηγού για να δείχνει στους γονείς πού βρίσκεται το σχολικό.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Η Ονειροχώρα χρησιμοποιεί την κάμερα για φωτογραφίες και βίντεο σε μηνύματα και εκδηλώσεις.</string>
 	<key>NSMicrophoneUsageDescription</key>

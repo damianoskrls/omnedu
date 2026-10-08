@@ -10,12 +10,14 @@ const ROLE_LABELS: Record<string, string> = {
   school_admin: 'Διαχειριστής',
   teacher: 'Εκπαιδευτικός',
   owner: 'Ιδιοκτήτης',
+  driver: 'Οδηγός σχολικού',
 };
 
 const ROLE_COLORS: Record<string, string> = {
   school_admin: 'bg-indigo-50 text-indigo-700',
   teacher: 'bg-emerald-50 text-emerald-700',
   owner: 'bg-[#f3e8f7] text-[#77328D]',
+  driver: 'bg-orange-50 text-[#E95926]',
 };
 
 const CONTRACT_LABELS: Record<string, string> = {
@@ -85,13 +87,14 @@ export default function StaffPage() {
             }}
           >
             <h2 className="font-semibold text-gray-900">Νέο προσωπικό</h2>
-            <p className="mt-1 text-sm text-gray-500">Μπαίνει στην εφαρμογή με το κινητό. Ο ιδιοκτήτης βλέπει όλες τις τάξεις και τις αναφορές.</p>
+            <p className="mt-1 text-sm text-gray-500">Μπαίνει στην εφαρμογή με το κινητό. Ο ιδιοκτήτης βλέπει όλες τις τάξεις και τις αναφορές. Ο οδηγός σχολικού στέλνει τη θέση όσο κρατά την εφαρμογή ανοιχτή.</p>
             <label className="mt-4 block text-sm font-medium text-gray-700">
               Ρόλος
               <select value={role} onChange={(event) => setRole(event.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2">
                 <option value="teacher">Εκπαιδευτικός</option>
                 <option value="school_admin">Διαχειριστής</option>
                 <option value="owner">Ιδιοκτήτης</option>
+                <option value="driver">Οδηγός σχολικού</option>
               </select>
             </label>
             <label className="mt-3 block text-sm font-medium text-gray-700">

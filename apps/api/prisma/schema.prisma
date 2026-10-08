@@ -58,6 +58,7 @@ model School {
   activityInstructors  ActivityInstructor[]
   schoolPosts          SchoolPost[]
   classAssignments     ClassAssignment[]
+  busPositions         BusPosition[]
   schoolEvents         SchoolEvent[]
   questionnaires       Questionnaire[]
   thematicPlans        ThematicPlan[]
@@ -137,6 +138,8 @@ model User {
   sentBroadcasts           NotificationBroadcast[] @relation("BroadcastSentBy")
   schoolPosts              SchoolPost[]
   classAssignments         ClassAssignment[]
+  drivenBuses              ExtraService[] @relation("BusDriver")
+  busPositions             BusPosition[]  @relation("BusPositionDriver")
   createdEvents            SchoolEvent[]
   eventTeacherAssignments  SchoolEventTeacher[]
   uploadedEventMedia       SchoolEventMedia[]
@@ -241,6 +244,7 @@ enum Role {
   teacher
   parent
   owner
+  driver
 }
 
 // ─────────────────────────────────────────────────────────
@@ -1121,6 +1125,7 @@ model ExtraService {
   description String?
   serviceType  String   @map("service_type") // bus | aftercare | other
   driverName   String?  @map("driver_name")
+  driverUserId String?  @map("driver_user_id")
   busNumber    String?  @map("bus_number")
   monthlyCost  Decimal? @map("monthly_cost") @db.Decimal(10, 2)  // cost for both pickup+dropoff
   pickupCost   Decimal? @map("pickup_cost") @db.Decimal(10, 2)   // cost for pickup only
@@ -1129,11 +1134,33 @@ model ExtraService {
   createdAt   DateTime @default(now()) @map("created_at")
 
   school          School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  driverUser      User?            @relation("BusDriver", fields: [driverUserId], references: [id], onDelete: SetNull)
   routes          ServiceRoute[]
   studentServices StudentService[]
+  busPosition     BusPosition?
 
   @@index([schoolId])
+  @@index([driverUserId])
   @@map("extra_services")
+}
+
+model BusPosition {
+  id           String   @id @default(uuid())
+  schoolId     String   @map("school_id")
+  serviceId    String   @unique @map("service_id")
+  driverUserId String   @map("driver_user_id")
+  latitude     Float
+  longitude    Float
+  heading      Float?
+  speed        Float?
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  school  School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  service ExtraService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  driver  User         @relation("BusPositionDriver", fields: [driverUserId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId])
+  @@map("bus_positions")
 }
 
 model ServiceRoute {

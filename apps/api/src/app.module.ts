@@ -27,6 +27,7 @@ import { ThematicPlansModule } from './modules/thematic-plans/thematic-plans.mod
 import { CelebrationsModule } from './modules/celebrations/celebrations.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { AssignmentsModule } from './modules/assignments/assignments.module';
+import { BusTrackingModule } from './modules/bus-tracking/bus-tracking.module';
 import { StorageModule } from './common/storage/storage.module';
 import { HealthController } from './modules/health/health.controller';
 
@@ -60,6 +61,7 @@ import { HealthController } from './modules/health/health.controller';
     CelebrationsModule,
     ReportsModule,
     AssignmentsModule,
+    BusTrackingModule,
     StorageModule,
   ],
 })

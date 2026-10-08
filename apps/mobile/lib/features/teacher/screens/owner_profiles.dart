@@ -511,6 +511,7 @@ class _OwnerStaffPageState extends ConsumerState<OwnerStaffPage> {
     'teacher': 'Εκπαιδευτικός',
     'school_admin': 'Διαχειριστής',
     'owner': 'Ιδιοκτήτης',
+    'driver': 'Οδηγός σχολικού',
   };
   static const _contracts = {
     'full_time': 'Πλήρης απασχόληση',

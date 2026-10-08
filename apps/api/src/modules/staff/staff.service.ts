@@ -20,7 +20,7 @@ export class StaffService implements OnModuleInit {
 
   async findAll(schoolId: string) {
     return this.prisma.schoolMember.findMany({
-      where: { schoolId, role: { in: ['teacher', 'school_admin', 'owner'] }, isActive: true },
+      where: { schoolId, role: { in: ['teacher', 'school_admin', 'owner', 'driver'] }, isActive: true },
       include: {
         user: { select: { id: true, email: true, fullName: true, avatarUrl: true, phone: true } },
         teacherProfile: true,
@@ -59,7 +59,7 @@ export class StaffService implements OnModuleInit {
   async createMember(schoolId: string, data: { fullName?: string; phone?: string; role?: string }) {
     const fullName = data.fullName?.trim() ?? '';
     const phone = normalizePhone(data.phone);
-    const role = data.role === 'school_admin' || data.role === 'owner' ? data.role : 'teacher';
+    const role = data.role === 'school_admin' || data.role === 'owner' || data.role === 'driver' ? data.role : 'teacher';
     if (!fullName) throw new BadRequestException('Συμπληρώστε το ονοματεπώνυμο');
     if (!phone || phone.length < 10) throw new BadRequestException('Συμπληρώστε ένα έγκυρο κινητό');
 
@@ -78,7 +78,7 @@ export class StaffService implements OnModuleInit {
     const membership = await this.prisma.schoolMember.findFirst({
       where: { schoolId, userId: user.id, role },
     });
-    const roleLabel = role === 'owner' ? 'ιδιοκτήτης' : role === 'school_admin' ? 'διαχειριστής' : 'εκπαιδευτικός';
+    const roleLabel = role === 'owner' ? 'ιδιοκτήτης' : role === 'driver' ? 'οδηγός' : role === 'school_admin' ? 'διαχειριστής' : 'εκπαιδευτικός';
     if (membership?.isActive) throw new ConflictException(`Αυτό το κινητό είναι ήδη ${roleLabel}`);
     if (membership) {
       await this.prisma.schoolMember.update({ where: { id: membership.id }, data: { isActive: true } });

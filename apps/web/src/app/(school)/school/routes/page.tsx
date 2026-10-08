@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { extraServicesApi, studentsApi } from '@/lib/api';
+import { extraServicesApi, staffApi, studentsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
 import {
   Bus, Plus, X, Pencil, Trash2,
@@ -40,7 +40,7 @@ type Route = {
 };
 type Service = {
   id: string; name: string; description?: string; serviceType: string;
-  driverName?: string; busNumber?: string;
+  driverName?: string; driverUserId?: string | null; busNumber?: string;
   monthlyCost?: number; pickupCost?: number; dropoffCost?: number;
   isActive: boolean; createdAt: string;
   routes: Route[];
@@ -87,6 +87,7 @@ export default function RoutesPage() {
   const [timelineDay, setTimelineDay] = useState<DayKey>(currentSchoolDay);
   const [timelineRouteId, setTimelineRouteId] = useState<string>('all');
   const [saving, setSaving] = useState(false);
+  const [drivers, setDrivers] = useState<{ id: string; fullName: string }[]>([]);
 
   const load = async () => {
     if (!schoolId) return;
@@ -113,6 +114,18 @@ export default function RoutesPage() {
   };
 
   useEffect(() => { load(); }, [schoolId]);
+
+  useEffect(() => {
+    if (!schoolId) return;
+    staffApi.list(schoolId).then((data: any) => {
+      const rows = (data?.data ?? data) as any[];
+      const list = (Array.isArray(rows) ? rows : [])
+        .filter((row) => row.role === 'driver')
+        .map((row) => ({ id: row.user?.id as string, fullName: row.user?.fullName as string }))
+        .filter((row) => row.id && row.fullName);
+      setDrivers(list);
+    }).catch(() => setDrivers([]));
+  }, [schoolId]);
 
   const refreshStudents = async (serviceId: string) => {
     try {
@@ -147,6 +160,7 @@ export default function RoutesPage() {
         description: serviceModal.description,
         serviceType: 'bus',
         driverName: (serviceModal as any).driverName || undefined,
+        driverUserId: (serviceModal as any).driverUserId || null,
         busNumber: (serviceModal as any).busNumber || undefined,
         monthlyCost: serviceModal.monthlyCost ? Number(serviceModal.monthlyCost) : undefined,
         pickupCost: oneWay,
@@ -504,6 +518,13 @@ export default function RoutesPage() {
             <div className="grid grid-cols-2 gap-3">
               <Field label="Οδηγός">
                 <input className={inputCls} value={(serviceModal as any).driverName ?? ''} onChange={e => setServiceModal(p => ({ ...p!, driverName: e.target.value } as any))} placeholder="π.χ. Νίκος Παπαδόπουλος" />
+              </Field>
+              <Field label="Λογαριασμός οδηγού">
+                <select className={inputCls} value={(serviceModal as any).driverUserId ?? ''} onChange={e => setServiceModal(p => ({ ...p!, driverUserId: e.target.value } as any))}>
+                  <option value="">Χωρίς λογαριασμό</option>
+                  {drivers.map((driver) => <option key={driver.id} value={driver.id}>{driver.fullName}</option>)}
+                </select>
+                <p className="mt-1 text-xs text-gray-400">Ο λογαριασμός δημιουργείται στο Προσωπικό με ρόλο «Οδηγός σχολικού».</p>
               </Field>
               <Field label="Αριθμός λεωφορείου">
                 <input className={inputCls} value={(serviceModal as any).busNumber ?? ''} onChange={e => setServiceModal(p => ({ ...p!, busNumber: e.target.value } as any))} placeholder="π.χ. ΑΒΓ-1234" />

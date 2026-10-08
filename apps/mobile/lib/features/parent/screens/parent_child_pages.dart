@@ -9,6 +9,7 @@ import '../../../core/utils/event_status.dart';
 import '../../../core/widgets/app_image.dart';
 import '../../messages/conversation_ui.dart';
 import 'event_gallery_screen.dart';
+import 'bus_map_screen.dart';
 
 String _iso(DateTime d) =>
     '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -470,7 +471,11 @@ class ServicesScreen extends ConsumerWidget {
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
-              children: services.map((raw) => _ServiceCard(service: Map<String, dynamic>.from(raw as Map))).toList(),
+              children: services.map((raw) => _ServiceCard(
+                service: Map<String, dynamic>.from(raw as Map),
+                schoolId: schoolId,
+                studentId: studentId,
+              )).toList(),
             ),
           );
         },
@@ -481,7 +486,9 @@ class ServicesScreen extends ConsumerWidget {
 
 class _ServiceCard extends StatelessWidget {
   final Map<String, dynamic> service;
-  const _ServiceCard({required this.service});
+  final String schoolId;
+  final String studentId;
+  const _ServiceCard({required this.service, required this.schoolId, required this.studentId});
 
   String? _text(dynamic value) {
     final text = value?.toString().trim() ?? '';
@@ -526,6 +533,25 @@ class _ServiceCard extends StatelessWidget {
               Expanded(child: Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
             ],
           ),
+          if (isBus) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(backgroundColor: const Color(0xFF77328D)),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => BusMapScreen(schoolId: schoolId, studentId: studentId, busName: name),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.map_rounded),
+                label: const Text('Πού είναι το σχολικό'),
+              ),
+            ),
+          ],
           const SizedBox(height: 10),
           ...rows.map((row) => Padding(
                 padding: const EdgeInsets.only(bottom: 6),

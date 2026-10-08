@@ -9,6 +9,7 @@ import 'teacher_home_screen.dart';
 import 'teacher_events_screen.dart';
 import 'messages_screen.dart';
 import 'owner_reports_screen.dart';
+import 'driver_screen.dart';
 
 class TeacherShell extends ConsumerStatefulWidget {
   final String? initialClassId;
@@ -24,6 +25,7 @@ class _TeacherShellState extends ConsumerState<TeacherShell> {
     final user = ref.watch(authProvider).user!;
     final schoolId = user.schoolId ?? '';
     if (user.isOwner) return OwnerHome(schoolId: schoolId);
+    if (user.isDriver) return DriverScreen(schoolId: schoolId);
 
     final pages = [
       TeacherHomeScreen(schoolId: schoolId),

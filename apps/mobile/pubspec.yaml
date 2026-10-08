@@ -1,7 +1,7 @@
 name: omnedu
 description: omnedu — School management app for Parents & Teachers
 publish_to: none
-version: 1.0.19+2026100921
+version: 1.0.20+2026100922
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
@@ -46,6 +46,9 @@ dependencies:
   shared_preferences: ^2.5.6
   file_picker: ^8.1.7
   url_launcher: ^6.3.1
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+  geolocator: ^13.0.2
 
 dev_dependencies:
   flutter_test:
