@@ -94,26 +94,39 @@ export class DailyReportsService {
       },
       include: { media: true },
     });
-    if (!existing) {
-      const student = await this.prisma.student.findUnique({
-        where: { id: dto.studentId },
-        select: { fullName: true },
-      });
-      const day = dto.reportDate.slice(0, 10).split('-').reverse().join('/');
-      await this.notifications.notifyStudentParents(schoolId, dto.studentId, {
-        event: 'daily_report',
-        type: 'daily_report',
-        title: 'Ημερήσιο δελτίο',
-        body: `Το δελτίο του ${student?.fullName ?? 'παιδιού'} για ${day} είναι έτοιμο.`,
-        data: {
-          screen: 'bulletin',
-          studentId: dto.studentId,
-          studentName: student?.fullName ?? '',
-          date: dto.reportDate.slice(0, 10),
-        },
-      });
-    }
+    await this.tellParents(schoolId, dto.studentId, dto.reportDate, !existing);
     return saved;
+  }
+
+  private async tellParents(schoolId: string, studentId: string, reportDate: string, created: boolean) {
+    const since = new Date(Date.now() - 2 * 60 * 1000);
+    const recent = await this.prisma.notification.findFirst({
+      where: { schoolId, type: 'daily_report', sentAt: { gte: since } },
+      orderBy: { sentAt: 'desc' },
+    });
+    const recentStudent = (recent?.data as { studentId?: string } | null)?.studentId;
+    if (recent && recentStudent === studentId) return;
+
+    const student = await this.prisma.student.findUnique({
+      where: { id: studentId },
+      select: { fullName: true },
+    });
+    const day = reportDate.slice(0, 10).split('-').reverse().join('/');
+    const name = student?.fullName ?? 'παιδιού';
+    await this.notifications.notifyStudentParents(schoolId, studentId, {
+      event: 'daily_report',
+      type: 'daily_report',
+      title: 'Ημερήσιο δελτίο',
+      body: created
+        ? `Το δελτίο του ${name} για ${day} είναι έτοιμο.`
+        : `Το δελτίο του ${name} για ${day} ενημερώθηκε.`,
+      data: {
+        screen: 'bulletin',
+        studentId,
+        studentName: student?.fullName ?? '',
+        date: reportDate.slice(0, 10),
+      },
+    });
   }
 
   async bulkUpsert(schoolId: string, teacherId: string, reports: CreateDailyReportDto[]) {

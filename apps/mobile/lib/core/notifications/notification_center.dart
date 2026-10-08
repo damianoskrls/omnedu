@@ -43,6 +43,7 @@ class NotificationWatcher extends ConsumerStatefulWidget {
 class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with WidgetsBindingObserver {
   Timer? _timer;
   final _shown = <String>{};
+  final _recentText = <String, DateTime>{};
   bool _loaded = false;
 
   @override
@@ -142,8 +143,13 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
         final notice = Map<String, dynamic>.from(item);
         final id = notice['id'] as String? ?? '';
         if (id.isEmpty || notice['isRead'] == true || _shown.contains(id)) continue;
-        _shown.add(id);
-        if (!PhonePushConfig.ready) await _show(notice);
+        final sentAt = DateTime.tryParse(notice['sentAt']?.toString() ?? '');
+        if (sentAt != null && DateTime.now().difference(sentAt.toLocal()) > const Duration(hours: 12)) {
+          _shown.add(id);
+          continue;
+        }
+        final displayed = await _show(notice);
+        if (displayed) _shown.add(id);
       }
       final prefs = await SharedPreferences.getInstance();
       final kept = _shown.toList();
@@ -152,10 +158,15 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
     } catch (_) {}
   }
 
-  Future<void> _show(Map<String, dynamic> notice) async {
+  Future<bool> _show(Map<String, dynamic> notice) async {
     final id = notice['id'] as String? ?? '';
     final title = notice['title'] as String? ?? 'Ονειροχώρα';
     final body = _noticeBody(notice);
+    final key = '$title|$body';
+    final last = _recentText[key];
+    final now = DateTime.now();
+    if (last != null && now.difference(last) < const Duration(minutes: 2)) return true;
+    _recentText[key] = now;
     const details = AndroidNotificationDetails(
       'oneirochora',
       'Ονειροχώρα',
@@ -175,6 +186,7 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
         'data': notice['data'] ?? {},
       }),
     );
+    return true;
   }
 
   void _openPayload(String payload) {
