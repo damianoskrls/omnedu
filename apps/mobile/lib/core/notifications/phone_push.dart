@@ -30,6 +30,11 @@ Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
   }
 }
 
+bool _phonePushListening = false;
+Future<void> Function(String token)? _phonePushToken;
+void Function(Map<String, dynamic> data)? _phonePushOpened;
+void Function(String title, String body)? _phonePushForeground;
+
 /// Registers this phone with Firebase so a message, bulletin, payment or
 /// admin notice can appear even when the app is closed.
 Future<void> startPhonePush({
@@ -38,23 +43,35 @@ Future<void> startPhonePush({
   required void Function(String title, String body) onForeground,
 }) async {
   if (!PhonePushConfig.ready) return;
+  _phonePushToken = onToken;
+  _phonePushOpened = onOpened;
+  _phonePushForeground = onForeground;
   if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp(options: PhonePushConfig.options);
   }
+  if (_phonePushListening) {
+    final token = await FirebaseMessaging.instance.getToken();
+    if (token != null && token.isNotEmpty) await onToken(token);
+    return;
+  }
+  _phonePushListening = true;
   FirebaseMessaging.onBackgroundMessage(firebaseBackgroundHandler);
   await FirebaseMessaging.instance.requestPermission(alert: true, badge: true, sound: true);
   FirebaseMessaging.onMessage.listen((message) {
     final title = message.notification?.title ?? message.data['title']?.toString() ?? 'Ονειροχώρα';
     final body = message.notification?.body ?? message.data['body']?.toString() ?? '';
     if (title.isEmpty && body.isEmpty) return;
-    onForeground(title, body);
+    _phonePushForeground?.call(title, body);
   });
-  FirebaseMessaging.onMessageOpenedApp.listen((message) => onOpened(message.data));
+  FirebaseMessaging.onMessageOpenedApp.listen((message) => _phonePushOpened?.call(message.data));
   final initial = await FirebaseMessaging.instance.getInitialMessage();
   if (initial != null) {
     WidgetsBinding.instance.addPostFrameCallback((_) => onOpened(initial.data));
   }
   final token = await FirebaseMessaging.instance.getToken();
   if (token != null && token.isNotEmpty) await onToken(token);
-  FirebaseMessaging.instance.onTokenRefresh.listen(onToken);
+  FirebaseMessaging.instance.onTokenRefresh.listen((token) {
+    final deliver = _phonePushToken;
+    if (deliver != null) deliver(token);
+  });
 }

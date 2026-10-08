@@ -1,24 +1,51 @@
 import 'package:equatable/equatable.dart';
 
 class Membership extends Equatable {
+  final String? userId;
   final String schoolId;
   final String schoolName;
   final String role;
 
   const Membership({
+    this.userId,
     required this.schoolId,
     required this.schoolName,
     required this.role,
   });
 
   factory Membership.fromJson(Map<String, dynamic> json) => Membership(
+        userId: json['userId'] as String?,
         schoolId: json['schoolId'] as String,
         schoolName: json['schoolName'] as String,
         role: json['role'] as String,
       );
 
   @override
-  List<Object?> get props => [schoolId, role];
+  List<Object?> get props => [userId, schoolId, role];
+}
+
+class RoleOption {
+  final String userId;
+  final String fullName;
+  final String schoolId;
+  final String schoolName;
+  final String role;
+
+  const RoleOption({
+    required this.userId,
+    required this.fullName,
+    required this.schoolId,
+    required this.schoolName,
+    required this.role,
+  });
+
+  factory RoleOption.fromJson(Map<String, dynamic> json) => RoleOption(
+        userId: json['userId'] as String,
+        fullName: json['fullName'] as String? ?? '',
+        schoolId: json['schoolId'] as String,
+        schoolName: json['schoolName'] as String? ?? '',
+        role: json['role'] as String,
+      );
 }
 
 class AuthUser extends Equatable {

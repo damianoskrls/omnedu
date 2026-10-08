@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/app_top_bar.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/terms_screen.dart';
 import '../../features/teacher/screens/teacher_shell.dart';
@@ -12,8 +13,11 @@ class _RouterNotifier extends ChangeNotifier {
   AuthState _authState;
 
   _RouterNotifier(this._ref) : _authState = _ref.read(authProvider) {
-    _ref.listen(authProvider, (_, next) {
+    _ref.listen(authProvider, (previous, next) {
       _authState = next;
+      if (previous?.user?.id != next.user?.id || previous?.user?.role != next.user?.role) {
+        _ref.read(shellTabProvider.notifier).state = 0;
+      }
       notifyListeners();
     });
   }
@@ -26,16 +30,15 @@ class _RouterNotifier extends ChangeNotifier {
     final onTerms = state.matchedLocation.startsWith('/terms');
     final user = _authState.user;
 
-    if (!loggedIn && !onAuth) return '/login';
-    if (loggedIn && user?.isParent == true && user?.termsAccepted != true) {
+    if (!loggedIn) return onAuth ? null : '/login';
+    if (user == null) return '/login';
+    if (user.isParent && user.termsAccepted != true) {
       return onTerms ? null : '/terms';
     }
-    if (loggedIn && onTerms) return user?.isParent == true ? '/parent' : '/teacher';
-    if (loggedIn && onAuth) {
-      if (user!.isTeacher || user.isSchoolAdmin) return '/teacher';
-      if (user.isParent) return '/parent';
-      return '/teacher';
-    }
+    final home = user.isParent ? '/parent' : '/teacher';
+    if (onAuth || onTerms) return home;
+    if (home == '/parent' && state.matchedLocation.startsWith('/teacher')) return '/parent';
+    if (home == '/teacher' && state.matchedLocation.startsWith('/parent')) return '/teacher';
     return null;
   }
 }

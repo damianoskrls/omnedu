@@ -8,5 +8,6 @@ export interface JwtPayload {
   schoolLogoUrl?: string | null;
   schoolPrimaryColor?: string | null;
   termsAccepted?: boolean;
-  memberships: { schoolId: string; schoolName: string; role: string }[];
+  purpose?: string;
+  memberships: { userId?: string; schoolId: string; schoolName: string; role: string }[];
 }

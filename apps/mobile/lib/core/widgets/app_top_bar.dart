@@ -17,7 +17,11 @@ class AppTopBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.listen(authProvider, (previous, next) {
-      if (previous?.user?.id != next.user?.id) ref.read(shellTabProvider.notifier).state = 0;
+      final previousUser = previous?.user;
+      final nextUser = next.user;
+      if (previousUser?.id != nextUser?.id || previousUser?.role != nextUser?.role) {
+        ref.read(shellTabProvider.notifier).state = 0;
+      }
     });
     final user = ref.watch(authProvider).user;
     if (user == null) return const SizedBox.shrink();
@@ -115,6 +119,7 @@ class AppTopBar extends ConsumerWidget {
                   Navigator.of(navContext).push(MaterialPageRoute(builder: (_) => const AccountSettingsScreen()));
                 },
               ),
+              ..._roleSwitches(ref, sheetContext, navContext),
               ListTile(
                 leading: const Icon(Icons.logout_rounded, color: Color(0xFFDC2626)),
                 title: const Text('Αποσύνδεση', style: TextStyle(color: Color(0xFFDC2626), fontWeight: FontWeight.w600)),
@@ -128,6 +133,63 @@ class AppTopBar extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  List<Widget> _roleSwitches(WidgetRef ref, BuildContext sheetContext, BuildContext navContext) {
+    final user = ref.read(authProvider).user;
+    if (user == null) return const [];
+    final others = user.memberships.where((membership) {
+      final owner = membership.userId ?? user.id;
+      return owner != user.id || membership.schoolId != user.schoolId || membership.role != user.role;
+    });
+    return [
+      for (final membership in others)
+        ListTile(
+          leading: Icon(_roleIcon(membership.role), color: const Color(0xFF77328D)),
+          title: Text(
+            'Αλλαγή σε ${_roleAccusative(membership.role)}',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          subtitle: Text(membership.schoolName),
+          onTap: () async {
+            Navigator.pop(sheetContext);
+            final notifier = ref.read(authProvider.notifier);
+            try {
+              await notifier.switchContext(membership.schoolId, membership.role, userId: membership.userId);
+            } catch (_) {
+              if (navContext.mounted) {
+                ScaffoldMessenger.of(navContext).showSnackBar(
+                  const SnackBar(content: Text('Η αλλαγή ρόλου δεν ολοκληρώθηκε')),
+                );
+              }
+            }
+          },
+        ),
+    ];
+  }
+}
+
+String _roleAccusative(String role) {
+  switch (role) {
+    case 'parent':
+      return 'γονέα';
+    case 'teacher':
+      return 'εκπαιδευτικό';
+    case 'school_admin':
+      return 'διαχειριστή';
+    default:
+      return 'άλλο ρόλο';
+  }
+}
+
+IconData _roleIcon(String role) {
+  switch (role) {
+    case 'parent':
+      return Icons.family_restroom_rounded;
+    case 'teacher':
+      return Icons.school_rounded;
+    default:
+      return Icons.admin_panel_settings_rounded;
   }
 }
 

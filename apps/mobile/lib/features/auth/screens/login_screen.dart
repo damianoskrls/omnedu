@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/models/user.dart';
 import '../../../core/providers/auth_provider.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -44,6 +45,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
     final isLoading = authState.isLoading;
+    final roles = authState.pendingRoles;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F4FC),
@@ -62,7 +64,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  _showOtp ? 'Εισάγετε τον κωδικό που λάβατε' : 'Εισάγετε το κινητό σας',
+                  roles != null
+                      ? 'Πώς θέλετε να συνδεθείτε;'
+                      : _showOtp
+                          ? 'Εισάγετε τον κωδικό που λάβατε'
+                          : 'Εισάγετε το κινητό σας',
                   style: const TextStyle(color: Color(0xFF6B7280), fontSize: 14),
                 ),
                 const SizedBox(height: 40),
@@ -81,7 +87,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                     ],
                   ),
-                  child: _showOtp
+                  child: roles != null
+                      ? _RoleChoice(
+                          choices: roles.choices,
+                          isLoading: isLoading,
+                          error: authState.error,
+                          onBack: () => ref.read(authProvider.notifier).clearPendingRoles(),
+                          onSelect: (choice) => ref.read(authProvider.notifier).selectRole(
+                                pendingToken: roles.pendingToken,
+                                userId: choice.userId,
+                                schoolId: choice.schoolId,
+                                role: choice.role,
+                              ),
+                        )
+                      : _showOtp
                       ? _OtpInput(
                           phone: _phone,
                           isLoading: isLoading,
@@ -195,12 +214,103 @@ class _PhoneInput extends StatelessWidget {
   }
 }
 
+class _RoleChoice extends StatelessWidget {
+  final List<RoleOption> choices;
+  final bool isLoading;
+  final String? error;
+  final VoidCallback onBack;
+  final ValueChanged<RoleOption> onSelect;
+  const _RoleChoice({
+    required this.choices,
+    required this.isLoading,
+    required this.onBack,
+    required this.onSelect,
+    this.error,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Το κινητό αυτό έχει περισσότερους από έναν ρόλους.',
+          style: TextStyle(color: Color(0xFF6B7280), fontSize: 13, height: 1.4),
+        ),
+        const SizedBox(height: 16),
+        for (final choice in choices) ...[
+          SizedBox(
+            height: 56,
+            child: FilledButton.icon(
+              onPressed: isLoading ? null : () => onSelect(choice),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF702E8C),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              icon: Icon(_roleIcon(choice.role)),
+              label: Text(
+                'Συνέχεια ως ${_roleAccusative(choice.role)}',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+          if (choice.schoolName.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6, bottom: 12),
+              child: Text(
+                choice.schoolName,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
+              ),
+            )
+          else
+            const SizedBox(height: 12),
+        ],
+        if (error != null) ...[
+          const SizedBox(height: 4),
+          Text(error!, style: const TextStyle(color: Color(0xFFDC2626), fontSize: 13)),
+        ],
+        TextButton(onPressed: isLoading ? null : onBack, child: const Text('Πίσω στον κωδικό')),
+      ],
+    );
+  }
+}
+
+String _roleAccusative(String role) {
+  switch (role) {
+    case 'parent':
+      return 'γονέα';
+    case 'teacher':
+      return 'εκπαιδευτικό';
+    case 'school_admin':
+      return 'διαχειριστή';
+    default:
+      return 'άλλο ρόλο';
+  }
+}
+
+IconData _roleIcon(String role) {
+  switch (role) {
+    case 'parent':
+      return Icons.family_restroom_rounded;
+    case 'teacher':
+      return Icons.school_rounded;
+    default:
+      return Icons.admin_panel_settings_rounded;
+  }
+}
+
 class _OtpInput extends ConsumerStatefulWidget {
   final String phone;
   final bool isLoading;
   final VoidCallback onBack;
   final String? error;
-  const _OtpInput({required this.phone, required this.isLoading, required this.onBack, this.error});
+  const _OtpInput({
+    required this.phone,
+    required this.isLoading,
+    required this.onBack,
+    this.error,
+  });
 
   @override
   ConsumerState<_OtpInput> createState() => _OtpInputState();
@@ -285,7 +395,8 @@ class _OtpInputState extends ConsumerState<_OtpInput> {
 
   Future<void> _submit() async {
     if (_otp.length < 6) return;
-    await ref.read(authProvider.notifier).verifyOtp(widget.phone, _otp);
+    final result = await ref.read(authProvider.notifier).verifyOtp(widget.phone, _otp);
+    if (result != null) return;
     final error = ref.read(authProvider).error;
     if (error != null && mounted) {
       for (final c in _controllers) {

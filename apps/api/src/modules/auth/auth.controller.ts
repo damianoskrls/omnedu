@@ -63,6 +63,14 @@ export class AuthController {
     return this.auth.verifyOtp(body.phone, body.otp);
   }
 
+  @Public()
+  @Post('otp/select')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Choose a role after OTP when the phone has more than one' })
+  selectOtpRole(@Body() body: { pendingToken: string; userId: string; schoolId: string; role: string }) {
+    return this.auth.selectOtpRole(body.pendingToken, body.userId, body.schoolId, body.role);
+  }
+
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiBearerAuth('access-token')
