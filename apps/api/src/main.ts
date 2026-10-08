@@ -28,7 +28,12 @@ async function bootstrap() {
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
 
   app.enableCors({
-    origin: [frontendUrl, 'http://localhost:3000'],
+    origin: [
+      frontendUrl,
+      'http://localhost:3000',
+      'https://omnedu.vercel.app',
+      'https://omneduapi-production.up.railway.app',
+    ],
     credentials: true,
   });
 

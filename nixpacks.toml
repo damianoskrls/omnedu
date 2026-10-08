@@ -7,8 +7,9 @@ cmds = ["npm install -g pnpm@9.12.0", "pnpm install --frozen-lockfile"]
 [phases.build]
 cmds = [
   "pnpm --filter @omnedu/api exec prisma generate",
-  "pnpm --filter @omnedu/api build"
+  "pnpm --filter @omnedu/api build",
+  "NODE_OPTIONS=--max-old-space-size=3072 NEXT_PUBLIC_API_URL=https://omneduapi-production.up.railway.app/api/v1 pnpm --filter @omnedu/web build || echo 'web build failed, API will start without the site'"
 ]
 
 [start]
-cmd = "cd apps/api && (node_modules/.bin/prisma migrate deploy || { node_modules/.bin/prisma migrate resolve --rolled-back 20261008160000_conversation_delete || true; node_modules/.bin/prisma migrate resolve --rolled-back 20261008170000_owner_role || true; node_modules/.bin/prisma migrate deploy || echo 'migration failed, starting api anyway'; }) && cd ../.. && node apps/api/dist/main"
+cmd = "sh scripts/start-production.sh"

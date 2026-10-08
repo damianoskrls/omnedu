@@ -61,9 +61,9 @@ export default function StaffPage() {
       </div>
 
       {adding && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className="mb-6">
           <form
-            className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl"
+            className="w-full max-w-md rounded-2xl border border-[#77328d]/15 bg-white p-5 shadow-sm"
             onSubmit={async (event) => {
               event.preventDefault();
               setSaving(true);
