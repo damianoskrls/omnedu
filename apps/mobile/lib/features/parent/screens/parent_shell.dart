@@ -79,7 +79,7 @@ class _FloatingNavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final bottomInset = systemBottomInset(context);
     return Padding(
-      padding: EdgeInsets.fromLTRB(20, 0, 20, bottomInset + 16),
+      padding: EdgeInsets.fromLTRB(12, 0, 12, bottomInset + 16),
       child: Container(
         height: 70,
         decoration: BoxDecoration(
@@ -104,6 +104,7 @@ class _FloatingNavBar extends StatelessWidget {
             final item = e.value;
             final selected = i == selectedIndex;
             return Expanded(
+              flex: selected ? 5 : 3,
               child: GestureDetector(
                 onTap: () {
                   HapticFeedback.lightImpact();
@@ -148,16 +149,21 @@ class _FloatingNavBar extends StatelessWidget {
                       ),
                       if (selected) ...[
                         const SizedBox(height: 2),
-                        Text(
-                          item.label,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 9,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.2,
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              item.label,
+                              maxLines: 1,
+                              softWrap: false,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                           ),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
                         ),
                       ],
                     ],
