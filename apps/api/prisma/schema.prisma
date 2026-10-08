@@ -120,6 +120,7 @@ model User {
   uploadedMedia            ReportMedia[]
   teacherReports           DailyReport[]
   conversationParticipants ConversationParticipant[]
+  createdConversations     Conversation[]            @relation("ConversationCreator")
   sentMessages             Message[]
   parentInvoices           Invoice[]
   activityRegistrations    ActivityRegistration[]
@@ -561,11 +562,13 @@ model ConsentSignature {
 // ─────────────────────────────────────────────────────────
 
 model Conversation {
-  id        String   @id @default(uuid())
-  schoolId  String   @map("school_id")
-  createdAt DateTime @default(now()) @map("created_at")
+  id          String   @id @default(uuid())
+  schoolId    String   @map("school_id")
+  createdById String?  @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
 
   school       School                    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdBy    User?                     @relation("ConversationCreator", fields: [createdById], references: [id], onDelete: SetNull)
   participants ConversationParticipant[]
   messages     Message[]
 
@@ -576,6 +579,7 @@ model ConversationParticipant {
   conversationId String    @map("conversation_id")
   userId         String    @map("user_id")
   lastReadAt     DateTime? @map("last_read_at")
+  hiddenAt       DateTime? @map("hidden_at")
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)

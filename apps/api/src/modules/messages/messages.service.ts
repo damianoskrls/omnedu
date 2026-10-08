@@ -48,8 +48,9 @@ export class MessagesService {
       : role === 'teacher'
         ? rows.filter((row) => this.visibleToTeacher(row.participants, userId))
         : rows;
+    const shown = visible.filter((row) => this.revealed(this.hiddenAt(row.participants, userId), row.messages[0]?.sentAt));
 
-    const sorted = visible.sort((a, b) => {
+    const sorted = shown.sort((a, b) => {
       const aTime = a.messages[0]?.sentAt?.getTime() ?? a.createdAt.getTime();
       const bTime = b.messages[0]?.sentAt?.getTime() ?? b.createdAt.getTime();
       return bTime - aTime;
@@ -65,6 +66,7 @@ export class MessagesService {
       return {
         ...row,
         unread,
+        startedByMe: row.createdById === userId,
         about: row.participants.flatMap((person) => labels.get(person.userId) ?? []),
       };
     });
@@ -78,6 +80,7 @@ export class MessagesService {
           select: {
             userId: true,
             lastReadAt: true,
+            hiddenAt: true,
             user: {
               select: {
                 schoolMemberships: {
@@ -103,7 +106,7 @@ export class MessagesService {
         : rows;
     return visible.filter((row) => {
       const latest = row.messages[0]?.sentAt;
-      if (!latest) return false;
+      if (!latest || !this.revealed(this.hiddenAt(row.participants, userId), latest)) return false;
       const mine = row.participants.find((person) => person.userId === userId);
       return !mine?.lastReadAt || latest > mine.lastReadAt;
     }).length;
@@ -151,10 +154,10 @@ export class MessagesService {
           this.isTeacher(schoolId, withUserId),
         ]);
         if (!parent && !teacher) throw new ForbiddenException('Μπορείς να στείλεις σε γονέα ή εκπαιδευτικό');
-        return this.findOrCreate(schoolId, [withUserId, ...admins]);
+        return this.findOrCreate(schoolId, [withUserId, ...admins], userId);
       }
       if (role !== 'parent' && role !== 'teacher') throw new ForbiddenException();
-      return this.findOrCreate(schoolId, [userId, ...admins]);
+      return this.findOrCreate(schoolId, [userId, ...admins], userId);
     }
 
     if (kind === 'teacher') {
@@ -164,24 +167,28 @@ export class MessagesService {
       if (role !== 'teacher' && role !== 'parent') throw new ForbiddenException();
       const allowed = await this.teacherTeachesParentChild(schoolId, teacherId, parentId);
       if (!allowed) throw new ForbiddenException('Η συνομιλία είναι μόνο με τη δασκάλα του παιδιού');
-      return this.findOrCreate(schoolId, [parentId, teacherId]);
+      return this.findOrCreate(schoolId, [parentId, teacherId], userId);
     }
 
     throw new ForbiddenException();
   }
 
-  async getOrCreateConversation(schoolId: string, participantIds: string[]) {
+  async getOrCreateConversation(schoolId: string, participantIds: string[], createdById: string) {
     const unique = [...new Set(participantIds)].filter(Boolean);
     if (unique.length < 2) throw new ForbiddenException();
-    return this.findOrCreate(schoolId, unique);
+    return this.findOrCreate(schoolId, unique, createdById);
   }
 
   async getMessages(conversationId: string, userId: string, cursor?: string, take = 30) {
-    await this.assertParticipant(conversationId, userId);
+    const participant = await this.assertParticipant(conversationId, userId);
     const size = Number(take);
     const limit = Number.isFinite(size) && size > 0 ? Math.min(Math.floor(size), 100) : 30;
     const messages = await this.prisma.message.findMany({
-      where: { conversationId, isDeleted: false },
+      where: {
+        conversationId,
+        isDeleted: false,
+        ...(participant.hiddenAt ? { sentAt: { gt: participant.hiddenAt } } : {}),
+      },
       include: { sender: { select: userCard } },
       orderBy: { sentAt: 'desc' },
       take: limit,
@@ -261,6 +268,48 @@ export class MessagesService {
     if (!msg) throw new NotFoundException();
     if (msg.senderId !== userId) throw new ForbiddenException();
     return this.prisma.message.update({ where: { id: messageId }, data: { isDeleted: true } });
+  }
+
+  async removeConversation(schoolId: string, conversationId: string, userId: string, scope: 'everyone' | 'me') {
+    const conversation = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, schoolId },
+      include: {
+        participants: { select: { userId: true } },
+        messages: { orderBy: { sentAt: 'asc' }, take: 1, select: { senderId: true } },
+      },
+    });
+    if (!conversation) throw new NotFoundException();
+    if (!conversation.participants.some((person) => person.userId === userId)) {
+      throw new ForbiddenException('Δεν συμμετέχεις σε αυτή τη συνομιλία');
+    }
+    const starterId = conversation.createdById ?? conversation.messages[0]?.senderId ?? null;
+    if (scope === 'everyone') {
+      if (starterId !== userId) {
+        throw new ForbiddenException('Μόνο όποιος ξεκίνησε τη συνομιλία μπορεί να τη σβήσει για όλους');
+      }
+      await this.prisma.notification.deleteMany({
+        where: { type: 'message', data: { path: ['conversationId'], equals: conversationId } },
+      });
+      await this.prisma.conversation.delete({ where: { id: conversationId } });
+      return { deleted: 'everyone' };
+    }
+    await this.prisma.conversationParticipant.update({
+      where: { conversationId_userId: { conversationId, userId } },
+      data: { hiddenAt: new Date() },
+    });
+    await this.prisma.notification.deleteMany({
+      where: { userId, type: 'message', data: { path: ['conversationId'], equals: conversationId } },
+    });
+    return { deleted: 'me' };
+  }
+
+  private hiddenAt(participants: { userId: string; hiddenAt?: Date | null }[], userId: string) {
+    return participants.find((person) => person.userId === userId)?.hiddenAt ?? null;
+  }
+
+  private revealed(hiddenAt: Date | null, latest?: Date | null) {
+    if (!hiddenAt) return true;
+    return !!latest && latest > hiddenAt;
   }
 
   private visibleToTeacher(
@@ -456,7 +505,7 @@ export class MessagesService {
     return !!earlier;
   }
 
-  private async findOrCreate(schoolId: string, userIds: string[]) {
+  private async findOrCreate(schoolId: string, userIds: string[], createdById: string) {
     const unique = [...new Set(userIds)].filter(Boolean).sort();
     const candidates = await this.prisma.conversation.findMany({
       where: {
@@ -478,6 +527,7 @@ export class MessagesService {
     return this.prisma.conversation.create({
       data: {
         schoolId,
+        createdById,
         participants: { create: unique.map((id) => ({ userId: id })) },
       },
       include: {
@@ -491,6 +541,7 @@ export class MessagesService {
       where: { conversationId_userId: { conversationId, userId } },
     });
     if (!participant) throw new ForbiddenException('Not a participant');
+    return participant;
   }
 
   private async labelsForParents(schoolId: string, userIds: string[]) {

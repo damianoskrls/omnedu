@@ -59,7 +59,7 @@ export class MessagesController {
       throw new ForbiddenException('Η συνομιλία ανοίγει μόνο με τη διαχείριση ή με τη δασκάλα του παιδιού');
     }
     const ids = [...new Set([...(body.participantIds ?? []), user.sub])];
-    return this.messages.getOrCreateConversation(schoolId, ids);
+    return this.messages.getOrCreateConversation(schoolId, ids, user.sub);
   }
 
   @Post(':conversationId/typing')
@@ -114,6 +114,16 @@ export class MessagesController {
     @Body() body: SendMessageDto,
   ) {
     return this.messages.sendMessage(conversationId, user.sub, body.body, body.mediaUrl);
+  }
+
+  @Delete(':conversationId')
+  removeConversation(
+    @Param('schoolId') schoolId: string,
+    @Param('conversationId') conversationId: string,
+    @Query('scope') scope: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.messages.removeConversation(schoolId, conversationId, user.sub, scope === 'everyone' ? 'everyone' : 'me');
   }
 
   @Delete(':conversationId/messages/:messageId')

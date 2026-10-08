@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
-import { ImagePlus, MessageSquare, Search, Send, Smile } from 'lucide-react';
+import { ImagePlus, MessageSquare, Search, Send, Smile, Trash2 } from 'lucide-react';
 
 const EMOJIS = ['😀', '😁', '😂', '😊', '😍', '🤗', '👍', '👏', '🙏', '❤️', '🎉', '🌟', '✅', '📷'];
 
@@ -11,6 +11,7 @@ type Person = { id: string; fullName: string; schoolMemberships?: { role: string
 type Conversation = {
   id: string;
   unread?: boolean;
+  startedByMe?: boolean;
   participants: { userId: string; lastReadAt?: string | null; user: Person }[];
   messages?: { body?: string; sentAt?: string; senderId?: string; mediaUrl?: string | null }[];
 };
@@ -157,6 +158,22 @@ export default function MessagesPage() {
     }
   };
 
+  const removeConversation = async (convo: Conversation) => {
+    const everyone = convo.startedByMe === true;
+    const accepted = window.confirm(
+      everyone
+        ? 'Την ξεκίνησες εσύ. Η συνομιλία θα σβηστεί για όλους όσοι συμμετέχουν.'
+        : 'Την ξεκίνησε κάποιος άλλος. Η συνομιλία θα φύγει μόνο από τη δική σου λίστα.',
+    );
+    if (!accepted) return;
+    await api.delete(`/schools/${schoolId}/conversations/${convo.id}`, { params: { scope: everyone ? 'everyone' : 'me' } });
+    if (activeId === convo.id) {
+      setActiveId(null);
+      setMessages([]);
+    }
+    await loadConversations();
+  };
+
   const peopleOf = (convo: Conversation) => {
     const people = others(convo, user?.id);
     const parentPeople = people.filter((person) => person.schoolMemberships?.some((row) => row.role === 'parent'));
@@ -271,6 +288,14 @@ export default function MessagesPage() {
               <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-5 py-3 font-semibold text-gray-900">
                 <span className="truncate">{titleOf(active)}</span>
                 {tagsOf(active).map((tag) => <RoleTag key={tag} tag={tag} />)}
+                <button
+                  type="button"
+                  onClick={() => removeConversation(active)}
+                  className="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {active.startedByMe ? 'Διαγραφή για όλους' : 'Διαγραφή για εμένα'}
+                </button>
               </div>
               {namesTyping(active.id).length > 0 && (
                 <div className="flex items-center gap-2 border-b border-gray-100 bg-[#faf5fc] px-5 py-2 text-sm font-medium text-[#77328D]">

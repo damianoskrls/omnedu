@@ -205,7 +205,7 @@ String apiErrorText(Object error) {
   return 'Η συνομιλία δεν φορτώθηκε. Δοκίμασε ξανά.';
 }
 
-Future<String?> openScopedConversation(
+Future<Map<String, dynamic>?> openScopedConversation(
   WidgetRef ref, {
   required String schoolId,
   required String kind,
@@ -219,17 +219,25 @@ Future<String?> openScopedConversation(
     if (participantIds != null && participantIds.isNotEmpty) 'participantIds': participantIds,
   });
   final data = resp.data;
-  if (data is Map && data['id'] is String) return data['id'] as String;
+  if (data is Map && data['id'] is String) return Map<String, dynamic>.from(data);
   return null;
+}
+
+bool conversationStartedByMe(Map<String, dynamic>? conv, String userId) {
+  if (conv == null) return false;
+  if (conv['startedByMe'] == true) return true;
+  final creator = conv['createdById']?.toString() ?? '';
+  return creator.isNotEmpty && creator == userId;
 }
 
 class ConversationTile extends StatelessWidget {
   final Map<String, dynamic> conv;
   final String userId;
   final VoidCallback onTap;
+  final VoidCallback? onDelete;
   final String? detail;
   final String? typingLabel;
-  const ConversationTile({super.key, required this.conv, required this.userId, required this.onTap, this.detail, this.typingLabel});
+  const ConversationTile({super.key, required this.conv, required this.userId, required this.onTap, this.onDelete, this.detail, this.typingLabel});
 
   @override
   Widget build(BuildContext context) {
@@ -301,7 +309,14 @@ class ConversationTile extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right, color: Color(0xFFD1D5DB)),
+            if (onDelete != null)
+              IconButton(
+                onPressed: onDelete,
+                icon: const Icon(Icons.delete_outline, color: Color(0xFF9CA3AF)),
+                tooltip: conv['startedByMe'] == true ? 'Διαγραφή για όλους' : 'Διαγραφή για εμένα',
+              )
+            else
+              const Icon(Icons.chevron_right, color: Color(0xFFD1D5DB)),
           ],
         ),
       ),
@@ -315,6 +330,7 @@ class ChatScreen extends ConsumerStatefulWidget {
   final String title;
   final String subtitle;
   final String currentUserId;
+  final bool startedByMe;
   const ChatScreen({
     super.key,
     required this.schoolId,
@@ -322,6 +338,7 @@ class ChatScreen extends ConsumerStatefulWidget {
     required this.title,
     required this.subtitle,
     required this.currentUserId,
+    this.startedByMe = false,
   });
 
   @override
@@ -405,6 +422,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
+  bool _startedByMe(List<dynamic>? conversations) {
+    if (conversations != null) {
+      for (final row in conversations) {
+        if (row is Map && row['id'] == widget.convId && row.containsKey('startedByMe')) {
+          return row['startedByMe'] == true;
+        }
+      }
+    }
+    return widget.startedByMe;
+  }
+
   void _insertEmoji(String emoji) {
     final text = _ctrl.text;
     final selection = _ctrl.selection;
@@ -452,6 +480,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ),
           ],
         ),
+        actions: [
+          IconButton(
+            tooltip: _startedByMe(conversations) ? 'Διαγραφή για όλους' : 'Διαγραφή για εμένα',
+            onPressed: () async {
+              final removed = await confirmRemoveConversation(
+                context,
+                ref,
+                schoolId: widget.schoolId,
+                conversationId: widget.convId,
+                startedByMe: _startedByMe(conversations),
+              );
+              if (removed && context.mounted) Navigator.pop(context);
+            },
+            icon: const Icon(Icons.delete_outline),
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -695,7 +739,50 @@ void openChat(
         title: title ?? conversationTitle(conv, userId),
         subtitle: subtitle ?? conversationDetail(conv, userId),
         currentUserId: userId,
+        startedByMe: conv['startedByMe'] == true,
       ),
     ),
   ).then((_) => ref.invalidate(conversationsProvider(schoolId)));
+}
+
+Future<bool> confirmRemoveConversation(
+  BuildContext context,
+  WidgetRef ref, {
+  required String schoolId,
+  required String conversationId,
+  required bool startedByMe,
+}) async {
+  final accepted = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(startedByMe ? 'Διαγραφή για όλους' : 'Διαγραφή για εμένα'),
+      content: Text(
+        startedByMe
+            ? 'Την ξεκίνησες εσύ. Η συνομιλία θα σβηστεί για όλους όσοι συμμετέχουν.'
+            : 'Την ξεκίνησε κάποιος άλλος. Η συνομιλία θα φύγει μόνο από τη δική σου λίστα.',
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Ακύρωση')),
+        TextButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: Text(startedByMe ? 'Διαγραφή για όλους' : 'Διαγραφή για εμένα', style: const TextStyle(color: Color(0xFFDC2626))),
+        ),
+      ],
+    ),
+  );
+  if (accepted != true || conversationId.isEmpty) return false;
+  try {
+    final dio = ref.read(dioProvider);
+    await dio.delete(
+      '/schools/$schoolId/conversations/$conversationId',
+      queryParameters: {'scope': startedByMe ? 'everyone' : 'me'},
+    );
+    ref.invalidate(conversationsProvider(schoolId));
+    return true;
+  } catch (error) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(apiErrorText(error))));
+    }
+    return false;
+  }
 }

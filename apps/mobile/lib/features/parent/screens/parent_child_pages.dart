@@ -749,13 +749,14 @@ class TeachersScreen extends ConsumerWidget {
     final parentId = ref.read(authProvider).user?.id;
     if (parentId == null) return;
     try {
-      final id = await openScopedConversation(
+      final created = await openScopedConversation(
         ref,
         schoolId: schoolId,
         kind: 'teacher',
         withUserId: teacher.id,
         participantIds: [parentId, teacher.id],
       );
+      final id = created?['id'] as String?;
       if (id == null || !context.mounted) return;
       final subtitle = teacher.className.isEmpty ? 'Εκπαιδευτικός' : teacher.className;
       await Navigator.push(
@@ -767,6 +768,7 @@ class TeachersScreen extends ConsumerWidget {
             title: teacher.name,
             subtitle: subtitle,
             currentUserId: parentId,
+            startedByMe: conversationStartedByMe(created, parentId),
           ),
         ),
       );

@@ -100,7 +100,7 @@ class ParentMessagesScreen extends ConsumerWidget {
   }) async {
     Navigator.pop(sheetContext);
     try {
-      final id = await openScopedConversation(
+      final created = await openScopedConversation(
         ref,
         schoolId: schoolId,
         kind: kind,
@@ -108,6 +108,7 @@ class ParentMessagesScreen extends ConsumerWidget {
         participantIds: withUserId == null ? null : [userId, withUserId],
       );
       ref.invalidate(conversationsProvider(schoolId));
+      final id = created?['id'] as String?;
       if (id == null || !context.mounted) return;
       await Navigator.push(
         context,
@@ -118,6 +119,7 @@ class ParentMessagesScreen extends ConsumerWidget {
             title: title,
             subtitle: subtitle,
             currentUserId: userId,
+            startedByMe: conversationStartedByMe(created, userId),
           ),
         ),
       );
@@ -184,6 +186,13 @@ class ParentMessagesScreen extends ConsumerWidget {
                       userId: userId,
                       typingLabel: phrase.isEmpty ? null : phrase,
                       onTap: () => openChat(context, ref, schoolId: schoolId, userId: userId, conv: conv),
+                      onDelete: () => confirmRemoveConversation(
+                        context,
+                        ref,
+                        schoolId: schoolId,
+                        conversationId: conv['id']?.toString() ?? '',
+                        startedByMe: conv['startedByMe'] == true,
+                      ),
                     );
                   },
                 ),
