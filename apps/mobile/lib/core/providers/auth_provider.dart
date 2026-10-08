@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../api/api_client.dart';
 import '../models/user.dart';
+import '../notifications/ios_notices.dart';
 import '../storage/secure_storage.dart';
 
 class OtpVerification {
@@ -168,7 +169,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> applySession(String accessToken, String refreshToken) async {
     await _storage.storeTokens(accessToken: accessToken, refreshToken: refreshToken);
-    state = AuthState(user: AuthUser.fromTokenPayload(_decodeJwt(accessToken)));
+    final user = AuthUser.fromTokenPayload(_decodeJwt(accessToken));
+    state = AuthState(user: user);
+    await publishIosNoticeSession(
+      access: accessToken,
+      refresh: refreshToken,
+      schoolId: user.schoolId ?? '',
+      role: user.role ?? '',
+    );
   }
 
   Future<void> logout() async {
@@ -180,13 +188,22 @@ class AuthNotifier extends StateNotifier<AuthState> {
       } catch (_) {}
     }
     await _storage.clearAll();
+    await clearIosNoticeSession();
     state = const AuthState();
   }
 
   Future<void> _refreshToken() async {
     final access = await refreshSession(_storage);
     if (access != null) {
-      state = AuthState(user: AuthUser.fromTokenPayload(_decodeJwt(access)));
+      final user = AuthUser.fromTokenPayload(_decodeJwt(access));
+      state = AuthState(user: user);
+      final refresh = await _storage.getRefreshToken() ?? '';
+      await publishIosNoticeSession(
+        access: access,
+        refresh: refresh,
+        schoolId: user.schoolId ?? '',
+        role: user.role ?? '',
+      );
       return;
     }
     final stored = await _storage.getAccessToken();

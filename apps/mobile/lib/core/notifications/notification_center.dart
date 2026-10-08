@@ -25,8 +25,10 @@ import '../../features/parent/screens/thematic_screen.dart';
 import '../../features/teacher/screens/teacher_meetings_screen.dart';
 import '../../features/teacher/screens/teacher_thematic_screen.dart';
 import '../api/api_client.dart';
-import 'open_conversation.dart';
 import '../providers/auth_provider.dart';
+import '../storage/secure_storage.dart';
+import 'ios_notices.dart';
+import 'open_conversation.dart';
 import 'phone_push.dart';
 
 const _shownKey = 'shown_notification_ids';
@@ -62,7 +64,9 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
 
   Future<void> _start() async {
     await _prepare();
-    await startPhonePush(
+    await _rememberIosSession();
+    try {
+      await startPhonePush(
       onToken: (token) async {
         if (!mounted || widget.schoolId.isEmpty) return;
         try {
@@ -107,6 +111,7 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
         });
       },
     );
+    } catch (_) {}
     await _poll();
     _timer = Timer.periodic(const Duration(seconds: 20), (_) => _poll());
   }
@@ -146,6 +151,10 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) _poll();
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      _rememberIosSession();
+      checkIosNotices();
+    }
   }
 
   @override
@@ -155,9 +164,26 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
     super.dispose();
   }
 
+  Future<void> _rememberIosSession() async {
+    if (!mounted) return;
+    final user = ref.read(authProvider).user;
+    final storage = ref.read(secureStorageProvider);
+    final access = await storage.getAccessToken() ?? '';
+    final refresh = await storage.getRefreshToken() ?? '';
+    await publishIosNoticeSession(
+      access: access,
+      refresh: refresh,
+      schoolId: user?.schoolId ?? widget.schoolId,
+      role: user?.role ?? '',
+    );
+  }
+
   Future<void> _poll() async {
     if (!mounted || widget.schoolId.isEmpty) return;
     try {
+      final prefs = await SharedPreferences.getInstance();
+      _shown.addAll(prefs.getStringList(_shownKey) ?? const []);
+      await _rememberIosSession();
       final dio = ref.read(dioProvider);
       final resp = await dio.get('/schools/${widget.schoolId}/notifications/inbox');
       final list = resp.data is List ? resp.data as List : const [];
@@ -182,7 +208,6 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
         final displayed = await _show(notice);
         if (displayed) _shown.add(id);
       }
-      final prefs = await SharedPreferences.getInstance();
       final kept = _shown.toList();
       await prefs.setStringList(_shownKey, kept.length > 200 ? kept.sublist(kept.length - 200) : kept);
       if (mounted) ref.invalidate(inboxProvider(widget.schoolId));
@@ -205,11 +230,19 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
       importance: Importance.max,
       priority: Priority.high,
     );
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+      presentBanner: true,
+      presentList: true,
+      interruptionLevel: InterruptionLevel.active,
+    );
     await _plugin.show(
       id: id.hashCode & 0x7fffffff,
       title: title,
       body: body,
-      notificationDetails: const NotificationDetails(android: details, iOS: DarwinNotificationDetails()),
+      notificationDetails: const NotificationDetails(android: details, iOS: iosDetails),
       payload: jsonEncode({
         'id': id,
         'type': notice['type'],

@@ -38,9 +38,14 @@
 	<string>Η Ονειροχώρα αποθηκεύει φωτογραφίες και βίντεο εκδρομών στη συλλογή του κινητού.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Η Ονειροχώρα διαλέγει φωτογραφίες και βίντεο από τη συλλογή για μηνύματα και εκδηλώσεις.</string>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.omnedu.omnedu.notices</string>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
+		<string>remote-notification</string>
 	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>

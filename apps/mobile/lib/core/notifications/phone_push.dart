@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
@@ -64,20 +65,17 @@ Future<void> startPhonePush({
   _phonePushForeground = onForeground;
   await _ensureFirebase();
   if (_phonePushListening) {
-    final token = await FirebaseMessaging.instance.getToken();
-    if (token != null && token.isNotEmpty) await onToken(token);
+    unawaited(_publishPhoneToken(onToken));
     return;
   }
   _phonePushListening = true;
   FirebaseMessaging.onBackgroundMessage(firebaseBackgroundHandler);
-  await FirebaseMessaging.instance.requestPermission(alert: true, badge: true, sound: true);
-  if (Platform.isIOS) {
-    await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(alert: true, badge: true, sound: true);
-    final apns = await FirebaseMessaging.instance.getAPNSToken();
-    if (apns == null || apns.isEmpty) {
-      await Future<void>.delayed(const Duration(milliseconds: 400));
+  try {
+    await FirebaseMessaging.instance.requestPermission(alert: true, badge: true, sound: true);
+    if (Platform.isIOS) {
+      await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(alert: true, badge: true, sound: true);
     }
-  }
+  } catch (_) {}
   FirebaseMessaging.onMessage.listen((message) {
     final title = message.notification?.title ?? message.data['title']?.toString() ?? 'Ονειροχώρα';
     final body = message.notification?.body ?? message.data['body']?.toString() ?? '';
@@ -85,14 +83,29 @@ Future<void> startPhonePush({
     _phonePushForeground?.call(title, body, Map<String, dynamic>.from(message.data));
   });
   FirebaseMessaging.onMessageOpenedApp.listen((message) => _phonePushOpened?.call(message.data));
-  final initial = await FirebaseMessaging.instance.getInitialMessage();
-  if (initial != null) {
-    WidgetsBinding.instance.addPostFrameCallback((_) => onOpened(initial.data));
-  }
-  final token = await FirebaseMessaging.instance.getToken();
-  if (token != null && token.isNotEmpty) await onToken(token);
+  try {
+    final initial = await FirebaseMessaging.instance.getInitialMessage();
+    if (initial != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => onOpened(initial.data));
+    }
+  } catch (_) {}
   FirebaseMessaging.instance.onTokenRefresh.listen((token) {
     final deliver = _phonePushToken;
-    if (deliver != null) deliver(token);
+    if (deliver != null && token.isNotEmpty) deliver(token);
   });
+  unawaited(_publishPhoneToken(onToken));
+}
+
+Future<void> _publishPhoneToken(Future<void> Function(String token) onToken) async {
+  try {
+    if (Platform.isIOS) {
+      for (var attempt = 0; attempt < 8; attempt++) {
+        final apns = await FirebaseMessaging.instance.getAPNSToken();
+        if (apns != null && apns.isNotEmpty) break;
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+    }
+    final token = await FirebaseMessaging.instance.getToken();
+    if (token != null && token.isNotEmpty) await onToken(token);
+  } catch (_) {}
 }

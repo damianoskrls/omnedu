@@ -24,8 +24,18 @@ class _TeacherShellState extends ConsumerState<TeacherShell> {
   Widget build(BuildContext context) {
     final user = ref.watch(authProvider).user!;
     final schoolId = user.schoolId ?? '';
-    if (user.isOwner) return OwnerHome(schoolId: schoolId);
-    if (user.isDriver) return DriverScreen(schoolId: schoolId);
+    if (user.isOwner) {
+      return Stack(children: [
+        OwnerHome(schoolId: schoolId),
+        NotificationWatcher(schoolId: schoolId),
+      ]);
+    }
+    if (user.isDriver) {
+      return Stack(children: [
+        DriverScreen(schoolId: schoolId),
+        NotificationWatcher(schoolId: schoolId),
+      ]);
+    }
 
     final pages = [
       TeacherHomeScreen(schoolId: schoolId),
