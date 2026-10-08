@@ -5,14 +5,13 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
-/// Public Firebase app values. The iPhone uses its own Firebase app id.
-/// Until that id is filled in, the iPhone app still runs and the closed-app
-/// push stays off.
+/// Public Firebase app values. Android and iPhone each use their own app id.
 class PhonePushConfig {
   static const projectId = 'omnedu';
   static const apiKey = 'AIzaSyDvo-iDhEqne6Eo5DPZO1AjbjggSzhkzCw';
+  static const iosApiKey = 'AIzaSyBCCweDqjxJ8RyH8yAxb6SE_4LxYQ06Z9g';
   static const appId = '1:668958037429:android:57a1f64fb0a64b698335fc';
-  static const iosAppId = '';
+  static const iosAppId = '1:668958037429:ios:0d4ae1cf20b67d2d8335fc';
   static const messagingSenderId = '668958037429';
 
   static bool get _ios => !kIsWeb && Platform.isIOS;
@@ -24,7 +23,7 @@ class PhonePushConfig {
   }
 
   static FirebaseOptions get options => FirebaseOptions(
-    apiKey: apiKey,
+    apiKey: _ios ? iosApiKey : apiKey,
     appId: _ios ? iosAppId : appId,
     messagingSenderId: messagingSenderId,
     projectId: projectId,
@@ -32,12 +31,19 @@ class PhonePushConfig {
   );
 }
 
+Future<void> _ensureFirebase() async {
+  if (Firebase.apps.isNotEmpty) return;
+  try {
+    await Firebase.initializeApp(options: PhonePushConfig.options);
+  } catch (_) {
+    if (Firebase.apps.isEmpty) rethrow;
+  }
+}
+
 @pragma('vm:entry-point')
 Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
   if (!PhonePushConfig.ready) return;
-  if (Firebase.apps.isEmpty) {
-    await Firebase.initializeApp(options: PhonePushConfig.options);
-  }
+  await _ensureFirebase();
 }
 
 bool _phonePushListening = false;
@@ -56,9 +62,7 @@ Future<void> startPhonePush({
   _phonePushToken = onToken;
   _phonePushOpened = onOpened;
   _phonePushForeground = onForeground;
-  if (Firebase.apps.isEmpty) {
-    await Firebase.initializeApp(options: PhonePushConfig.options);
-  }
+  await _ensureFirebase();
   if (_phonePushListening) {
     final token = await FirebaseMessaging.instance.getToken();
     if (token != null && token.isNotEmpty) await onToken(token);
