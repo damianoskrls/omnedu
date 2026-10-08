@@ -21,6 +21,11 @@ type Celebration = {
   audienceIds?: string;
 };
 
+function audienceKind(value?: string | null): AudienceValue['audienceType'] {
+  if (value === 'class' || value === 'level' || value === 'teachers') return value;
+  return 'all';
+}
+
 function calendarYear(now = new Date()) {
   const start = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
   return `${start}-${start + 1}`;
@@ -58,7 +63,7 @@ const emptyForm = (year: string) => ({
   place: '',
   details: '',
   items: [] as ItemDraft[],
-  audienceType: 'all' as AudienceValue['audienceType'],
+  audienceType: audienceKind('all'),
   audienceIds: [] as string[],
   imageUrl: '',
 });
@@ -210,19 +215,22 @@ export default function CelebrationsPage() {
                   </div>
                   {isAdmin && (
                     <div className="flex gap-2">
-                      <button onClick={() => setForm({
-                        id: row.id,
-                        academicYear: row.academicYear,
-                        title: row.title,
-                        eventDate: row.eventDate ? row.eventDate.slice(0, 10) : '',
-                        arrivalTime: row.arrivalTime ?? '',
-                        place: row.place ?? '',
-                        details: row.details ?? '',
-                        items: parseItems(row.items),
-                        audienceType: (row.audienceType || 'all') as AudienceValue['audienceType'],
-                        audienceIds: parseIds(row.audienceIds),
-                        imageUrl: row.imageUrl ?? '',
-                      }); setPoster(null); }} className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50"><Pencil className="w-4 h-4 text-gray-500" /></button>
+                      <button onClick={() => {
+                        setForm({
+                          id: row.id,
+                          academicYear: row.academicYear,
+                          title: row.title,
+                          eventDate: row.eventDate ? row.eventDate.slice(0, 10) : '',
+                          arrivalTime: row.arrivalTime ?? '',
+                          place: row.place ?? '',
+                          details: row.details ?? '',
+                          items: parseItems(row.items),
+                          audienceType: audienceKind(row.audienceType),
+                          audienceIds: parseIds(row.audienceIds),
+                          imageUrl: row.imageUrl ?? '',
+                        });
+                        setPoster(null);
+                      }} className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50"><Pencil className="w-4 h-4 text-gray-500" /></button>
                       <button onClick={() => remove(row.id)} className="p-2 rounded-lg border border-red-200 hover:bg-red-50"><Trash2 className="w-4 h-4 text-red-500" /></button>
                     </div>
                   )}
