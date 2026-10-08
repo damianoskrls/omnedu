@@ -197,6 +197,10 @@ export const classesApi = {
     api.delete(`/schools/${schoolId}/classes/${classId}/instructions/${instructionId}`),
 };
 
+export const schoolReportsApi = {
+  overview: (schoolId: string) => api.get(`/schools/${schoolId}/reports/overview`),
+};
+
 export const reportsApi = {
   feed: (schoolId: string) => api.get(`/schools/${schoolId}/daily-reports/feed`),
   byStudent: (schoolId: string, studentId: string) =>
