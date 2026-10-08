@@ -26,7 +26,7 @@ class AppTopBar extends ConsumerWidget {
     final user = ref.watch(authProvider).user;
     if (user == null) return const SizedBox.shrink();
     final schoolId = user.schoolId ?? '';
-    final staff = user.isTeacher || user.isSchoolAdmin;
+    final staff = user.usesStaffShell;
     final notificationsIndex = staff ? 2 : 4;
     final messagesIndex = staff ? 3 : 5;
     final current = ref.watch(shellTabProvider);
