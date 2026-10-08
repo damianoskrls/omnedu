@@ -290,8 +290,8 @@ class _TeacherHomeScreenState extends ConsumerState<TeacherHomeScreen> {
                           child: FilledButton.icon(
                             style: FilledButton.styleFrom(backgroundColor: const Color(0xFFBE185D)),
                             onPressed: () => _openMoment(classes, forClass: false),
-                            icon: const Icon(Icons.cake_rounded),
-                            label: const Text('Γενέθλια'),
+                            icon: const Icon(Icons.celebration_rounded),
+                            label: const Text('Γιορτάζει'),
                           ),
                         ),
                         const SizedBox(width: 10),

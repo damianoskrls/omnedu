@@ -1,9 +1,12 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../core/api/api_client.dart';
+import '../../../core/utils/system_insets.dart';
 import '../../../core/widgets/person_face.dart';
 
 class ClassMomentScreen extends ConsumerStatefulWidget {
@@ -26,7 +29,8 @@ class ClassMomentScreen extends ConsumerStatefulWidget {
 class _PendingFile {
   final XFile file;
   final bool video;
-  _PendingFile(this.file, this.video);
+  final Uint8List? bytes;
+  _PendingFile(this.file, this.video, this.bytes);
 }
 
 class _ClassMomentScreenState extends ConsumerState<ClassMomentScreen> {
@@ -36,7 +40,6 @@ class _ClassMomentScreenState extends ConsumerState<ClassMomentScreen> {
   List<Map<String, dynamic>> _students = [];
   bool _loadingStudents = false;
   String? _studentId;
-  String _occasion = 'birthday';
   bool _publishing = false;
   String _progress = '';
 
@@ -86,30 +89,39 @@ class _ClassMomentScreenState extends ConsumerState<ClassMomentScreen> {
   String get _title {
     if (widget.forClass) return 'Σήμερα στην τάξη ${widget.className}';
     final name = _student?['fullName']?.toString() ?? '';
-    return _occasion == 'nameday' ? '$name έχει γιορτή σήμερα' : '$name έχει γενέθλια σήμερα';
+    return '$name γιορτάζει σήμερα';
+  }
+
+  Future<void> _keep(XFile file, {required bool video}) async {
+    if (_pending.length >= 30) return;
+    Uint8List? bytes;
+    if (!video) {
+      try {
+        bytes = await file.readAsBytes();
+      } catch (_) {}
+    }
+    if (!mounted || _pending.length >= 30) return;
+    setState(() => _pending.add(_PendingFile(file, video, bytes)));
   }
 
   Future<void> _addPhotos() async {
     final files = await _picker.pickMultiImage(imageQuality: 85);
     if (!mounted || files.isEmpty) return;
-    setState(() {
-      for (final file in files) {
-        if (_pending.length >= 30) break;
-        _pending.add(_PendingFile(file, false));
-      }
-    });
+    for (final file in files) {
+      await _keep(file, video: false);
+    }
   }
 
   Future<void> _addCamera() async {
     final file = await _picker.pickImage(source: ImageSource.camera, imageQuality: 85);
-    if (!mounted || file == null || _pending.length >= 30) return;
-    setState(() => _pending.add(_PendingFile(file, false)));
+    if (!mounted || file == null) return;
+    await _keep(file, video: false);
   }
 
   Future<void> _addVideo(ImageSource source) async {
     final file = await _picker.pickVideo(source: source);
-    if (!mounted || file == null || _pending.length >= 30) return;
-    setState(() => _pending.add(_PendingFile(file, true)));
+    if (!mounted || file == null) return;
+    await _keep(file, video: true);
   }
 
   Future<void> _publish() async {
@@ -154,7 +166,7 @@ class _ClassMomentScreenState extends ConsumerState<ClassMomentScreen> {
       await dio.post('/schools/${widget.schoolId}/posts', data: {
         'title': _title,
         'content': note,
-        'postType': widget.forClass ? 'classroom' : _occasion,
+        'postType': widget.forClass ? 'classroom' : 'celebration',
         'mediaUrls': urls,
         'audienceType': widget.forClass ? 'class' : 'student',
         'audienceIds': widget.forClass ? [widget.classId] : [_studentId],
@@ -185,10 +197,21 @@ class _ClassMomentScreenState extends ConsumerState<ClassMomentScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         foregroundColor: const Color(0xFF3D1152),
-        title: Text(widget.forClass ? 'Σήμερα στην τάξη' : 'Γενέθλια ή γιορτή'),
+        title: Text(widget.forClass ? 'Σήμερα στην τάξη' : 'Γιορτάζει'),
+      ),
+      bottomNavigationBar: Padding(
+        padding: EdgeInsets.fromLTRB(16, 8, 16, 12 + systemBottomInset(context)),
+        child: FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFF77328D),
+            minimumSize: const Size.fromHeight(48),
+          ),
+          onPressed: _publishing ? null : _publish,
+          child: Text(_publishing ? (_progress.isEmpty ? 'Ανέβασμα...' : _progress) : 'Ανέβασμα για τους γονείς'),
+        ),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
           if (!widget.forClass) ...[
             const Text('Παιδί', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF77328D))),
@@ -203,24 +226,6 @@ class _ClassMomentScreenState extends ConsumerState<ClassMomentScreen> {
                 selected: row['id']?.toString() == _studentId,
                 onTap: () => setState(() => _studentId = row['id']?.toString()),
               ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              children: [
-                ChoiceChip(
-                  label: const Text('Γενέθλια'),
-                  selected: _occasion == 'birthday',
-                  selectedColor: const Color(0xFFF3E8F7),
-                  onSelected: (_) => setState(() => _occasion = 'birthday'),
-                ),
-                ChoiceChip(
-                  label: const Text('Γιορτή'),
-                  selected: _occasion == 'nameday',
-                  selectedColor: const Color(0xFFFFF1EA),
-                  onSelected: (_) => setState(() => _occasion = 'nameday'),
-                ),
-              ],
-            ),
             if (student != null) ...[
               const SizedBox(height: 12),
               Text(_title, style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF3D1152))),
@@ -250,26 +255,49 @@ class _ClassMomentScreenState extends ConsumerState<ClassMomentScreen> {
               OutlinedButton.icon(onPressed: _publishing ? null : () => _addVideo(ImageSource.camera), icon: const Icon(Icons.videocam_outlined), label: const Text('Τράβηγμα')),
             ],
           ),
-          const SizedBox(height: 12),
-          for (var i = 0; i < _pending.length; i++)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(_pending[i].video ? Icons.movie_outlined : Icons.image_outlined, color: const Color(0xFF77328D)),
-              title: Text(_pending[i].video ? 'Βίντεο ${i + 1}' : 'Φωτογραφία ${i + 1}'),
-              trailing: IconButton(
-                onPressed: _publishing ? null : () => setState(() => _pending.removeAt(i)),
-                icon: const Icon(Icons.close_rounded),
+          if (_pending.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 96,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: _pending.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (_, index) {
+                  final item = _pending[index];
+                  return Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: item.bytes != null
+                            ? Image.memory(item.bytes!, width: 96, height: 96, fit: BoxFit.cover)
+                            : ColoredBox(
+                                color: const Color(0xFFF3E8F7),
+                                child: SizedBox(
+                                  width: 96,
+                                  height: 96,
+                                  child: Icon(item.video ? Icons.play_circle_fill_rounded : Icons.image_outlined, color: const Color(0xFF77328D), size: 36),
+                                ),
+                              ),
+                      ),
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        child: IconButton(
+                          visualDensity: VisualDensity.compact,
+                          onPressed: _publishing ? null : () => setState(() => _pending.removeAt(index)),
+                          icon: const DecoratedBox(
+                            decoration: BoxDecoration(color: Color(0xCC3D1152), shape: BoxShape.circle),
+                            child: Icon(Icons.cancel_rounded, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
-          const SizedBox(height: 16),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF77328D),
-              minimumSize: const Size.fromHeight(48),
-            ),
-            onPressed: _publishing ? null : _publish,
-            child: Text(_publishing ? (_progress.isEmpty ? 'Ανέβασμα...' : _progress) : 'Ανέβασμα για τους γονείς'),
-          ),
+          ],
         ],
       ),
     );

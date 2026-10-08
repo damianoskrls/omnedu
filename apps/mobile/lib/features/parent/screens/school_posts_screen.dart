@@ -148,8 +148,9 @@ class _PostCard extends StatelessWidget {
     'theater': (bg: Color(0xFFFAF5FF), icon: Color(0xFF7C3AED), label: 'Θέατρο'),
     'event': (bg: Color(0xFFFFF7ED), icon: Color(0xFFEA580C), label: 'Εκδήλωση'),
     'general': (bg: Color(0xFFEFF6FF), icon: Color(0xFF2563EB), label: 'Γενικό'),
-    'birthday': (bg: Color(0xFFFDF2F8), icon: Color(0xFFBE185D), label: 'Γενέθλια'),
-    'nameday': (bg: Color(0xFFFFF7ED), icon: Color(0xFFE95926), label: 'Γιορτή'),
+    'birthday': (bg: Color(0xFFFDF2F8), icon: Color(0xFFBE185D), label: 'Γιορτάζει'),
+    'nameday': (bg: Color(0xFFFFF7ED), icon: Color(0xFFE95926), label: 'Γιορτάζει'),
+    'celebration': (bg: Color(0xFFFDF2F8), icon: Color(0xFFBE185D), label: 'Γιορτάζει'),
     'classroom': (bg: Color(0xFFF3E8F7), icon: Color(0xFF77328D), label: 'Τάξη'),
     'found': (bg: Color(0xFFFFF1EA), icon: Color(0xFFE95926), label: 'Εύρημα'),
   };

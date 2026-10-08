@@ -11,7 +11,7 @@ export class SchoolPostsService {
       where: {
         schoolId,
         publishedAt: { not: null },
-        ...(type === 'moment' ? { postType: { in: ['birthday', 'nameday', 'classroom'] } } : {}),
+        ...(type === 'moment' ? { postType: { in: ['birthday', 'nameday', 'celebration', 'classroom'] } } : {}),
         ...(type && type !== 'moment' ? { postType: type } : {}),
         ...(!type ? { postType: { not: 'found' } } : {}),
       },
