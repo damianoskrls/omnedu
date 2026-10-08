@@ -36,6 +36,16 @@ export class NotificationsController {
     return this.svc.inbox(user.sub, schoolId);
   }
 
+  @Get('unread-count')
+  unreadCount(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
+    return this.svc.unreadCount(user.sub, schoolId);
+  }
+
+  @Post('inbox/read-all')
+  markAllRead(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
+    return this.svc.markAllRead(user.sub, schoolId);
+  }
+
   @Post('inbox/:id/read')
   markRead(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
     return this.svc.markRead(user.sub, id);

@@ -251,6 +251,21 @@ export class NotificationsService implements OnModuleInit {
     });
   }
 
+  async unreadCount(userId: string, schoolId: string) {
+    const count = await this.prisma.notification.count({
+      where: { userId, schoolId, isRead: false },
+    });
+    return { count };
+  }
+
+  async markAllRead(userId: string, schoolId: string) {
+    await this.prisma.notification.updateMany({
+      where: { userId, schoolId, isRead: false },
+      data: { isRead: true },
+    });
+    return { ok: true };
+  }
+
   async markRead(userId: string, notificationId: string) {
     const row = await this.prisma.notification.findFirst({ where: { id: notificationId, userId } });
     if (!row) return null;

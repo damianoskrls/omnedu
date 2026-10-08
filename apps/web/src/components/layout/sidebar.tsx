@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { getStoredUser, useStoredUser } from '@/lib/auth';
 import { schoolsApi } from '@/lib/api';
 import {
-  LayoutDashboard, School, Users, GraduationCap, BookOpen,
+  LayoutDashboard, School, Users, GraduationCap, BookOpen, Baby,
   MessageSquare, CreditCard, Settings, LogOut,
   Layers, Utensils, ClipboardList, Pill, BellRing, Zap, Bus, Wrench, Newspaper, CalendarDays, ScrollText, NotebookPen, PartyPopper, TreePalm,
   X,
@@ -50,6 +50,7 @@ const schoolNav: NavGroup[] = [
     items: [
       { href: '/school/dashboard', label: 'Επισκόπηση', icon: LayoutDashboard },
       { href: '/school/students', label: 'Μαθητές', icon: GraduationCap },
+      { href: '/school/parents', label: 'Γονείς', icon: Baby },
       { href: '/school/classes', label: 'Τάξεις', icon: BookOpen },
       { href: '/school/levels', label: 'Βαθμίδες', icon: Layers },
       { href: '/school/staff', label: 'Προσωπικό', icon: Users },

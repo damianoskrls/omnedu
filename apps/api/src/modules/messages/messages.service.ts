@@ -60,6 +60,61 @@ export class MessagesService {
     }));
   }
 
+  async unreadCount(userId: string, schoolId: string, role?: string | null) {
+    const rows = await this.prisma.conversation.findMany({
+      where: { schoolId, participants: { some: { userId } } },
+      select: {
+        participants: {
+          select: {
+            userId: true,
+            lastReadAt: true,
+            user: {
+              select: {
+                schoolMemberships: {
+                  where: { schoolId, isActive: true },
+                  select: { role: true },
+                },
+              },
+            },
+          },
+        },
+        messages: {
+          where: { isDeleted: false, senderId: { not: userId } },
+          orderBy: { sentAt: 'desc' },
+          take: 1,
+          select: { sentAt: true },
+        },
+      },
+    });
+    const visible = role === 'school_admin'
+      ? rows.filter((row) => this.visibleToAdmin(row.participants))
+      : role === 'teacher'
+        ? rows.filter((row) => this.visibleToTeacher(row.participants, userId))
+        : rows;
+    return visible.filter((row) => {
+      const latest = row.messages[0]?.sentAt;
+      if (!latest) return false;
+      const mine = row.participants.find((person) => person.userId === userId);
+      return !mine?.lastReadAt || latest > mine.lastReadAt;
+    }).length;
+  }
+
+  async broadcast(schoolId: string, senderId: string, role: string | null, userIds: string[], body?: string) {
+    if (role !== 'school_admin') throw new ForbiddenException();
+    const text = (body ?? '').trim();
+    if (!text) throw new BadRequestException('Το μήνυμα είναι κενό');
+    const ids = [...new Set(userIds.filter(Boolean))].slice(0, 400);
+    if (!ids.length) throw new BadRequestException('Διάλεξε τουλάχιστον έναν γονέα');
+    let sent = 0;
+    for (const id of ids) {
+      if (!(await this.isParent(schoolId, id))) continue;
+      const conversation = await this.openScoped(schoolId, senderId, role, 'admin', id);
+      await this.sendMessage(conversation.id, senderId, text);
+      sent += 1;
+    }
+    return { sent };
+  }
+
   async contacts(userId: string, schoolId: string, role?: string | null) {
     if (role === 'parent') return this.parentContacts(userId, schoolId);
     if (role === 'teacher') return { admins: [], teachers: [], parents: await this.parentsOfTeacher(userId, schoolId) };
@@ -327,7 +382,12 @@ export class MessagesService {
       where: { userId, student: { schoolId } },
       select: { userId: true },
     });
-    return !!link;
+    if (link) return true;
+    const member = await this.prisma.schoolMember.findFirst({
+      where: { schoolId, userId, role: 'parent', isActive: true },
+      select: { userId: true },
+    });
+    return !!member;
   }
 
   private async teacherTeachesParentChild(schoolId: string, teacherId: string, parentId: string) {

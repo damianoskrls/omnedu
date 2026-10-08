@@ -27,6 +27,20 @@ export class MessagesController {
     return this.messages.contacts(user.sub, schoolId, user.role);
   }
 
+  @Get('unread-count')
+  unreadCount(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
+    return this.messages.unreadCount(user.sub, schoolId, user.role).then((count) => ({ count }));
+  }
+
+  @Post('broadcast')
+  broadcast(
+    @Param('schoolId') schoolId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { userIds?: string[]; body?: string },
+  ) {
+    return this.messages.broadcast(schoolId, user.sub, user.role, body.userIds ?? [], body.body);
+  }
+
   @Post()
   getOrCreate(
     @Param('schoolId') schoolId: string,

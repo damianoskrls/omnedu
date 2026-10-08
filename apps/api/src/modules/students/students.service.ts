@@ -4,6 +4,111 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { normalizePhone, phoneKey } from '../auth/phone';
 import { CreateStudentDto } from './dto/create-student.dto';
 
+const parentUserSelect = {
+  id: true,
+  fullName: true,
+  email: true,
+  phone: true,
+  avatarUrl: true,
+} as const;
+
+const parentChildSelect = {
+  id: true,
+  fullName: true,
+  dob: true,
+  avatarUrl: true,
+  address: true,
+  allergies: true,
+  notes: true,
+  bloodType: true,
+  isActive: true,
+  enrollments: {
+    include: {
+      class: { select: { id: true, name: true } },
+      academicYear: { select: { isCurrent: true, label: true } },
+    },
+  },
+} as const;
+
+type ParentUser = {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string | null;
+  avatarUrl: string | null;
+};
+
+type ParentChild = {
+  id: string;
+  fullName: string;
+  dob: Date | null;
+  avatarUrl: string | null;
+  address: string | null;
+  allergies: string | null;
+  notes: string | null;
+  bloodType: string | null;
+  isActive: boolean;
+  relation: string | null;
+  isPrimary: boolean;
+  className: string;
+  classId: string | null;
+};
+
+type ParentCard = {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string | null;
+  avatarUrl: string | null;
+  children: ParentChild[];
+};
+
+function parentCard(user: ParentUser): ParentCard {
+  return {
+    id: user.id,
+    fullName: user.fullName,
+    email: user.email,
+    phone: user.phone,
+    avatarUrl: user.avatarUrl,
+    children: [],
+  };
+}
+
+function parentChild(link: {
+  relation: string | null;
+  isPrimary: boolean;
+  student: {
+    id: string;
+    fullName: string;
+    dob: Date | null;
+    avatarUrl: string | null;
+    address: string | null;
+    allergies: string | null;
+    notes: string | null;
+    bloodType: string | null;
+    isActive: boolean;
+    enrollments: { classId?: string; class: { id: string; name: string } | null; academicYear: { isCurrent: boolean; label: string } | null }[];
+  };
+}): ParentChild {
+  const current = link.student.enrollments.find((row) => row.academicYear?.isCurrent);
+  const enrollment = current ?? link.student.enrollments[0];
+  return {
+    id: link.student.id,
+    fullName: link.student.fullName,
+    dob: link.student.dob,
+    avatarUrl: link.student.avatarUrl,
+    address: link.student.address,
+    allergies: link.student.allergies,
+    notes: link.student.notes,
+    bloodType: link.student.bloodType,
+    isActive: link.student.isActive,
+    relation: link.relation,
+    isPrimary: link.isPrimary,
+    className: enrollment?.class?.name ?? '',
+    classId: enrollment?.class?.id ?? null,
+  };
+}
+
 const activityDetailSelect = {
   id: true,
   title: true,
@@ -450,6 +555,38 @@ export class StudentsService {
   }
 
   /** Same phone is the same parent, even if a second account was created. Siblings of those children count too. */
+  async listParents(schoolId: string) {
+    const [links, members] = await Promise.all([
+      this.prisma.studentParent.findMany({
+        where: { student: { schoolId } },
+        include: { user: { select: parentUserSelect }, student: { select: parentChildSelect } },
+      }),
+      this.prisma.schoolMember.findMany({
+        where: { schoolId, role: 'parent', isActive: true },
+        include: { user: { select: parentUserSelect } },
+      }),
+    ]);
+    const grouped = new Map<string, ParentCard>();
+    for (const link of links) {
+      const card = grouped.get(link.userId) ?? parentCard(link.user);
+      card.children.push(parentChild(link));
+      grouped.set(link.userId, card);
+    }
+    for (const member of members) {
+      if (!grouped.has(member.userId)) grouped.set(member.userId, parentCard(member.user));
+    }
+    return [...grouped.values()]
+      .map((card) => ({ ...card, children: card.children.sort((a, b) => a.fullName.localeCompare(b.fullName, 'el')) }))
+      .sort((a, b) => a.fullName.localeCompare(b.fullName, 'el'));
+  }
+
+  async getParent(schoolId: string, userId: string) {
+    const parents = await this.listParents(schoolId);
+    const parent = parents.find((row) => row.id === userId);
+    if (!parent) throw new NotFoundException('Ο γονέας δεν βρέθηκε');
+    return parent;
+  }
+
   async ensureParentChildren(parentUserId: string, schoolId: string) {
     const userIds = await this.accountUserIds(parentUserId);
     const direct = await this.prisma.student.findMany({

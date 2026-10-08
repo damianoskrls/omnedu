@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Menu } from 'lucide-react';
+import { AdminAlerts } from '@/components/layout/admin-alerts';
 import { Sidebar } from '@/components/layout/sidebar';
 import { useStoredUser } from '@/lib/auth';
 
@@ -35,6 +36,7 @@ export function AppShell({
           </button>
           <p className="hidden text-sm font-semibold capitalize text-[#6b625c] sm:block">{today}</p>
           <div className="ml-auto flex items-center gap-2">
+            {variant === 'school' && <AdminAlerts />}
             <span className="hidden h-2 w-2 rounded-full bg-[#cce3ac] ring-4 ring-[#e7f3d4] sm:inline-block" />
             <p className="max-w-[14rem] truncate text-sm font-bold text-[#2f2a28]">
               {user?.fullName ?? 'Ονειροχώρα'}
