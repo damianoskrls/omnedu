@@ -3,15 +3,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
-import { ImagePlus, MessageSquare, Send, Smile } from 'lucide-react';
+import { ImagePlus, MessageSquare, Search, Send, Smile } from 'lucide-react';
 
 const EMOJIS = ['😀', '😁', '😂', '😊', '😍', '🤗', '👍', '👏', '🙏', '❤️', '🎉', '🌟', '✅', '📷'];
 
 type Person = { id: string; fullName: string; schoolMemberships?: { role: string }[] };
 type Conversation = {
   id: string;
-  participants: { userId: string; user: Person }[];
-  messages?: { body?: string; sentAt?: string }[];
+  unread?: boolean;
+  participants: { userId: string; lastReadAt?: string | null; user: Person }[];
+  messages?: { body?: string; sentAt?: string; senderId?: string; mediaUrl?: string | null }[];
 };
 type ParentContact = { id: string; name: string; students?: string[] };
 type TeacherContact = { id: string; name: string };
@@ -30,7 +31,7 @@ export default function MessagesPage() {
   const [emojisOpen, setEmojisOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const [picking, setPicking] = useState<'parents' | 'teachers' | null>(null);
+  const [query, setQuery] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
   const loadConversations = () => {
@@ -51,12 +52,17 @@ export default function MessagesPage() {
     ]).finally(() => setLoading(false));
   }, [schoolId]);
 
-  const openConversation = (id: string) => {
+  const openConversation = async (id: string) => {
     setActiveId(id);
-    setPicking(false);
-    api.get(`/schools/${schoolId}/conversations/${id}/messages`).then((data: any) => {
+    setConvos((rows) => rows.map((row) => (row.id === id ? { ...row, unread: false } : row)));
+    try {
+      const data: any = await api.get(`/schools/${schoolId}/conversations/${id}/messages`);
       setMessages(Array.isArray(data) ? data : []);
-    }).catch(() => setMessages([]));
+    } catch {
+      setMessages([]);
+    }
+    await loadConversations();
+    window.dispatchEvent(new Event('focus'));
   };
 
   const startWith = async (personId: string) => {
@@ -96,13 +102,18 @@ export default function MessagesPage() {
     }
   };
 
-  const active = convos.find((row) => row.id === activeId);
   const titleOf = (convo: Conversation) => {
     const people = others(convo, user?.id);
-    const parents = people.filter((person) => person.schoolMemberships?.some((row) => row.role === 'parent'));
-    const named = parents.length ? parents : people.filter((person) => !person.schoolMemberships?.some((row) => row.role === 'school_admin'));
+    const parentPeople = people.filter((person) => person.schoolMemberships?.some((row) => row.role === 'parent'));
+    const named = parentPeople.length ? parentPeople : people.filter((person) => !person.schoolMemberships?.some((row) => row.role === 'school_admin'));
     return named.map((person) => person.fullName).join(', ') || 'Συνομιλία';
   };
+  const needle = query.trim().toLowerCase();
+  const matches = (name: string, extra = '') => !needle || `${name} ${extra}`.toLowerCase().includes(needle);
+  const visibleParents = parents.filter((parent) => matches(parent.name, parent.students?.join(' ') ?? ''));
+  const visibleTeachers = teachers.filter((teacher) => matches(teacher.name));
+  const visibleConvos = convos.filter((convo) => matches(titleOf(convo)));
+  const active = convos.find((row) => row.id === activeId);
 
   return (
     <div className="space-y-4">
@@ -110,58 +121,70 @@ export default function MessagesPage() {
         <h1 className="text-2xl font-bold text-gray-900">Μηνύματα</h1>
         <p className="text-sm text-gray-500 mt-1">Επικοινωνία με γονείς και εκπαιδευτικούς. Οι συνομιλίες γονέα με τη δασκάλα δεν εμφανίζονται εδώ.</p>
       </div>
-      <div className="grid min-h-[32rem] grid-cols-1 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:grid-cols-[320px_1fr]">
-        <div className="border-b border-gray-100 lg:border-b-0 lg:border-r">
-          <div className="flex items-center justify-between px-4 py-3">
-            <span className="text-sm font-semibold text-gray-700">Συνομιλίες</span>
-            <div className="flex gap-2">
-              <button onClick={() => setPicking((value) => value === 'parents' ? null : 'parents')} className="text-xs font-semibold text-[#77328D]">Γονέας</button>
-              <button onClick={() => setPicking((value) => value === 'teachers' ? null : 'teachers')} className="text-xs font-semibold text-[#E95926]">Εκπαιδευτικός</button>
-            </div>
+      <div className="grid h-[calc(100vh-11rem)] min-h-[36rem] grid-cols-1 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:grid-cols-[340px_1fr]">
+        <div className="flex min-h-0 flex-col border-b border-gray-100 lg:border-b-0 lg:border-r">
+          <div className="shrink-0 border-b border-gray-100 p-3">
+            <p className="text-sm font-semibold text-gray-800">Με ποιον θέλεις να μιλήσεις</p>
+            <label className="relative mt-2 block">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Αναζήτηση ονόματος ή παιδιού"
+                className="w-full rounded-xl border border-gray-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-[#77328D]"
+              />
+            </label>
           </div>
-          {picking === 'parents' && (
-            <div className="max-h-48 overflow-y-auto border-t border-gray-50">
-              {parents.length === 0 ? (
-                <p className="px-4 py-3 text-sm text-gray-400">Δεν υπάρχουν γονείς.</p>
-              ) : parents.map((parent) => (
-                <button key={parent.id} onClick={() => startWith(parent.id)} className="block w-full px-4 py-2 text-left hover:bg-[#faf5fc]">
-                  <span className="block text-sm font-medium text-gray-900">{parent.name}</span>
-                  {!!parent.students?.length && <span className="block text-xs text-gray-500">{parent.students.join(', ')}</span>}
-                </button>
-              ))}
-            </div>
-          )}
-          {picking === 'teachers' && (
-            <div className="max-h-48 overflow-y-auto border-t border-gray-50">
-              {teachers.length === 0 ? (
-                <p className="px-4 py-3 text-sm text-gray-400">Δεν υπάρχουν εκπαιδευτικοί.</p>
-              ) : teachers.map((teacher) => (
-                <button key={teacher.id} onClick={() => startWith(teacher.id)} className="block w-full px-4 py-2 text-left text-sm font-medium text-gray-900 hover:bg-[#fff7f4]">
-                  {teacher.name}
-                </button>
-              ))}
-            </div>
-          )}
-          {loading ? (
-            <p className="px-4 py-8 text-center text-sm text-gray-400">Φόρτωση...</p>
-          ) : convos.length === 0 ? (
-            <div className="px-6 py-10 text-center">
-              <MessageSquare className="mx-auto mb-2 h-8 w-8 text-gray-300" />
-              <p className="text-sm text-gray-500">Δεν υπάρχουν μηνύματα από γονείς.</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-gray-50">
-              {convos.map((convo) => {
-                const last = convo.messages?.[0];
-                return (
-                  <button key={convo.id} onClick={() => openConversation(convo.id)} className={`block w-full px-4 py-3 text-left ${activeId === convo.id ? 'bg-[#faf5fc]' : 'hover:bg-gray-50'}`}>
-                    <span className="block truncate text-sm font-semibold text-gray-900">{titleOf(convo)}</span>
-                    <span className="block truncate text-xs text-gray-500">{last?.body || ((last as { mediaUrl?: string })?.mediaUrl ? 'Εικόνα' : 'Χωρίς μήνυμα')}</span>
+          <div className="min-h-0 flex-1 overflow-y-auto border-b border-gray-100">
+            {loading ? (
+              <p className="px-4 py-6 text-center text-sm text-gray-400">Φόρτωση...</p>
+            ) : visibleParents.length === 0 && visibleTeachers.length === 0 ? (
+              <p className="px-4 py-6 text-center text-sm text-gray-400">Δεν βρέθηκε κάποιος.</p>
+            ) : (
+              <>
+                {visibleParents.length > 0 && <p className="px-4 pb-1 pt-3 text-[11px] font-bold uppercase tracking-wide text-[#77328D]">Γονείς</p>}
+                {visibleParents.map((parent) => (
+                  <button key={parent.id} onClick={() => startWith(parent.id)} className="block w-full px-4 py-2 text-left hover:bg-[#faf5fc]">
+                    <span className="block truncate text-sm font-medium text-gray-900">{parent.name}</span>
+                    {!!parent.students?.length && <span className="block truncate text-xs text-gray-500">{parent.students.join(', ')}</span>}
                   </button>
-                );
-              })}
-            </div>
-          )}
+                ))}
+                {visibleTeachers.length > 0 && <p className="px-4 pb-1 pt-3 text-[11px] font-bold uppercase tracking-wide text-[#E95926]">Εκπαιδευτικοί</p>}
+                {visibleTeachers.map((teacher) => (
+                  <button key={teacher.id} onClick={() => startWith(teacher.id)} className="block w-full px-4 py-2 text-left text-sm font-medium text-gray-900 hover:bg-[#fff7f4]">
+                    {teacher.name}
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col">
+            <p className="shrink-0 px-4 pb-1 pt-3 text-[11px] font-bold uppercase tracking-wide text-gray-400">Ανοιχτές συνομιλίες</p>
+            {loading ? null : visibleConvos.length === 0 ? (
+              <div className="px-6 py-6 text-center">
+                <MessageSquare className="mx-auto mb-2 h-6 w-6 text-gray-300" />
+                <p className="text-sm text-gray-500">{convos.length === 0 ? 'Δεν έχεις ανοιχτή συνομιλία.' : 'Καμία ανοιχτή συνομιλία για αυτή την αναζήτηση.'}</p>
+              </div>
+            ) : (
+              <div className="min-h-0 flex-1 divide-y divide-gray-50 overflow-y-auto">
+                {visibleConvos.map((convo) => {
+                  const last = convo.messages?.[0];
+                  const preview = last?.body || (last?.mediaUrl ? 'Εικόνα' : 'Χωρίς μήνυμα');
+                  return (
+                    <button key={convo.id} onClick={() => openConversation(convo.id)} className={`flex w-full items-center gap-2 px-4 py-3 text-left ${activeId === convo.id ? 'bg-[#faf5fc]' : 'hover:bg-gray-50'}`}>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-gray-900">{titleOf(convo)}</span>
+                        <span className="block truncate text-xs text-gray-500">{preview}</span>
+                      </span>
+                      {convo.unread && (
+                        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#E95926] ring-4 ring-[#fff1ec]" aria-label="Αδιάβαστο" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
         <div className="flex min-h-[24rem] flex-col">
           {!active ? (

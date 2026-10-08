@@ -54,10 +54,18 @@ export class MessagesService {
     });
     const parentIds = [...new Set(sorted.flatMap((row) => row.participants.map((person) => person.userId)))];
     const labels = await this.labelsForParents(schoolId, parentIds);
-    return sorted.map((row) => ({
-      ...row,
-      about: row.participants.flatMap((person) => labels.get(person.userId) ?? []),
-    }));
+    return sorted.map((row) => {
+      const latest = row.messages[0];
+      const mine = row.participants.find((person) => person.userId === userId);
+      const unread = !!latest
+        && latest.senderId !== userId
+        && (!mine?.lastReadAt || latest.sentAt > mine.lastReadAt);
+      return {
+        ...row,
+        unread,
+        about: row.participants.flatMap((person) => labels.get(person.userId) ?? []),
+      };
+    });
   }
 
   async unreadCount(userId: string, schoolId: string, role?: string | null) {
