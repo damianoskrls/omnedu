@@ -16,6 +16,37 @@ function utcDay(value: Date | string) {
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
 }
 
+export type FeeRule = {
+  fixedAmount?: number | null;
+  discountPct?: number | null;
+  effectiveFrom?: Date | string | null;
+  reason?: string | null;
+};
+
+/** The price rule in force for a month. A later rule replaces earlier ones. A rule with no amount clears the discount. */
+export function feeRuleForMonth(rules: FeeRule[] | null | undefined, month: number, year: number): FeeRule | null {
+  if (!rules?.length) return null;
+  const monthEnd = Date.UTC(year, month, 0);
+  const applicable = rules
+    .filter((rule) => !rule.effectiveFrom || utcDay(rule.effectiveFrom) <= monthEnd)
+    .sort((a, b) => {
+      const ad = a.effectiveFrom ? utcDay(a.effectiveFrom) : Number.NEGATIVE_INFINITY;
+      const bd = b.effectiveFrom ? utcDay(b.effectiveFrom) : Number.NEGATIVE_INFINITY;
+      return bd - ad;
+    });
+  const chosen = applicable[0];
+  if (!chosen || (chosen.fixedAmount == null && chosen.discountPct == null)) return null;
+  return chosen;
+}
+
+/** Edit the same subsidy row, or close it and start a new one from the requested month. */
+export function subsidyRevision(existingStart: Date | string | null | undefined, requestedStart: Date | string) {
+  if (!existingStart) return 'split' as const;
+  const start = utcDay(existingStart);
+  const requested = utcDay(requestedStart);
+  return start >= requested ? 'update' as const : 'split' as const;
+}
+
 /** True when [startsOn, endsOn] overlaps the calendar month. Missing bounds are open. */
 export function rangeCoversMonth(
   startsOn: Date | string | null | undefined,
@@ -36,7 +67,7 @@ export function schoolYearBounds(now = new Date()) {
   const startYear = month >= 9 ? year : year - 1;
   const months = [
     ...[9, 10, 11, 12].map((m) => ({ month: m, year: startYear })),
-    ...[1, 2, 3, 4, 5, 6].map((m) => ({ month: m, year: startYear + 1 })),
+    ...[1, 2, 3, 4, 5, 6, 7].map((m) => ({ month: m, year: startYear + 1 })),
   ];
   return { startYear, label: `${startYear}-${startYear + 1}`, months };
 }
@@ -53,6 +84,7 @@ export function quoteStudentMonth(input: {
   levelMonthly?: number | null;
   fixedAmount?: number | null;
   discountPct?: number | null;
+  feeRules?: FeeRule[] | null;
   buses?: { name: string; net: number; enrolledAt?: Date | string | null; isActive?: boolean }[];
   activities?: {
     title: string;
@@ -69,14 +101,21 @@ export function quoteStudentMonth(input: {
   }[];
 }): MonthQuote {
   const levelMonthly = Number(input.levelMonthly ?? 0);
+  const rule = input.feeRules ? feeRuleForMonth(input.feeRules, input.month, input.year) : null;
+  const fixedAmount = input.feeRules
+    ? (rule?.fixedAmount != null ? Number(rule.fixedAmount) : null)
+    : input.fixedAmount;
+  const discountPct = input.feeRules
+    ? (fixedAmount == null && rule?.discountPct != null ? Number(rule.discountPct) : null)
+    : input.discountPct;
   let schoolFee = levelMonthly;
   let schoolLabel = input.levelName ? `Φοίτηση · ${input.levelName}` : 'Φοίτηση';
-  if (input.fixedAmount != null) {
-    schoolFee = Number(input.fixedAmount);
+  if (fixedAmount != null) {
+    schoolFee = Number(fixedAmount);
     schoolLabel = `${schoolLabel} (ειδική τιμή)`;
-  } else if (input.discountPct != null) {
-    schoolFee = round2(levelMonthly * (1 - Number(input.discountPct) / 100));
-    schoolLabel = `${schoolLabel} (−${Number(input.discountPct)}%)`;
+  } else if (discountPct != null) {
+    schoolFee = round2(levelMonthly * (1 - Number(discountPct) / 100));
+    schoolLabel = `${schoolLabel} (−${Number(discountPct)}%)`;
   }
 
   const lines: QuoteLine[] = [];

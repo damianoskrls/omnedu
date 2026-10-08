@@ -1,13 +1,40 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { isOpenMonth, quoteStudentMonth, schoolYearBounds } from './billing-quote';
+import { feeRuleForMonth, isOpenMonth, quoteStudentMonth, schoolYearBounds, subsidyRevision } from './billing-quote';
 import { NotificationsService } from '../notifications/notifications.service';
 
 const monthNames = ['', 'Ιανουάριο', 'Φεβρουάριο', 'Μάρτιο', 'Απρίλιο', 'Μάιο', 'Ιούνιο', 'Ιούλιο', 'Αύγουστο', 'Σεπτέμβριο', 'Οκτώβριο', 'Νοέμβριο', 'Δεκέμβριο'];
 
 @Injectable()
-export class BillingService {
+export class BillingService implements OnModuleInit {
   constructor(private prisma: PrismaService, private notifications: NotificationsService) {}
+
+  async onModuleInit() {
+    await this.ensureFeeHistory();
+  }
+
+  private async ensureFeeHistory() {
+    await this.prisma.$executeRawUnsafe(`ALTER TABLE "student_fee_overrides" DROP CONSTRAINT IF EXISTS "student_fee_overrides_student_id_key"`);
+    await this.prisma.$executeRawUnsafe(`DROP INDEX IF EXISTS "student_fee_overrides_student_id_key"`);
+    await this.prisma.$executeRawUnsafe(`ALTER TABLE "student_fee_overrides" ADD COLUMN IF NOT EXISTS "effective_from" DATE`);
+    await this.prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "student_fee_overrides_student_id_effective_from_idx" ON "student_fee_overrides" ("student_id", "effective_from")`);
+  }
+
+  private athensMonthStart(now = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Athens',
+      year: 'numeric',
+      month: '2-digit',
+    }).formatToParts(now);
+    const year = Number(parts.find((part) => part.type === 'year')?.value);
+    const month = Number(parts.find((part) => part.type === 'month')?.value);
+    return new Date(Date.UTC(year, month - 1, 1));
+  }
+
+  private monthStart(value: Date | string) {
+    const date = new Date(value);
+    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+  }
 
   private async tellParents(schoolId: string, studentId: string, body: string) {
     await this.notifications.notifyStudentParents(schoolId, studentId, {
@@ -55,38 +82,63 @@ export class BillingService {
   // ── Student fee overrides ────────────────────────────────
 
   async getStudentFeeOverride(schoolId: string, studentId: string) {
-    return this.prisma.studentFeeOverride.findFirst({ where: { schoolId, studentId } });
+    const rows = await this.prisma.studentFeeOverride.findMany({
+      where: { schoolId, studentId },
+      orderBy: [{ effectiveFrom: 'asc' }, { createdAt: 'asc' }],
+    });
+    if (!rows.length) return null;
+    const mapped = rows.map((row) => ({
+      id: row.id,
+      discountPct: row.discountPct != null ? Number(row.discountPct) : null,
+      fixedAmount: row.fixedAmount != null ? Number(row.fixedAmount) : null,
+      reason: row.reason,
+      effectiveFrom: row.effectiveFrom,
+      createdAt: row.createdAt,
+    }));
+    const now = this.athensMonthStart();
+    const current = feeRuleForMonth(mapped, now.getUTCMonth() + 1, now.getUTCFullYear());
+    return {
+      discountPct: current?.discountPct != null ? Number(current.discountPct) : null,
+      fixedAmount: current?.fixedAmount != null ? Number(current.fixedAmount) : null,
+      reason: current?.reason ?? null,
+      effectiveFrom: current?.effectiveFrom ?? null,
+      rows: mapped,
+    };
   }
 
   async upsertStudentFeeOverride(schoolId: string, studentId: string, data: {
     discountPct?: number | null;
     fixedAmount?: number | null;
-    reason?: string;
+    reason?: string | null;
+    effectiveFrom?: string;
   }) {
-    const saved = await this.prisma.studentFeeOverride.upsert({
-      where: { studentId },
-      create: { schoolId, studentId, ...data },
-      update: data,
-    });
-    await this.refreshUnpaidCharges(schoolId, studentId);
+    await this.ensureFeeHistory();
+    const effectiveFrom = this.monthStart(data.effectiveFrom ? new Date(data.effectiveFrom) : this.athensMonthStart());
+    const discountPct = data.discountPct == null || Number.isNaN(Number(data.discountPct)) ? null : Number(data.discountPct);
+    const fixedAmount = data.fixedAmount == null || Number.isNaN(Number(data.fixedAmount)) ? null : Number(data.fixedAmount);
+    const reason = data.reason?.trim() ? data.reason.trim() : null;
+    const rows = await this.prisma.studentFeeOverride.findMany({ where: { schoolId, studentId } });
+    const same = rows.find((row) => row.effectiveFrom && this.monthStart(row.effectiveFrom).getTime() === effectiveFrom.getTime());
+    const saved = same
+      ? await this.prisma.studentFeeOverride.update({
+          where: { id: same.id },
+          data: { discountPct, fixedAmount, reason, effectiveFrom },
+        })
+      : await this.prisma.studentFeeOverride.create({
+          data: { schoolId, studentId, discountPct, fixedAmount, reason, effectiveFrom },
+        });
+    await this.ensureStudentLedger(schoolId, studentId);
     return saved;
   }
 
   async deleteStudentFeeOverride(schoolId: string, studentId: string) {
     const override = await this.prisma.studentFeeOverride.findFirst({ where: { schoolId, studentId } });
     if (!override) throw new NotFoundException('Fee override not found');
-    const deleted = await this.prisma.studentFeeOverride.delete({ where: { studentId } });
-    await this.refreshUnpaidCharges(schoolId, studentId);
-    return deleted;
-  }
-
-  private async refreshUnpaidCharges(schoolId: string, studentId: string) {
-    const unpaid = await this.prisma.monthlyCharge.findMany({
-      where: { schoolId, studentId, status: 'unpaid' },
+    return this.upsertStudentFeeOverride(schoolId, studentId, {
+      discountPct: null,
+      fixedAmount: null,
+      reason: null,
     });
-    for (const charge of unpaid) {
-      await this.generateStudentCharge(schoolId, studentId, charge.month, charge.year);
-    }
   }
 
   private busNet(ss: {
@@ -115,17 +167,18 @@ export class BillingService {
 
   async createSubsidy(schoolId: string, studentId: string, data: {
     name: string; subsidyType: string; monthlyAmount: number;
-    startsFrom?: string; endsAt?: string; notes?: string;
+    startsFrom?: string; endsAt?: string; notes?: string; isActive?: boolean;
   }) {
     const created = await this.prisma.studentSubsidy.create({
       data: {
         schoolId, studentId,
         name: data.name,
-        subsidyType: data.subsidyType,
-        monthlyAmount: data.monthlyAmount,
-        startsFrom: data.startsFrom ? new Date(data.startsFrom) : undefined,
+        subsidyType: data.subsidyType || 'voucher',
+        monthlyAmount: Number(data.monthlyAmount),
+        isActive: data.isActive !== false,
+        startsFrom: this.monthStart(data.startsFrom ? new Date(data.startsFrom) : this.athensMonthStart()),
         endsAt: data.endsAt ? new Date(data.endsAt) : undefined,
-        notes: data.notes,
+        notes: data.notes?.trim() || null,
       },
     });
     await this.ensureStudentLedger(schoolId, studentId);
@@ -138,16 +191,49 @@ export class BillingService {
   }) {
     const sub = await this.prisma.studentSubsidy.findFirst({ where: { id: subsidyId, schoolId } });
     if (!sub) throw new NotFoundException('Subsidy not found');
-    const updated = await this.prisma.studentSubsidy.update({
-      where: { id: subsidyId },
-      data: {
-        ...data,
-        startsFrom: data.startsFrom ? new Date(data.startsFrom) : undefined,
-        endsAt: data.endsAt ? new Date(data.endsAt) : undefined,
-      },
-    });
+    const requested = this.monthStart(data.startsFrom ? new Date(data.startsFrom) : this.athensMonthStart());
+    const fields = {
+      name: data.name?.trim() || sub.name,
+      subsidyType: data.subsidyType || sub.subsidyType,
+      monthlyAmount: data.monthlyAmount != null && !Number.isNaN(Number(data.monthlyAmount))
+        ? Number(data.monthlyAmount)
+        : Number(sub.monthlyAmount),
+      isActive: data.isActive ?? sub.isActive,
+      notes: data.notes !== undefined ? (data.notes?.trim() || null) : sub.notes,
+    };
+    const updated = subsidyRevision(sub.startsFrom, requested) === 'update'
+      ? await this.prisma.studentSubsidy.update({
+          where: { id: subsidyId },
+          data: {
+            ...fields,
+            startsFrom: requested,
+            endsAt: data.endsAt ? new Date(data.endsAt) : sub.endsAt,
+          },
+        })
+      : await this.splitSubsidy(sub, requested, fields, data.endsAt);
     await this.ensureStudentLedger(schoolId, sub.studentId);
     return updated;
+  }
+
+  private async splitSubsidy(
+    sub: { id: string; schoolId: string; studentId: string; endsAt: Date | null },
+    requested: Date,
+    fields: { name: string; subsidyType: string; monthlyAmount: number; isActive: boolean; notes: string | null },
+    endsAt?: string,
+  ) {
+    const end = new Date(requested.getTime() - 24 * 60 * 60 * 1000);
+    if (!sub.endsAt || sub.endsAt >= requested) {
+      await this.prisma.studentSubsidy.update({ where: { id: sub.id }, data: { endsAt: end } });
+    }
+    return this.prisma.studentSubsidy.create({
+      data: {
+        schoolId: sub.schoolId,
+        studentId: sub.studentId,
+        ...fields,
+        startsFrom: requested,
+        endsAt: endsAt ? new Date(endsAt) : null,
+      },
+    });
   }
 
   async deleteSubsidy(schoolId: string, subsidyId: string) {
@@ -254,7 +340,7 @@ export class BillingService {
             activity: { select: { title: true, monthlyCost: true, oneTimeCost: true, startsOn: true, endsOn: true } },
           },
         },
-        feeOverride: true,
+        feeOverrides: true,
         subsidies: true,
       },
     });
@@ -606,7 +692,7 @@ export class BillingService {
     enrollments: { class: { level: { name: string; levelFees: { monthlyFee: unknown; annualFee?: unknown }[] } | null } }[];
     studentServices: { isActive: boolean; enrolledAt: Date; serviceMode?: string | null; discountAmount?: unknown; service: { name?: string; serviceType: string; monthlyCost?: unknown; pickupCost?: unknown; dropoffCost?: unknown } }[];
     activityRegistrations: { activity: { title?: string; monthlyCost?: unknown; startsOn?: Date | null; endsOn?: Date | null } }[];
-    feeOverride: { fixedAmount?: unknown; discountPct?: unknown } | null;
+    feeOverrides: { fixedAmount?: unknown; discountPct?: unknown; effectiveFrom?: Date | null }[];
     subsidies: { name: string; monthlyAmount: unknown; isActive: boolean; startsFrom?: Date | null; endsAt?: Date | null }[];
   }, month: number, year: number) {
     const level = student.enrollments[0]?.class?.level;
@@ -616,10 +702,11 @@ export class BillingService {
       year,
       levelName: level?.name,
       levelMonthly: fee ? Number(fee.monthlyFee) : 0,
-      fixedAmount: student.feeOverride?.fixedAmount != null ? Number(student.feeOverride.fixedAmount) : null,
-      discountPct: student.feeOverride?.fixedAmount == null && student.feeOverride?.discountPct != null
-        ? Number(student.feeOverride.discountPct)
-        : null,
+      feeRules: (student.feeOverrides ?? []).map((row) => ({
+        fixedAmount: row.fixedAmount != null ? Number(row.fixedAmount) : null,
+        discountPct: row.discountPct != null ? Number(row.discountPct) : null,
+        effectiveFrom: row.effectiveFrom,
+      })),
       buses: student.studentServices
         .filter((service) => service.service.serviceType === 'bus')
         .map((service) => ({
@@ -660,7 +747,7 @@ export class BillingService {
           where: { status: { in: ['approved', 'pending'] } },
           include: { activity: { select: { title: true, monthlyCost: true, startsOn: true, endsOn: true } } },
         },
-        feeOverride: true,
+        feeOverrides: true,
         subsidies: true,
         eventEnrollments: {
           include: { event: { select: { id: true, title: true, eventType: true, eventDate: true, costPerChild: true, status: true } } },
@@ -760,15 +847,7 @@ export class BillingService {
     const month = now.getMonth() + 1;
     const year = now.getFullYear();
 
-    // School year months: Sep(9)–Dec of startYear + Jan(1)–Jun(6) of startYear+1
-    const syStartYear = month >= 9 ? year : year - 1;
-    const syMonths: { month: number; year: number }[] = [
-      { month: 9, year: syStartYear }, { month: 10, year: syStartYear },
-      { month: 11, year: syStartYear }, { month: 12, year: syStartYear },
-      { month: 1, year: syStartYear + 1 }, { month: 2, year: syStartYear + 1 },
-      { month: 3, year: syStartYear + 1 }, { month: 4, year: syStartYear + 1 },
-      { month: 5, year: syStartYear + 1 }, { month: 6, year: syStartYear + 1 },
-    ];
+    const syMonths = schoolYearBounds(now).months;
     const syWhere = {
       schoolId,
       OR: syMonths.map(({ month: m, year: y }) => ({ month: m, year: y })),
@@ -804,7 +883,7 @@ export class BillingService {
       totalPaid: Number(totals._sum.paidAmount ?? 0),
       totalSubsidies: Number(totals._sum.subsidyTotal ?? 0),
       studentsOwingThisMonth,
-      schoolYear: `${syStartYear}-${syStartYear + 1}`,
+      schoolYear: schoolYearBounds(now).label,
       sy: {
         totalDue: Number(syTotals._sum.totalDue ?? 0),
         totalPaid: Number(syTotals._sum.paidAmount ?? 0),

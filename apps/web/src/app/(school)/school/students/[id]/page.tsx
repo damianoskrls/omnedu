@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { studentsApi, billingApi, classesApi, activitiesApi, extraServicesApi, medicationRequestsApi, studentFormsApi, broadcastsApi, schoolEventsApi, questionnairesApi } from '@/lib/api';
 import { StudentStatement } from './student-statement';
-import { buildStudentQuoteInput, chargeMatchesQuote, findStationeryCharge, isOpenMonth, quoteStudentMonth, schoolYearMonths, schoolYearOf } from '@/lib/month-quote';
+import { buildStudentQuoteInput, chargeMatchesQuote, currentMonthKey, findStationeryCharge, isOpenMonth, quoteStudentMonth, schoolYearMonths, schoolYearOf } from '@/lib/month-quote';
 import { noteWithoutPayment, payerOptions, paymentNote, PaymentInfo } from '@/lib/payment-note';
 import { PaymentConfirmModal, PaymentPrompt } from '@/components/PaymentConfirmModal';
 import { PaymentDetailsLink } from '@/components/PaymentDetailsLink';
@@ -280,7 +280,8 @@ export default function StudentProfilePage() {
 
   async function alignOpenCharges(pupil: any, classRows: any[], feeRows: any[], subsidyRows: any[], override: any, monthly: any[]) {
     const input = buildStudentQuoteInput(pupil, classRows, feeRows, subsidyRows, override);
-    if (!input.levelMonthly && !input.fixedAmount && input.buses.length === 0 && input.activities.length === 0) {
+    const hasCustomPrice = (input.feeRules ?? []).some((rule: any) => rule?.fixedAmount != null || rule?.discountPct != null);
+    if (!input.levelMonthly && !hasCustomPrice && input.buses.length === 0 && input.activities.length === 0) {
       return monthly;
     }
     const rows = monthly.slice();
@@ -371,19 +372,27 @@ export default function StudentProfilePage() {
     if (!feeForm) return;
     setSavingFee(true);
     try {
+      const effectiveFrom = `${feeForm.from || currentMonthKey()}-01`;
       if (feeForm.mode === 'level') {
-        await billingApi.deleteStudentFee(schoolId, id).catch(() => null);
+        await billingApi.upsertStudentFee(schoolId, id, {
+          discountPct: null,
+          fixedAmount: null,
+          reason: null,
+          effectiveFrom,
+        });
       } else if (feeForm.mode === 'percent') {
         await billingApi.upsertStudentFee(schoolId, id, {
           discountPct: parseFloat(feeForm.percent) || 0,
           fixedAmount: null,
           reason: feeForm.reason || undefined,
+          effectiveFrom,
         });
       } else {
         await billingApi.upsertStudentFee(schoolId, id, {
           fixedAmount: parseFloat(feeForm.fixed) || 0,
           discountPct: null,
           reason: feeForm.reason || undefined,
+          effectiveFrom,
         });
       }
       setFeeForm(null);
@@ -397,10 +406,18 @@ export default function StudentProfilePage() {
     if (!subsidyForm) return;
     setSavingSubsidy(true);
     try {
+      const payload = {
+        name: subsidyForm.name,
+        subsidyType: subsidyForm.subsidyType || 'voucher',
+        monthlyAmount: Number(subsidyForm.monthlyAmount),
+        notes: subsidyForm.notes || '',
+        isActive: subsidyForm.isActive !== false,
+        startsFrom: `${subsidyForm.startsMonth || currentMonthKey()}-01`,
+      };
       if (subsidyForm.id) {
-        await billingApi.updateSubsidy(schoolId, id, subsidyForm.id, subsidyForm);
+        await billingApi.updateSubsidy(schoolId, id, subsidyForm.id, payload);
       } else {
-        await billingApi.createSubsidy(schoolId, id, subsidyForm);
+        await billingApi.createSubsidy(schoolId, id, payload);
       }
       setSubsidyForm(null);
       await loadBillingData();
@@ -1779,7 +1796,7 @@ export default function StudentProfilePage() {
         const curMonth = now.getMonth() + 1;
         const curYear = now.getFullYear();
 
-        // School year for a given month/year (Sep-Jun = same school year)
+        // School year for a given month/year (Sep–Jul = same school year)
         const schoolYearOf = (m: number, y: number) => m >= 9 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
         const currentSY = schoolYearOf(curMonth, curYear);
 
@@ -1792,13 +1809,14 @@ export default function StudentProfilePage() {
         });
         const schoolYears = Array.from(sySet).sort();
 
-        // Months of a school year in order Sep → Jun
+        // Months of a school year in order Sep → Jul
         const monthsOf = (sy: string) => {
           const startY = parseInt(sy.split('-')[0]);
           return [
             {m: 9, y: startY}, {m: 10, y: startY}, {m: 11, y: startY}, {m: 12, y: startY},
             {m: 1, y: startY + 1}, {m: 2, y: startY + 1}, {m: 3, y: startY + 1},
             {m: 4, y: startY + 1}, {m: 5, y: startY + 1}, {m: 6, y: startY + 1},
+            {m: 7, y: startY + 1},
           ];
         };
 
@@ -1985,6 +2003,7 @@ export default function StudentProfilePage() {
                         percent: feeOverride?.discountPct != null ? String(feeOverride.discountPct) : '10',
                         fixed: feeOverride?.fixedAmount != null ? String(feeOverride.fixedAmount) : '',
                         reason: feeOverride?.reason ?? '',
+                        from: currentMonthKey(),
                       })}
                       className="text-sm font-medium text-[#77328D] hover:underline"
                     >
@@ -1992,7 +2011,7 @@ export default function StudentProfilePage() {
                     </button>
                   ) : (
                     <div className="rounded-xl border border-[#e6d0ee] bg-[#faf5fc] p-4 space-y-3">
-                      <p className="text-sm font-medium text-gray-800">Τιμή σχολείου για όλη τη σχολική χρονιά</p>
+                      <p className="text-sm font-medium text-gray-800">Τιμή σχολείου από τον μήνα που διαλέγεις</p>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         {([
                           ['level', 'Τιμή βαθμίδας'],
@@ -2040,7 +2059,16 @@ export default function StudentProfilePage() {
                           className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
                         />
                       )}
-                      <p className="text-xs text-gray-500">Η ρύθμιση ακολουθεί το παιδί σε κάθε μηνιαία χρέωση της χρονιάς. Για αδελφάκι, βάλε την ίδια έκπτωση και στα δύο προφίλ.</p>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Ισχύει από</label>
+                        <input
+                          type="month"
+                          value={feeForm.from || currentMonthKey()}
+                          onChange={e => setFeeForm({ ...feeForm, from: e.target.value })}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <p className="text-xs text-gray-500">Αν την αλλάξεις τον Δεκέμβριο, αλλάζουν ο Δεκέμβριος και οι επόμενοι μήνες. Οι προηγούμενοι και οι ήδη εξοφλημένοι μένουν ως έχουν. Για αδελφάκι, βάλε την ίδια έκπτωση και στα δύο προφίλ.</p>
                       <div className="flex gap-2">
                         <button onClick={() => setFeeForm(null)} className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-600">Ακύρωση</button>
                         <button onClick={handleSaveFee} disabled={savingFee} className="flex-1 py-2 rounded-lg bg-[#77328D] text-white text-sm font-medium disabled:opacity-50">
@@ -2218,11 +2246,11 @@ export default function StudentProfilePage() {
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <h3 className="font-semibold text-gray-900">Επιδοτήσεις / Voucher</h3>
-                    <p className="text-xs text-gray-500 mt-0.5">Αφαιρείται από κάθε ανοιχτό μήνα. Αν βάλεις voucher 300€, ο Οκτώβριος από 515€ γίνεται 215€.</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Μπορείς να αλλάξεις το ποσό, τον τύπο και την τράπεζα. Η αλλαγή πιάνει από τον μήνα που διαλέγεις και οι χρεώσεις ξαναϋπολογίζονται μόνες τους.</p>
                   </div>
                   {subsidyForm === null && (
                     <button
-                      onClick={() => setSubsidyForm({ name: '', subsidyType: 'voucher', monthlyAmount: '', notes: '' })}
+                      onClick={() => setSubsidyForm({ name: '', subsidyType: 'voucher', monthlyAmount: '', notes: '', startsMonth: currentMonthKey() })}
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700"
                     >
                       <Plus className="h-3.5 w-3.5" /> Προσθήκη
@@ -2243,11 +2271,15 @@ export default function StudentProfilePage() {
                             </span>
                             {!sub.isActive && <span className="text-xs text-gray-400">(ανενεργό)</span>}
                           </div>
-                          {sub.notes && <div className="text-xs text-gray-500 mt-0.5">{sub.notes}</div>}
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            {sub.startsFrom ? `από ${new Date(sub.startsFrom).toLocaleDateString('el-GR', { month: 'long', year: 'numeric' })}` : 'από την αρχή'}
+                            {sub.endsAt ? ` έως ${new Date(sub.endsAt).toLocaleDateString('el-GR', { month: 'long', year: 'numeric' })}` : ''}
+                            {sub.notes ? ` · ${sub.notes}` : ''}
+                          </div>
                         </div>
                         <div className="text-emerald-700 font-bold text-sm shrink-0">−€{Number(sub.monthlyAmount).toFixed(0)}/μήνα</div>
                         <div className="flex items-center gap-1">
-                          <button onClick={() => setSubsidyForm({ ...sub, monthlyAmount: String(sub.monthlyAmount) })} className="p-1.5 rounded-lg hover:bg-white text-gray-400 hover:text-gray-600"><Pencil className="h-3.5 w-3.5" /></button>
+                          <button onClick={() => setSubsidyForm({ ...sub, monthlyAmount: String(sub.monthlyAmount), startsMonth: currentMonthKey() })} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-white text-xs font-medium text-[#77328D]"><Pencil className="h-3.5 w-3.5" /> Επεξεργασία</button>
                           <button onClick={() => handleDeleteSubsidy(sub.id)} className="p-1.5 rounded-lg hover:bg-white text-gray-400 hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
                         </div>
                       </div>
@@ -2256,6 +2288,7 @@ export default function StudentProfilePage() {
                 )}
                 {subsidyForm !== null && (
                   <div className="mt-3 border border-indigo-100 rounded-xl p-4 bg-indigo-50/30 space-y-3">
+                    <p className="text-sm font-medium text-gray-800">{subsidyForm.id ? 'Επεξεργασία επιδότησης' : 'Νέα επιδότηση'}</p>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="block text-xs font-medium text-gray-700 mb-1">Τύπος</label>
@@ -2267,6 +2300,10 @@ export default function StudentProfilePage() {
                         <label className="block text-xs font-medium text-gray-700 mb-1">Ποσό/μήνα (€)</label>
                         <input type="number" min="0" step="0.01" value={subsidyForm.monthlyAmount} onChange={e => setSubsidyForm({ ...subsidyForm, monthlyAmount: e.target.value })} placeholder="π.χ. 300" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                       </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Ισχύει από</label>
+                      <input type="month" value={subsidyForm.startsMonth || currentMonthKey()} onChange={e => setSubsidyForm({ ...subsidyForm, startsMonth: e.target.value })} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                     </div>
                     <input value={subsidyForm.name} onChange={e => setSubsidyForm({ ...subsidyForm, name: e.target.value })} placeholder="Φορέας / Περιγραφή (π.χ. ΕΣΠΑ Voucher, Alpha Bank)" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                     <input value={subsidyForm.notes ?? ''} onChange={e => setSubsidyForm({ ...subsidyForm, notes: e.target.value })} placeholder="Σημειώσεις" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />

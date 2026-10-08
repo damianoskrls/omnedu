@@ -20,7 +20,7 @@ function openSchoolMonths(now = new Date()): MonthSlot[] {
   const all: MonthSlot[] = [
     { month: 9, year: start }, { month: 10, year: start }, { month: 11, year: start }, { month: 12, year: start },
     { month: 1, year: start + 1 }, { month: 2, year: start + 1 }, { month: 3, year: start + 1 },
-    { month: 4, year: start + 1 }, { month: 5, year: start + 1 }, { month: 6, year: start + 1 },
+    { month: 4, year: start + 1 }, { month: 5, year: start + 1 }, { month: 6, year: start + 1 }, { month: 7, year: start + 1 },
   ];
   return all.filter((slot) => slot.year < year || (slot.year === year && slot.month <= month));
 }

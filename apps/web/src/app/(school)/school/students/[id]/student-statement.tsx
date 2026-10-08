@@ -106,7 +106,7 @@ export function StudentStatement({
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100 bg-gray-50">
           <h3 className="font-semibold text-gray-900">Σχολικό έτος {statement.schoolYear}</h3>
-          <p className="text-xs text-gray-500">Κάθε μήνας δείχνει φοίτηση, σχολικό και δραστηριότητες που ίσχυαν τότε. Ένα voucher αφαιρείται από τους μήνες που δεν έχουν εξοφληθεί.</p>
+          <p className="text-xs text-gray-500">Κάθε μήνας δείχνει φοίτηση, σχολικό, δραστηριότητες και voucher όπως ίσχυαν τότε. Μια αλλαγή τιμής ή voucher πιάνει από τον μήνα της και μετά.</p>
         </div>
         <div className="divide-y divide-gray-50">
           {(statement.months ?? []).map((month: any) => {

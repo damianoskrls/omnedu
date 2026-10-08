@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-import { buildStudentQuoteInput, findStationeryCharge, isOpenMonth, quoteStudentMonth, schoolYearMonths } from './month-quote';
+import { buildStudentQuoteInput, feeRuleForMonth, findStationeryCharge, isOpenMonth, quoteStudentMonth, schoolYearMonths } from './month-quote';
 
 const now = new Date('2026-10-06T12:00:00Z');
 const student = {
@@ -65,5 +65,17 @@ assert.equal(findStationeryCharge([{ description: 'Γραφική ύλη', charg
 
 const open = schoolYearMonths(now).filter((slot) => isOpenMonth(slot.month, slot.year, now));
 assert.deepEqual(open.map((slot) => slot.month), [9, 10]);
+assert.equal(schoolYearMonths(now).at(-1)?.month, 7);
+
+const dated = buildStudentQuoteInput(student, classes, fees, [], {
+  discountPct: 10,
+  rows: [
+    { discountPct: null, fixedAmount: null, effectiveFrom: null },
+    { discountPct: 10, effectiveFrom: '2026-12-01' },
+  ],
+});
+assert.equal(quoteStudentMonth({ ...dated, month: 11, year: 2026 }).schoolFee, 420);
+assert.equal(quoteStudentMonth({ ...dated, month: 12, year: 2026 }).schoolFee, 378);
+assert.equal(feeRuleForMonth(dated.feeRules, 7, 2027)?.discountPct, 10);
 
 console.log('month quote ok');

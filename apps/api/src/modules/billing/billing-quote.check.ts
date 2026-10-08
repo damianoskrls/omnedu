@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-import { isOpenMonth, quoteStudentMonth, rangeCoversMonth, schoolYearBounds } from './billing-quote';
+import { feeRuleForMonth, isOpenMonth, quoteStudentMonth, rangeCoversMonth, schoolYearBounds, subsidyRevision } from './billing-quote';
 
 const base = {
   levelName: 'Νηπιαγωγείο',
@@ -32,9 +32,28 @@ assert.equal(rangeCoversMonth('2026-10-01', null, 10, 2026), true);
 const now = new Date('2026-10-06T12:00:00Z');
 const year = schoolYearBounds(now);
 assert.equal(year.label, '2026-2027');
+assert.equal(year.months.at(-1)?.month, 7);
+assert.equal(year.months.length, 11);
 assert.deepEqual(
   year.months.filter((month) => isOpenMonth(month.month, month.year, now)).map((month) => month.month),
   [9, 10],
 );
+
+const siblingRules = [{ discountPct: 10, effectiveFrom: '2026-12-01' }];
+assert.equal(quoteStudentMonth({ levelMonthly: 100, month: 11, year: 2026, feeRules: siblingRules }).schoolFee, 100);
+assert.equal(quoteStudentMonth({ levelMonthly: 100, month: 12, year: 2026, feeRules: siblingRules }).schoolFee, 90);
+assert.equal(quoteStudentMonth({ levelMonthly: 100, month: 7, year: 2027, feeRules: siblingRules }).schoolFee, 90);
+assert.equal(feeRuleForMonth([
+  { discountPct: 10, effectiveFrom: null },
+  { fixedAmount: null, discountPct: null, effectiveFrom: '2026-12-01' },
+], 11, 2026)?.discountPct, 10);
+assert.equal(feeRuleForMonth([
+  { discountPct: 10, effectiveFrom: null },
+  { fixedAmount: null, discountPct: null, effectiveFrom: '2026-12-01' },
+], 12, 2026), null);
+assert.equal(subsidyRevision(null, '2026-12-01'), 'split');
+assert.equal(subsidyRevision('2026-09-01', '2026-12-01'), 'split');
+assert.equal(subsidyRevision('2026-12-01', '2026-12-01'), 'update');
+assert.equal(subsidyRevision('2026-12-01', '2026-09-01'), 'update');
 
 console.log('billing quote ok');

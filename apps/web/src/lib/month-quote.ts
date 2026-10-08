@@ -16,6 +16,29 @@ function utcDay(value: Date | string) {
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
 }
 
+export type FeeRule = {
+  fixedAmount?: number | null;
+  discountPct?: number | null;
+  effectiveFrom?: Date | string | null;
+  reason?: string | null;
+};
+
+/** The price rule in force for a month. A later rule replaces earlier ones. A rule with no amount clears the discount. */
+export function feeRuleForMonth(rules: FeeRule[] | null | undefined, month: number, year: number): FeeRule | null {
+  if (!rules?.length) return null;
+  const monthEnd = Date.UTC(year, month, 0);
+  const applicable = rules
+    .filter((rule) => !rule.effectiveFrom || utcDay(rule.effectiveFrom) <= monthEnd)
+    .sort((a, b) => {
+      const ad = a.effectiveFrom ? utcDay(a.effectiveFrom) : Number.NEGATIVE_INFINITY;
+      const bd = b.effectiveFrom ? utcDay(b.effectiveFrom) : Number.NEGATIVE_INFINITY;
+      return bd - ad;
+    });
+  const chosen = applicable[0];
+  if (!chosen || (chosen.fixedAmount == null && chosen.discountPct == null)) return null;
+  return chosen;
+}
+
 /** True when [startsOn, endsOn] overlaps the calendar month. Missing bounds stay open. */
 export function rangeCoversMonth(
   startsOn: Date | string | null | undefined,
@@ -30,19 +53,23 @@ export function rangeCoversMonth(
   return true;
 }
 
+export function currentMonthKey(now = new Date()) {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
 export function schoolYearOf(month: number, year: number) {
   const startYear = month >= 9 ? year : year - 1;
   return { startYear, label: `${startYear}-${startYear + 1}` };
 }
 
-/** September through June of the school year that contains `now`. */
+/** September through July of the school year that contains `now`. */
 export function schoolYearMonths(now = new Date()) {
   const month = now.getMonth() + 1;
   const year = now.getFullYear();
   const { startYear } = schoolYearOf(month, year);
   return [
     ...[9, 10, 11, 12].map((m) => ({ month: m, year: startYear })),
-    ...[1, 2, 3, 4, 5, 6].map((m) => ({ month: m, year: startYear + 1 })),
+    ...[1, 2, 3, 4, 5, 6, 7].map((m) => ({ month: m, year: startYear + 1 })),
   ];
 }
 
@@ -58,6 +85,7 @@ export function quoteStudentMonth(input: {
   levelMonthly?: number | null;
   fixedAmount?: number | null;
   discountPct?: number | null;
+  feeRules?: FeeRule[] | null;
   buses?: { name: string; net: number; isActive?: boolean }[];
   activities?: {
     title: string;
@@ -74,14 +102,21 @@ export function quoteStudentMonth(input: {
   }[];
 }): MonthQuote {
   const levelMonthly = Number(input.levelMonthly ?? 0);
+  const rule = input.feeRules ? feeRuleForMonth(input.feeRules, input.month, input.year) : null;
+  const fixedAmount = input.feeRules
+    ? (rule?.fixedAmount != null ? Number(rule.fixedAmount) : null)
+    : input.fixedAmount;
+  const discountPct = input.feeRules
+    ? (fixedAmount == null && rule?.discountPct != null ? Number(rule.discountPct) : null)
+    : input.discountPct;
   let schoolFee = levelMonthly;
   let schoolLabel = input.levelName ? `Φοίτηση · ${input.levelName}` : 'Φοίτηση';
-  if (input.fixedAmount != null) {
-    schoolFee = Number(input.fixedAmount);
+  if (fixedAmount != null) {
+    schoolFee = Number(fixedAmount);
     schoolLabel = `${schoolLabel} (ειδική τιμή)`;
-  } else if (input.discountPct != null) {
-    schoolFee = round2(levelMonthly * (1 - Number(input.discountPct) / 100));
-    schoolLabel = `${schoolLabel} (−${Number(input.discountPct)}%)`;
+  } else if (discountPct != null) {
+    schoolFee = round2(levelMonthly * (1 - Number(discountPct) / 100));
+    schoolLabel = `${schoolLabel} (−${Number(discountPct)}%)`;
   }
 
   const lines: QuoteLine[] = [];
@@ -149,15 +184,18 @@ export function buildStudentQuoteInput(
     .sort((a, b) => String(b.academicYear ?? '').localeCompare(String(a.academicYear ?? '')));
   const levelMonthly = feeRows[0] ? Number(feeRows[0].monthlyFee) : 0;
   const annualFee = feeRows[0]?.annualFee != null ? Number(feeRows[0].annualFee) : 0;
+  const history = Array.isArray(feeOverride?.rows) ? feeOverride.rows : [];
+  const feeRules = history.length
+    ? history
+    : feeOverride && (feeOverride.fixedAmount != null || feeOverride.discountPct != null)
+      ? [feeOverride]
+      : [];
 
   return {
     levelName: level?.name ?? null,
     levelMonthly,
     annualFee,
-    fixedAmount: feeOverride?.fixedAmount != null ? Number(feeOverride.fixedAmount) : null,
-    discountPct: feeOverride?.fixedAmount == null && feeOverride?.discountPct != null
-      ? Number(feeOverride.discountPct)
-      : null,
+    feeRules,
     buses: (student?.studentServices ?? [])
       .filter((row: any) => row.service?.serviceType === 'bus' && row.isActive !== false)
       .map((row: any) => ({ name: row.service?.name ?? 'Σχολικό', net: busNet(row), isActive: row.isActive !== false })),

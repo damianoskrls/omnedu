@@ -8,6 +8,7 @@ import { payerOptions, paymentNote } from '@/lib/payment-note';
 import { PaymentConfirmModal, PaymentPrompt } from '@/components/PaymentConfirmModal';
 import { PaymentDetailsLink } from '@/components/PaymentDetailsLink';
 import { useStoredUser } from '@/lib/auth';
+import { currentMonthKey } from '@/lib/month-quote';
 import {
   ChevronLeft, ChevronRight, Settings, Zap, Bus, CheckCircle2,
   Clock, AlertCircle, Euro, Plus, Pencil, Trash2, X, Check,
@@ -288,36 +289,55 @@ export default function BillingPage() {
       billingApi.getStudentFee(schoolId, charge.student.id).catch(() => null),
       billingApi.getSubsidies(schoolId, charge.student.id),
     ]);
-    setOverrideData(ov ?? { discountPct: '', fixedAmount: '', reason: '' });
+    const fee = ov as any;
+    setOverrideData({
+      discountPct: fee?.discountPct ?? '',
+      fixedAmount: fee?.fixedAmount ?? '',
+      reason: fee?.reason ?? '',
+      from: currentMonthKey(),
+    });
     setSubsidies(Array.isArray(subs) ? subs : []);
     setSubsidyForm(null);
   }
 
   async function saveOverride() {
-    const d: any = {};
-    if (overrideData.fixedAmount !== '' && overrideData.fixedAmount !== null) {
+    const d: any = { effectiveFrom: `${overrideData.from || currentMonthKey()}-01` };
+    if (overrideData.fixedAmount !== '' && overrideData.fixedAmount !== null && overrideData.fixedAmount !== undefined) {
       d.fixedAmount = parseFloat(overrideData.fixedAmount);
       d.discountPct = null;
-    } else if (overrideData.discountPct !== '' && overrideData.discountPct !== null) {
+    } else if (overrideData.discountPct !== '' && overrideData.discountPct !== null && overrideData.discountPct !== undefined) {
       d.discountPct = parseFloat(overrideData.discountPct);
       d.fixedAmount = null;
+    } else {
+      d.fixedAmount = null;
+      d.discountPct = null;
     }
-    if (overrideData.reason) d.reason = overrideData.reason;
+    d.reason = overrideData.reason || null;
     await billingApi.upsertStudentFee(schoolId, editingOverride.student.id, d);
     setOverrideData(null);
+    await load();
   }
 
   async function removeOverride() {
     await billingApi.deleteStudentFee(schoolId, editingOverride.student.id);
-    setOverrideData({ discountPct: '', fixedAmount: '', reason: '' });
+    setOverrideData({ discountPct: '', fixedAmount: '', reason: '', from: currentMonthKey() });
+    await load();
   }
 
   async function saveSubsidy() {
     if (!subsidyForm) return;
+    const payload = {
+      name: subsidyForm.name,
+      subsidyType: subsidyForm.subsidyType || 'voucher',
+      monthlyAmount: Number(subsidyForm.monthlyAmount),
+      notes: subsidyForm.notes || '',
+      isActive: subsidyForm.isActive !== false,
+      startsFrom: `${subsidyForm.startsMonth || currentMonthKey()}-01`,
+    };
     if (subsidyForm.id) {
-      await billingApi.updateSubsidy(schoolId, editingOverride.student.id, subsidyForm.id, subsidyForm);
+      await billingApi.updateSubsidy(schoolId, editingOverride.student.id, subsidyForm.id, payload);
     } else {
-      await billingApi.createSubsidy(schoolId, editingOverride.student.id, subsidyForm);
+      await billingApi.createSubsidy(schoolId, editingOverride.student.id, payload);
     }
     const subs: any = await billingApi.getSubsidies(schoolId, editingOverride.student.id);
     setSubsidies(Array.isArray(subs) ? subs : []);
@@ -941,7 +961,7 @@ function StudentFeeModal({ charge, overrideData, setOverrideData, subsidies, sub
         <div className="flex-1 overflow-y-auto p-5">
           {innerTab === 'override' && overrideData !== null && (
             <div className="space-y-4">
-              <p className="text-sm text-gray-500">Εφαρμόστε έκπτωση ή ορίστε σταθερό ποσό διδάκτρων για αυτόν τον μαθητή.</p>
+              <p className="text-sm text-gray-500">Έκπτωση ή ειδική τιμή από τον μήνα που διαλέγεις. Οι προηγούμενοι μήνες μένουν ως έχουν.</p>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Σταθερό Ποσό (€) <span className="text-gray-400 font-normal">— αντικαθιστά το ποσό βαθμίδας</span></label>
                 <input
@@ -979,6 +999,15 @@ function StudentFeeModal({ charge, overrideData, setOverrideData, subsidies, sub
                   className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Ισχύει από</label>
+                <input
+                  type="month"
+                  value={overrideData.from || currentMonthKey()}
+                  onChange={e => setOverrideData({ ...overrideData, from: e.target.value })}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                />
+              </div>
               <div className="flex gap-2 pt-2">
                 <button
                   onClick={removeOverride}
@@ -998,7 +1027,7 @@ function StudentFeeModal({ charge, overrideData, setOverrideData, subsidies, sub
 
           {innerTab === 'subsidies' && (
             <div className="space-y-3">
-              <p className="text-sm text-gray-500">Επιδοτήσεις από τράπεζα, voucher ή άλλο φορέα (αφαιρούνται αυτόματα).</p>
+              <p className="text-sm text-gray-500">Τράπεζα, voucher ή άλλος φορέας. Η επεξεργασία αλλάζει τις χρεώσεις από τον μήνα που διαλέγεις.</p>
               {subsidies.map((sub: any) => (
                 <div key={sub.id} className="flex items-start gap-3 p-3 border border-gray-100 rounded-xl">
                   <div className="flex-1 min-w-0">
@@ -1007,7 +1036,7 @@ function StudentFeeModal({ charge, overrideData, setOverrideData, subsidies, sub
                     {sub.notes && <div className="text-xs text-gray-400 mt-0.5">{sub.notes}</div>}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <button onClick={() => setSubsidyForm(sub)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
+                    <button onClick={() => setSubsidyForm({ ...sub, monthlyAmount: String(sub.monthlyAmount), startsMonth: currentMonthKey() })} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
                     <button onClick={() => deleteSubsidy(sub.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500">
@@ -1063,6 +1092,15 @@ function StudentFeeModal({ charge, overrideData, setOverrideData, subsidies, sub
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
                     />
                   </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Ισχύει από</label>
+                    <input
+                      type="month"
+                      value={subsidyForm.startsMonth || currentMonthKey()}
+                      onChange={e => setSubsidyForm({ ...subsidyForm, startsMonth: e.target.value })}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+                    />
+                  </div>
                   <div className="flex gap-2">
                     <button onClick={() => setSubsidyForm(null)} className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
                       Ακύρωση
@@ -1074,7 +1112,7 @@ function StudentFeeModal({ charge, overrideData, setOverrideData, subsidies, sub
                 </div>
               ) : (
                 <button
-                  onClick={() => setSubsidyForm({ name: '', subsidyType: 'bank', monthlyAmount: '', notes: '' })}
+                  onClick={() => setSubsidyForm({ name: '', subsidyType: 'bank', monthlyAmount: '', notes: '', startsMonth: currentMonthKey() })}
                   className="flex items-center gap-2 w-full p-3 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-400 hover:border-indigo-200 hover:text-indigo-500 transition-colors"
                 >
                   <Plus className="h-4 w-4" /> Προσθήκη Επιδότησης
