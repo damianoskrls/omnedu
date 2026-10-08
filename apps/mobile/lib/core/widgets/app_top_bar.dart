@@ -9,6 +9,18 @@ import '../providers/auth_provider.dart';
 import 'person_face.dart';
 
 final shellTabProvider = StateProvider<int>((ref) => 0);
+final shellNavigatorKey = GlobalKey<NavigatorState>();
+
+void closePagesAboveShell(GlobalKey<NavigatorState> rootNavigatorKey) {
+  final shell = shellNavigatorKey.currentState;
+  if (shell != null && shell.canPop()) {
+    shell.popUntil((route) => route.isFirst);
+  }
+  final root = rootNavigatorKey.currentState;
+  if (root != null && root.canPop()) {
+    root.popUntil((route) => route.isFirst);
+  }
+}
 
 class AppTopBar extends ConsumerWidget {
   final GlobalKey<NavigatorState> navigatorKey;
@@ -44,7 +56,7 @@ class AppTopBar extends ConsumerWidget {
 
     void open(int index) {
       HapticFeedback.lightImpact();
-      navigatorKey.currentState?.popUntil((route) => route.isFirst);
+      closePagesAboveShell(navigatorKey);
       ref.read(shellTabProvider.notifier).state = index;
     }
 

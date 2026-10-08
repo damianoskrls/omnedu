@@ -94,48 +94,26 @@ class ChildHubScreen extends StatelessWidget {
       }),
     ];
 
+    final teacherLine = teachers.isEmpty ? '' : 'Εκπαιδευτικός ${teachers.join(', ')}';
+    final classLine = className.isEmpty ? '' : 'Τάξη $className';
+
     return Scaffold(
       backgroundColor: const Color(0xFFF6F3FA),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF77328D),
-        foregroundColor: Colors.white,
-        title: const Text('Παιδί'),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(22),
-            ),
-            child: Column(
-              children: [
-                PersonFace(
-                  name: name,
-                  photoUrl: photo,
-                  size: 84,
-                  radius: 28,
-                  fontSize: 28,
-                  background: const Color(0xFF77328D),
-                  foreground: Colors.white,
-                ),
-                const SizedBox(height: 12),
-                Text(name, textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF2C2422))),
-                if (className.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(className, style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w700)),
-                ],
-                if (teachers.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(teachers.join(', '), textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF6B7280))),
-                ],
-              ],
+      body: CustomScrollView(
+        slivers: [
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: _ChildHeaderDelegate(
+              name: name,
+              photoUrl: photo,
+              classLine: classLine,
+              teacherLine: teacherLine,
             ),
           ),
-          const SizedBox(height: 12),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
           Material(
             color: Colors.white,
             borderRadius: BorderRadius.circular(18),
@@ -183,6 +161,126 @@ class ChildHubScreen extends StatelessWidget {
             crossAxisSpacing: 12,
             childAspectRatio: 1.35,
             children: tiles.map((t) => _TileCard(tile: t)).toList(),
+          ),
+              ]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ChildHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final String name;
+  final String? photoUrl;
+  final String classLine;
+  final String teacherLine;
+
+  const _ChildHeaderDelegate({
+    required this.name,
+    required this.photoUrl,
+    required this.classLine,
+    required this.teacherLine,
+  });
+
+  @override
+  double get minExtent => 64;
+
+  @override
+  double get maxExtent => 188;
+
+  @override
+  bool shouldRebuild(covariant _ChildHeaderDelegate oldDelegate) {
+    return oldDelegate.name != name || oldDelegate.photoUrl != photoUrl || oldDelegate.classLine != classLine || oldDelegate.teacherLine != teacherLine;
+  }
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    final span = maxExtent - minExtent;
+    final t = span <= 0 ? 1.0 : (shrinkOffset / span).clamp(0.0, 1.0);
+    final expandedOpacity = (1 - t * 1.6).clamp(0.0, 1.0);
+    final collapsedOpacity = ((t - 0.35) / 0.65).clamp(0.0, 1.0);
+
+    return ColoredBox(
+      color: const Color(0xFF77328D),
+      child: Stack(
+        children: [
+          IgnorePointer(
+            ignoring: expandedOpacity < 0.2,
+            child: Opacity(
+            opacity: expandedOpacity,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(56, 8, 16, 10),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  PersonFace(
+                    name: name,
+                    photoUrl: photoUrl,
+                    size: 64,
+                    radius: 22,
+                    fontSize: 22,
+                    background: Colors.white,
+                    foreground: const Color(0xFF77328D),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800),
+                  ),
+                  if (classLine.isNotEmpty)
+                    Text(classLine, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
+                  if (teacherLine.isNotEmpty)
+                    Text(teacherLine, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFFF3E8F7), fontSize: 13)),
+                ],
+              ),
+            ),
+          ),
+          ),
+          IgnorePointer(
+            ignoring: collapsedOpacity < 0.2,
+            child: Opacity(
+            opacity: collapsedOpacity,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 52, right: 16),
+                child: Row(
+                  children: [
+                    PersonFace(
+                      name: name,
+                      photoUrl: photoUrl,
+                      size: 36,
+                      radius: 12,
+                      fontSize: 14,
+                      background: Colors.white,
+                      foreground: const Color(0xFF77328D),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+            ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: IconButton(
+              onPressed: () => Navigator.of(context).maybePop(),
+              icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+            ),
           ),
         ],
       ),

@@ -55,6 +55,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/terms', builder: (_, __) => const TermsScreen()),
 
       ShellRoute(
+        navigatorKey: shellNavigatorKey,
         builder: (context, state, child) => child,
         routes: [
           GoRoute(
