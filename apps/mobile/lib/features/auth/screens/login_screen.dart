@@ -53,13 +53,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
-            return SingleChildScrollView(
+            final showCredit = roles == null && !_showOtp;
+            return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight - 64),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
+              child: Column(
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(minHeight: constraints.maxHeight - 64 - (showCredit ? 28 : 0)),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
                 Image.asset(
                   'assets/images/school_logo.png',
                   width: 160,
@@ -78,7 +83,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Text(
-                    'Έκδοση 8 Οκτ 2026 · 6',
+                    'omnedu v. 1.03',
                     style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
                   ),
                 ),
@@ -134,8 +139,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           error: _phoneError ?? authState.error,
                         ),
                 ),
-                  ],
-                ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (showCredit)
+                    const Text(
+                      'Design & Development by Sitelad.gr',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                ],
               ),
             );
           },
