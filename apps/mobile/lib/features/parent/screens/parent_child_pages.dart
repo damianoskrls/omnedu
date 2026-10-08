@@ -681,9 +681,15 @@ class _ClassTeacher {
 List<_ClassTeacher> _teachersOf(dynamic student) {
   if (student is! Map) return [];
   final enrollments = student['enrollments'] as List<dynamic>? ?? [];
+  final current = enrollments.where((enrollment) {
+    if (enrollment is! Map) return false;
+    final year = enrollment['academicYear'];
+    return year is Map && year['isCurrent'] == true;
+  }).toList();
+  final rows = current.isNotEmpty ? current : enrollments;
   final teachers = <_ClassTeacher>[];
   final seen = <String>{};
-  for (final enrollment in enrollments) {
+  for (final enrollment in rows) {
     if (enrollment is! Map) continue;
     final klass = enrollment['class'];
     if (klass is! Map) continue;

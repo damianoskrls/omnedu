@@ -10,30 +10,9 @@ class ParentMessagesScreen extends ConsumerWidget {
 
   Future<Map<String, dynamic>> _contacts(WidgetRef ref) async {
     final dio = ref.read(dioProvider);
-    final childrenResp = await dio.get('/schools/$schoolId/students/my-children');
-    final children = childrenResp.data is List ? childrenResp.data as List : <dynamic>[];
-    final teachers = <Map<String, dynamic>>[];
-    final seen = <String>{};
-    for (final child in children) {
-      if (child is! Map) continue;
-      final studentName = child['fullName'] as String? ?? '';
-      for (final enrollment in (child['enrollments'] as List? ?? [])) {
-        final klass = (enrollment as Map)['class'] as Map?;
-        final className = klass?['name'] as String? ?? '';
-        for (final teacher in (klass?['teachers'] as List? ?? [])) {
-          final user = (teacher as Map)['user'] as Map?;
-          final id = user?['id'] as String?;
-          if (id == null || !seen.add('$id:$studentName')) continue;
-          teachers.add({
-            'id': id,
-            'name': user?['fullName'] ?? 'Δασκάλα',
-            'studentName': studentName,
-            'className': className,
-          });
-        }
-      }
-    }
-    return {'admins': <dynamic>[], 'teachers': teachers};
+    final resp = await dio.get('/schools/$schoolId/conversations/contacts');
+    final data = resp.data is Map ? Map<String, dynamic>.from(resp.data as Map) : <String, dynamic>{};
+    return data;
   }
 
   Future<void> _newMessage(BuildContext context, WidgetRef ref) async {

@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, HttpException, Param, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpException, Param, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -49,6 +49,9 @@ export class MessagesController {
   ) {
     if (body.kind === 'admin' || body.kind === 'teacher') {
       return this.messages.openScoped(schoolId, user.sub, user.role, body.kind, body.withUserId);
+    }
+    if (user.role !== 'school_admin') {
+      throw new ForbiddenException('Η συνομιλία ανοίγει μόνο με τη διαχείριση ή με τη δασκάλα του παιδιού');
     }
     const ids = [...new Set([...(body.participantIds ?? []), user.sub])];
     return this.messages.getOrCreateConversation(schoolId, ids);

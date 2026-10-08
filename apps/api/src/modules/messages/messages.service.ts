@@ -125,7 +125,13 @@ export class MessagesService {
 
   async contacts(userId: string, schoolId: string, role?: string | null) {
     if (role === 'parent') return this.parentContacts(userId, schoolId);
-    if (role === 'teacher') return { admins: [], teachers: [], parents: await this.parentsOfTeacher(userId, schoolId) };
+    if (role === 'teacher') {
+      return {
+        admins: await this.schoolAdmins(schoolId, userId),
+        teachers: [],
+        parents: await this.parentsOfTeacher(userId, schoolId),
+      };
+    }
     if (role === 'school_admin') {
       return { admins: [], teachers: await this.schoolTeachers(schoolId), parents: await this.schoolParents(schoolId) };
     }
@@ -277,10 +283,7 @@ export class MessagesService {
         },
       },
     });
-    const admins = await this.prisma.schoolMember.findMany({
-      where: { schoolId, role: 'school_admin', isActive: true },
-      include: { user: { select: userCard } },
-    });
+    const admins = await this.schoolAdmins(schoolId);
     const teachers: { id: string; name: string; studentId: string; studentName: string; className: string }[] = [];
     const seen = new Set<string>();
     for (const child of children) {
@@ -302,7 +305,7 @@ export class MessagesService {
       }
     }
     return {
-      admins: this.uniquePeople(admins.map((row) => ({ id: row.user.id, name: row.user.fullName }))),
+      admins,
       teachers,
       parents: [],
     };
@@ -360,6 +363,18 @@ export class MessagesService {
     return [...grouped.values()].sort((a, b) => a.name.localeCompare(b.name, 'el'));
   }
 
+  private async schoolAdmins(schoolId: string, exceptUserId?: string) {
+    const admins = await this.prisma.schoolMember.findMany({
+      where: { schoolId, role: 'school_admin', isActive: true },
+      include: { user: { select: userCard } },
+    });
+    return this.uniquePeople(
+      admins
+        .filter((row) => row.user.id !== exceptUserId)
+        .map((row) => ({ id: row.user.id, name: row.user.fullName })),
+    );
+  }
+
   private async adminUserIds(schoolId: string) {
     const admins = await this.prisma.schoolMember.findMany({
       where: { schoolId, role: 'school_admin', isActive: true },
@@ -399,14 +414,23 @@ export class MessagesService {
   }
 
   private async teacherTeachesParentChild(schoolId: string, teacherId: string, parentId: string) {
-    const match = await this.prisma.classEnrollment.findFirst({
-      where: {
-        student: { schoolId, isActive: true, parents: { some: { userId: parentId } } },
-        class: { teachers: { some: { userId: teacherId } } },
-      },
+    const childOf = { schoolId, isActive: true, parents: { some: { userId: parentId } } };
+    const taughtBy = { class: { teachers: { some: { userId: teacherId } } } };
+    const current = await this.prisma.classEnrollment.findFirst({
+      where: { academicYear: { isCurrent: true }, student: childOf, ...taughtBy },
       select: { id: true },
     });
-    return !!match;
+    if (current) return true;
+    const anyCurrent = await this.prisma.classEnrollment.findFirst({
+      where: { academicYear: { isCurrent: true }, student: childOf },
+      select: { id: true },
+    });
+    if (anyCurrent) return false;
+    const earlier = await this.prisma.classEnrollment.findFirst({
+      where: { student: childOf, ...taughtBy },
+      select: { id: true },
+    });
+    return !!earlier;
   }
 
   private async findOrCreate(schoolId: string, userIds: string[]) {

@@ -255,6 +255,7 @@ export class StudentsService {
       include: {
         enrollments: {
           include: {
+            academicYear: { select: { isCurrent: true, label: true } },
             class: {
               select: {
                 id: true,

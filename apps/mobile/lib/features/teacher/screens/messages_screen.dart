@@ -39,27 +39,10 @@ class TeacherMessagesScreen extends ConsumerWidget {
 
   Future<List<Map<String, dynamic>>> _parents(WidgetRef ref) async {
     final dio = ref.read(dioProvider);
-    final details = await ref.read(teacherParentDetailsProvider(schoolId).future);
-    final studentsResp = await dio.get('/schools/$schoolId/students');
-    final students = studentsResp.data is List ? studentsResp.data as List : <dynamic>[];
-    final grouped = <String, Map<String, dynamic>>{};
-    for (final student in students) {
-      if (student is! Map) continue;
-      for (final parent in (student['parents'] as List? ?? [])) {
-        final user = (parent as Map)['user'] as Map?;
-        final id = user?['id'] as String?;
-        if (id == null) continue;
-        grouped.putIfAbsent(id, () => {
-          'id': id,
-          'name': user?['fullName'] ?? 'Γονέας',
-          'students': <String>[],
-        });
-        final label = details[id];
-        final studentsOf = grouped[id]!['students'] as List<String>;
-        if (label != null && !studentsOf.contains(label)) studentsOf.add(label);
-      }
-    }
-    return grouped.values.toList();
+    final resp = await dio.get('/schools/$schoolId/conversations/contacts');
+    final data = resp.data is Map ? Map<String, dynamic>.from(resp.data as Map) : <String, dynamic>{};
+    final parents = data['parents'] as List? ?? [];
+    return parents.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
   }
 
   Future<void> _newMessage(BuildContext context, WidgetRef ref, {required bool asAdmin}) async {
@@ -84,9 +67,31 @@ class TeacherMessagesScreen extends ConsumerWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-                child: Text(asAdmin ? 'Μήνυμα σε γονέα' : 'Γονείς των τάξεών μου', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                child: Text(asAdmin ? 'Μήνυμα σε γονέα' : 'Νέο μήνυμα', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
               ),
-              if (parents.isEmpty)
+              if (!asAdmin)
+                ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Color(0xFFF3E8F7),
+                    child: Icon(Icons.apartment_outlined, color: brandPurple),
+                  ),
+                  title: const Text('Διαχείριση'),
+                  subtitle: const Text('Μήνυμα προς το σχολείο'),
+                  onTap: () => _start(
+                    context,
+                    sheetContext,
+                    ref,
+                    kind: 'admin',
+                    title: 'Διαχείριση',
+                    subtitle: 'Σχολείο',
+                  ),
+                ),
+              if (!asAdmin && parents.isNotEmpty)
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 12, 20, 4),
+                  child: Text('Γονείς της τάξης', style: TextStyle(fontSize: 12, color: Color(0xFF6B7280), fontWeight: FontWeight.w600)),
+                ),
+              if (parents.isEmpty && asAdmin)
                 const Padding(
                   padding: EdgeInsets.all(24),
                   child: Text('Δεν βρέθηκαν γονείς.', style: TextStyle(color: Color(0xFF6B7280))),
@@ -101,7 +106,15 @@ class TeacherMessagesScreen extends ConsumerWidget {
                   ),
                   title: Text(name),
                   subtitle: students.isEmpty ? null : Text(students),
-                  onTap: () => _start(context, sheetContext, ref, asAdmin: asAdmin, parentId: parent['id'] as String?, title: name),
+                  onTap: () => _start(
+                    context,
+                    sheetContext,
+                    ref,
+                    kind: asAdmin ? 'admin' : 'teacher',
+                    withUserId: parent['id'] as String?,
+                    title: name,
+                    subtitle: 'Γονέας',
+                  ),
                 );
               }),
             ],
@@ -115,19 +128,20 @@ class TeacherMessagesScreen extends ConsumerWidget {
     BuildContext context,
     BuildContext sheetContext,
     WidgetRef ref, {
-    required bool asAdmin,
-    required String? parentId,
+    required String kind,
+    String? withUserId,
     required String title,
+    required String subtitle,
   }) async {
     Navigator.pop(sheetContext);
-    if (parentId == null) return;
+    if (kind != 'admin' && withUserId == null) return;
     try {
       final id = await openScopedConversation(
         ref,
         schoolId: schoolId,
-        kind: asAdmin ? 'admin' : 'teacher',
-        withUserId: parentId,
-        participantIds: [userId, parentId],
+        kind: kind,
+        withUserId: withUserId,
+        participantIds: withUserId == null ? null : [userId, withUserId],
       );
       ref.invalidate(conversationsProvider(schoolId));
       if (id == null || !context.mounted) return;
@@ -138,7 +152,7 @@ class TeacherMessagesScreen extends ConsumerWidget {
             schoolId: schoolId,
             convId: id,
             title: title,
-            subtitle: 'Γονέας',
+            subtitle: subtitle,
             currentUserId: userId,
           ),
         ),
@@ -189,7 +203,7 @@ class TeacherMessagesScreen extends ConsumerWidget {
             child: Text(
               asAdmin
                   ? 'Επικοινωνία με τους γονείς. Οι συνομιλίες με τη δασκάλα δεν εμφανίζονται εδώ.'
-                  : 'Μηνύματα από τους γονείς των παιδιών της τάξης σας.',
+                  : 'Μηνύματα προς τη διαχείριση και τους γονείς των παιδιών της τάξης σας.',
               style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13),
             ),
           ),
