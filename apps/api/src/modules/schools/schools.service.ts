@@ -201,19 +201,30 @@ export class SchoolsService implements OnModuleInit {
     if (!school) throw new NotFoundException('School not found');
     await this.copyLegacyRegulations(schoolId);
     const current = await this.currentYearLabel(schoolId);
-    const year = academicYear || current;
-    const row = await this.prisma.schoolRegulation.findUnique({
-      where: { schoolId_academicYear: { schoolId, academicYear: year } },
+    const rows = await this.prisma.schoolRegulation.findMany({
+      where: { schoolId },
+      orderBy: { updatedAt: 'desc' },
     });
-    const pick = (fromYear?: string | null, fromSchool?: string | null) => {
-      if (fromYear?.trim()) return fromYear;
-      if (year === current && fromSchool?.trim()) return fromSchool;
-      return fromYear ?? null;
+    const text = (value?: string | null) => (value?.trim() ? value : null);
+    const fromRows = (field: 'operatingText' | 'financialText', year?: string) => {
+      if (year) return text(rows.find((row) => row.academicYear === year)?.[field]);
+      return text(rows.find((row) => row.academicYear === current)?.[field])
+        ?? rows.map((row) => text(row[field])).find((value) => value)
+        ?? null;
     };
+    const year = (academicYear || '').trim();
+    const useSchool = !year || year === current;
+    const operating = fromRows('operatingText', year || undefined)
+      ?? (useSchool ? text(school.operatingRegulation) : null);
+    const financial = fromRows('financialText', year || undefined)
+      ?? (useSchool ? text(school.financialRegulation) : null);
+    const matchedYear = year
+      || rows.find((row) => text(row.operatingText) || text(row.financialText))?.academicYear
+      || current;
     return {
-      academicYear: year,
-      operatingRegulation: pick(row?.operatingText, school.operatingRegulation),
-      financialRegulation: pick(row?.financialText, school.financialRegulation),
+      academicYear: matchedYear,
+      operatingRegulation: operating,
+      financialRegulation: financial,
     };
   }
 

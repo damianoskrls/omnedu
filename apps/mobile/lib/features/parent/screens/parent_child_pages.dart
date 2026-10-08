@@ -950,42 +950,75 @@ class RegulationsScreen extends ConsumerWidget {
   }
 }
 
+String _regulationYear([DateTime? now]) {
+  final date = now ?? DateTime.now();
+  final start = date.month >= 9 ? date.year : date.year - 1;
+  return '$start-${start + 1}';
+}
+
+String? _regulationText(Map<String, dynamic> row, bool operating) {
+  final keys = operating
+      ? ['operatingRegulation', 'operatingText', 'operating_regulation', 'operating_text']
+      : ['financialRegulation', 'financialText', 'financial_regulation', 'financial_text'];
+  for (final key in keys) {
+    final value = row[key];
+    if (value is String && value.trim().isNotEmpty) return value;
+  }
+  return null;
+}
+
+Map<String, dynamic>? _regulationMap(dynamic data) {
+  if (data is! Map) return null;
+  final row = Map<String, dynamic>.from(data);
+  final inner = row['data'];
+  if (inner is Map && !row.containsKey('operatingRegulation') && !row.containsKey('operatingText')) {
+    return Map<String, dynamic>.from(inner);
+  }
+  return row;
+}
+
 final _regulationsProvider = FutureProvider.family<Map<String, dynamic>, ({String schoolId, String year})>((ref, query) async {
   final dio = ref.read(dioProvider);
   Future<Map<String, dynamic>?> load(String path) async {
     try {
       final resp = await dio.get(path);
-      if (resp.data is Map) return Map<String, dynamic>.from(resp.data as Map);
-    } catch (_) {}
-    return null;
+      return _regulationMap(resp.data);
+    } catch (_) {
+      return null;
+    }
   }
 
-  bool filled(Map<String, dynamic>? row) {
-    final operating = (row?['operatingRegulation'] as String?)?.trim() ?? '';
-    final financial = (row?['financialRegulation'] as String?)?.trim() ?? '';
-    return operating.isNotEmpty || financial.isNotEmpty;
-  }
-
-  final year = query.year.trim();
-  final paths = <String>[
-    if (year.isNotEmpty) '/schools/${query.schoolId}/regulations?academicYear=${Uri.encodeQueryComponent(year)}',
-    '/schools/${query.schoolId}/regulations',
-  ];
-  Map<String, dynamic>? fromYear;
-  for (final path in paths) {
-    final row = await load(path);
-    fromYear ??= row;
-    if (filled(row)) return row!;
-  }
-  final school = await load('/schools/${query.schoolId}');
-  if (filled(school)) {
+  Map<String, dynamic> normalized(Map<String, dynamic> row, String fallbackYear) {
+    final year = row['academicYear']?.toString().trim() ?? '';
     return {
-      'academicYear': fromYear?['academicYear'] ?? (year.isEmpty ? null : year),
-      'operatingRegulation': school?['operatingRegulation'],
-      'financialRegulation': school?['financialRegulation'],
+      'academicYear': year.isEmpty ? fallbackYear : year,
+      'operatingRegulation': _regulationText(row, true),
+      'financialRegulation': _regulationText(row, false),
     };
   }
-  return fromYear ?? {'academicYear': year.isEmpty ? null : year, 'operatingRegulation': null, 'financialRegulation': null};
+
+  bool filled(Map<String, dynamic>? row) =>
+      row != null && (_regulationText(row, true) != null || _regulationText(row, false) != null);
+
+  final asked = query.year.trim();
+  final current = _regulationYear();
+  final previousStart = int.parse(current.split('-').first) - 1;
+  final years = <String>[
+    if (asked.isNotEmpty) asked,
+    current,
+    '$previousStart-${previousStart + 1}',
+  ];
+  final seen = <String>{};
+  for (final year in years) {
+    if (!seen.add(year)) continue;
+    final row = await load('/schools/${query.schoolId}/regulations?academicYear=${Uri.encodeQueryComponent(year)}');
+    if (filled(row)) return normalized(row!, year);
+  }
+  final latest = await load('/schools/${query.schoolId}/regulations');
+  if (filled(latest)) return normalized(latest!, current);
+  final school = await load('/schools/${query.schoolId}');
+  if (filled(school)) return normalized(school!, latest?['academicYear']?.toString() ?? current);
+  return normalized(latest ?? school ?? {}, asked.isEmpty ? current : asked);
 });
 
 class _RegulationBlock extends StatelessWidget {
