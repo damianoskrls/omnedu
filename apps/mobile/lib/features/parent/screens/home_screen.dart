@@ -69,6 +69,7 @@ class HomeScreen extends ConsumerWidget {
         onRefresh: () async {
           ref.invalidate(myChildrenProvider(schoolId));
           ref.invalidate(childDayReportsProvider);
+          ref.invalidate(childReportRangeProvider);
           ref.invalidate(dayHistoryMenuProvider);
           ref.invalidate(_recentPostsProvider(schoolId));
           ref.invalidate(monthThematicProvider(schoolId));

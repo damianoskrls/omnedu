@@ -41,8 +41,18 @@ export class DailyReportsController {
     @CurrentUser() user: JwtPayload,
     @Query('limit') limit?: number,
     @Query('date') date?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
-    return this.reports.findByStudent(studentId, schoolId, limit, user.role === 'parent' ? user.sub : undefined, date);
+    return this.reports.findByStudent(
+      studentId,
+      schoolId,
+      limit,
+      user.role === 'parent' ? user.sub : undefined,
+      date,
+      from,
+      to,
+    );
   }
 
   @Post()

@@ -17,6 +17,17 @@ final childDayReportsProvider =
   },
 );
 
+final childReportRangeProvider = FutureProvider.family<List<dynamic>, ({String schoolId, String studentId, String from, String to})>(
+  (ref, key) async {
+    final dio = ref.read(dioProvider);
+    final resp = await dio.get(
+      '/schools/${key.schoolId}/daily-reports/student/${key.studentId}',
+      queryParameters: {'from': key.from, 'to': key.to},
+    );
+    return resp.data is List ? resp.data as List<dynamic> : [];
+  },
+);
+
 final dayHistoryMenuProvider =
     FutureProvider.family<Map<String, dynamic>?, String>((ref, schoolId) async {
   final dio = ref.read(dioProvider);
@@ -92,7 +103,7 @@ class DayHistoryPanel extends ConsumerWidget {
         daySectionTitle(Icons.history_rounded, 'Πρόσφατες Ενημερώσεις', colors),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-          child: ChildRecentUpdates(schoolId: schoolId, child: child),
+          child: ChildRecentUpdates(schoolId: schoolId, child: child, archive: true),
         ),
         _InstructionsBlock(child: child, colors: colors),
         _EventsBlock(child: child, colors: colors),
@@ -158,42 +169,205 @@ class ChildTodayUpdate extends ConsumerWidget {
   }
 }
 
+DateTime? reportCalendarDay(dynamic raw) {
+  if (raw is! Map) return null;
+  final date = (raw['reportDate']?.toString() ?? '').split('T').first;
+  final parts = date.split('-');
+  if (parts.length != 3) return null;
+  final year = int.tryParse(parts[0]);
+  final month = int.tryParse(parts[1]);
+  final day = int.tryParse(parts[2]);
+  if (year == null || month == null || day == null) return null;
+  return DateTime(year, month, day);
+}
+
+String reportKey(dynamic raw) {
+  if (raw is! Map) return '';
+  final id = raw['id']?.toString() ?? '';
+  if (id.isNotEmpty) return id;
+  return raw['reportDate']?.toString() ?? '';
+}
+
 class ChildRecentUpdates extends ConsumerWidget {
   final String schoolId;
   final Map<String, dynamic> child;
-  const ChildRecentUpdates({super.key, required this.schoolId, required this.child});
+  final bool archive;
+  const ChildRecentUpdates({super.key, required this.schoolId, required this.child, this.archive = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final studentId = child['id'] as String? ?? '';
     final reportsAsync = ref.watch(childDayReportsProvider((schoolId: schoolId, studentId: studentId)));
-    final todayStr = dayHistoryIso(DateTime.now());
+    final today = DateTime.now();
+    final todayDay = DateTime(today.year, today.month, today.day);
+    final weekStart = todayDay.subtract(const Duration(days: 7));
     const colors = dayHistoryColors;
     return reportsAsync.when(
       loading: () => const DayHistoryLoadingCard(),
       error: (_, __) => const SizedBox.shrink(),
       data: (reports) {
-        final recent = reports.where((raw) {
-          final date = raw is Map ? raw['reportDate'] as String? ?? '' : '';
-          return !date.startsWith(todayStr);
-        }).take(10).toList();
-        if (recent.isEmpty) {
-          return DayHistoryEmptyCard('Δεν υπάρχουν προηγούμενες ενημερώσεις', child: child);
+        final earlier = reports.where((raw) {
+          final day = reportCalendarDay(raw);
+          return day != null && day.isBefore(todayDay);
+        }).toList();
+        final recent = archive
+            ? earlier.take(7).toList()
+            : earlier.where((raw) {
+                final day = reportCalendarDay(raw);
+                return day != null && !day.isBefore(weekStart);
+              }).toList();
+        if (recent.isEmpty && !archive) {
+          return DayHistoryEmptyCard('Δεν υπάρχουν ενημερώσεις της τελευταίας εβδομάδας', child: child);
         }
+        final shown = recent.map(reportKey).where((id) => id.isNotEmpty).toSet();
         return Column(
           children: [
-            for (final raw in recent)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: DayDiaryCard(
-                  report: Map<String, dynamic>.from(raw as Map),
-                  colors: colors,
-                  child: child,
+            if (recent.isEmpty)
+              DayHistoryEmptyCard('Δεν υπάρχουν προηγούμενες ενημερώσεις', child: child)
+            else
+              for (final raw in recent)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: DayDiaryCard(
+                    report: Map<String, dynamic>.from(raw as Map),
+                    colors: colors,
+                    child: child,
+                  ),
                 ),
+            if (archive) ...[
+              const SizedBox(height: 4),
+              _ArchiveButton(
+                label: 'Δείτε τις προηγούμενες του μήνα',
+                onTap: () => _openArchive(context, scope: 'month', exclude: shown),
               ),
+              const SizedBox(height: 8),
+              _ArchiveButton(
+                label: 'Δείτε τις προηγούμενες του έτους',
+                onTap: () => _openArchive(context, scope: 'year', exclude: shown),
+              ),
+            ],
           ],
         );
       },
+    );
+  }
+
+  void _openArchive(BuildContext context, {required String scope, required Set<String> exclude}) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => UpdateArchiveScreen(
+          schoolId: schoolId,
+          child: child,
+          scope: scope,
+          exclude: exclude,
+        ),
+      ),
+    );
+  }
+}
+
+class _ArchiveButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  const _ArchiveButton({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton(
+        onPressed: onTap,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: const Color(0xFF77328D),
+          side: const BorderSide(color: Color(0xFF77328D)),
+          minimumSize: const Size.fromHeight(44),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+        child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+      ),
+    );
+  }
+}
+
+class UpdateArchiveScreen extends ConsumerWidget {
+  final String schoolId;
+  final Map<String, dynamic> child;
+  final String scope;
+  final Set<String> exclude;
+  const UpdateArchiveScreen({
+    super.key,
+    required this.schoolId,
+    required this.child,
+    required this.scope,
+    required this.exclude,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final studentId = child['id'] as String? ?? '';
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    late final DateTime from;
+    late final DateTime to;
+    late final String title;
+    if (scope == 'year') {
+      final startYear = now.month >= 9 ? now.year : now.year - 1;
+      from = DateTime(startYear, 9, 1);
+      final yearEnd = DateTime(startYear + 1, 7, 31);
+      to = yesterday.isBefore(yearEnd) ? yesterday : yearEnd;
+      final endShort = ((startYear + 1) % 100).toString().padLeft(2, '0');
+      title = 'Ενημερώσεις $startYear-$endShort';
+    } else {
+      from = DateTime(now.year, now.month, 1);
+      to = yesterday;
+      const months = ['', 'Ιανουαρίου', 'Φεβρουαρίου', 'Μαρτίου', 'Απριλίου', 'Μαΐου', 'Ιουνίου', 'Ιουλίου', 'Αυγούστου', 'Σεπτεμβρίου', 'Οκτωβρίου', 'Νοεμβρίου', 'Δεκεμβρίου'];
+      title = 'Ενημερώσεις ${months[now.month]}';
+    }
+    final range = (schoolId: schoolId, studentId: studentId, from: dayHistoryIso(from), to: dayHistoryIso(to));
+    final reportsAsync = to.isBefore(from) ? null : ref.watch(childReportRangeProvider(range));
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF6F3FA),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xFF77328D),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF2C2422))),
+      ),
+      body: reportsAsync == null
+          ? const Center(child: Text('Δεν υπάρχουν παλαιότερες ενημερώσεις.', style: TextStyle(color: Color(0xFF9CA3AF))))
+          : reportsAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFF77328D))),
+              error: (_, __) => const Center(
+                child: Text('Οι ενημερώσεις δεν φορτώθηκαν.', style: TextStyle(color: Color(0xFF9CA3AF))),
+              ),
+              data: (reports) {
+                final older = reports.where((raw) => !exclude.contains(reportKey(raw))).toList();
+                if (older.isEmpty) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Text(
+                        'Δεν υπάρχουν παλαιότερες ενημερώσεις σε αυτή την περίοδο.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 15),
+                      ),
+                    ),
+                  );
+                }
+                return ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+                  itemCount: older.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (_, index) => DayDiaryCard(
+                    report: Map<String, dynamic>.from(older[index] as Map),
+                    colors: dayHistoryColors,
+                    child: child,
+                  ),
+                );
+              },
+            ),
     );
   }
 }

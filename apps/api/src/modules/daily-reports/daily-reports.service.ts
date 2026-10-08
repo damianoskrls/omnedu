@@ -7,17 +7,39 @@ import { NotificationsService } from '../notifications/notifications.service';
 export class DailyReportsService {
   constructor(private prisma: PrismaService, private notifications: NotificationsService) {}
 
-  async findByStudent(studentId: string, schoolId: string, limit = 30, parentUserId?: string, date?: string) {
+  async findByStudent(
+    studentId: string,
+    schoolId: string,
+    limit = 30,
+    parentUserId?: string,
+    date?: string,
+    from?: string,
+    to?: string,
+  ) {
     if (parentUserId) {
       const link = await this.prisma.studentParent.findFirst({
         where: { studentId, userId: parentUserId, student: { schoolId } },
       });
       if (!link) throw new ForbiddenException('Μπορείτε να δείτε μόνο τα δικά σας παιδιά.');
     }
-    const take = Number(limit) > 0 ? Number(limit) : 30;
-    const where: { studentId: string; schoolId: string; reportDate?: Date } = { studentId, schoolId };
-    if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      where.reportDate = new Date(`${date}T00:00:00.000Z`);
+    const day = (value?: string) => (value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : undefined);
+    const fromDay = day(from);
+    const toDay = day(to);
+    const exactDay = day(date);
+    const ranged = Boolean(fromDay || toDay);
+    const take = ranged ? 400 : (Number(limit) > 0 ? Math.min(Number(limit), 60) : 30);
+    const where: {
+      studentId: string;
+      schoolId: string;
+      reportDate?: Date | { gte?: Date; lte?: Date };
+    } = { studentId, schoolId };
+    if (ranged) {
+      where.reportDate = {
+        ...(fromDay ? { gte: new Date(`${fromDay}T00:00:00.000Z`) } : {}),
+        ...(toDay ? { lte: new Date(`${toDay}T00:00:00.000Z`) } : {}),
+      };
+    } else if (exactDay) {
+      where.reportDate = new Date(`${exactDay}T00:00:00.000Z`);
     }
     return this.prisma.dailyReport.findMany({
       where,
