@@ -53,6 +53,7 @@ export class DailyReportsService {
 
   async upsert(schoolId: string, teacherId: string, dto: CreateDailyReportDto) {
     const reportDate = new Date(dto.reportDate);
+    await this.assertCanReport(schoolId, teacherId, dto.studentId, reportDate);
     const existing = await this.prisma.dailyReport.findUnique({
       where: { studentId_reportDate: { studentId: dto.studentId, reportDate } },
       select: { id: true },
@@ -147,5 +148,28 @@ export class DailyReportsService {
       orderBy: { reportDate: 'desc' },
       take: limit,
     });
+  }
+
+  private async assertCanReport(schoolId: string, teacherId: string, studentId: string, reportDate: Date) {
+    const day = Number.isNaN(reportDate.getTime()) ? '' : reportDate.toISOString().slice(0, 10);
+    const enrollment = await this.prisma.classEnrollment.findFirst({
+      where: { studentId, student: { schoolId, isActive: true }, academicYear: { isCurrent: true } },
+      select: { class: { select: { teachers: { select: { userId: true } } } } },
+    });
+    const teacherIds = enrollment?.class.teachers.map((teacher) => teacher.userId) ?? [];
+    if (teacherIds.includes(teacherId)) return;
+    if (day && teacherIds.length) {
+      const cover = await this.prisma.teacherAbsence.findFirst({
+        where: {
+          schoolId,
+          substituteUserId: teacherId,
+          teacherUserId: { in: teacherIds },
+          date: { gte: new Date(`${day}T00:00:00.000Z`), lte: new Date(`${day}T23:59:59.999Z`) },
+        },
+        select: { id: true },
+      });
+      if (cover) return;
+    }
+    throw new ForbiddenException('Μπορείς να περάσεις ημερήσια ενημέρωση μόνο για τους μαθητές σου ή για την ημέρα που αντικαθιστάς.');
   }
 }

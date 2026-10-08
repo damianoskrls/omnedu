@@ -39,6 +39,25 @@ const ROLE_LABELS: Record<string, string> = {
   school_admin: 'Διευθυντής/Διαχειριστής',
 };
 
+function leaveBalance(entitlement: unknown, requests: any[] | undefined) {
+  const now = new Date();
+  const startYear = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+  const from = `${startYear}-09-01`;
+  const to = `${startYear + 1}-08-31`;
+  const days = (requests ?? [])
+    .filter((row) => row.status === 'approved' && row.leaveType === 'annual')
+    .reduce((sum, row) => sum + overlap(String(row.startDate).slice(0, 10), String(row.endDate).slice(0, 10), from, to), 0);
+  const allowed = Number(entitlement) || 0;
+  return { remaining: allowed - days };
+}
+
+function overlap(start: string, end: string, from: string, to: string) {
+  const a = start > from ? start : from;
+  const b = end < to ? end : to;
+  if (b < a) return 0;
+  return Math.round((new Date(`${b}T00:00:00Z`).getTime() - new Date(`${a}T00:00:00Z`).getTime()) / 86400000) + 1;
+}
+
 function daysDiff(start: string, end: string) {
   const d1 = new Date(start).getTime();
   const d2 = new Date(end).getTime();
@@ -59,6 +78,16 @@ export default function StaffProfilePage() {
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [formError, setFormError] = useState('');
+  const emptySalary = () => ({
+    id: '', month: String(new Date().getMonth() + 1), year: String(new Date().getFullYear()),
+    grossAmount: '', deductions: '0', paidAt: '', notes: '',
+  });
+  const [salaryForm, setSalaryForm] = useState(emptySalary());
+  const [salarySaving, setSalarySaving] = useState(false);
+  const [leaveDays, setLeaveDays] = useState('');
+  const [leaveSaving, setLeaveSaving] = useState(false);
+  const emptyLeave = () => ({ id: '', leaveType: 'annual', startDate: '', endDate: '', notes: '' });
+  const [leaveForm, setLeaveForm] = useState(emptyLeave());
   const [form, setForm] = useState({
     fullName: '', email: '', phone: '', address: '', specialization: '',
     contractType: 'full_time', hireDate: '', bio: '', monthlyGross: '',
@@ -70,6 +99,7 @@ export default function StaffProfilePage() {
     if (!schoolId) return;
     staffApi.get(schoolId, memberId).then((data: any) => {
       setMember(data);
+      setLeaveDays(data?.teacherProfile?.annualLeaveDays != null ? String(data.teacherProfile.annualLeaveDays) : '0');
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [schoolId, memberId]);
@@ -122,9 +152,92 @@ export default function StaffProfilePage() {
     }
   }
 
+  async function reload() {
+    const updated = await staffApi.get(schoolId, memberId) as any;
+    setMember(updated);
+    setLeaveDays(updated?.teacherProfile?.annualLeaveDays != null ? String(updated.teacherProfile.annualLeaveDays) : '0');
+  }
+
+  function errorMessage(error: any, fallback: string) {
+    const message = error?.message;
+    return typeof message === 'string' ? message : fallback;
+  }
+
+  async function saveSalary() {
+    const gross = Number(salaryForm.grossAmount);
+    const deductions = Number(salaryForm.deductions || 0);
+    if (!Number.isFinite(gross)) return;
+    setSalarySaving(true);
+    setFormError('');
+    const payload = {
+      month: Number(salaryForm.month),
+      year: Number(salaryForm.year),
+      grossAmount: gross,
+      deductions,
+      paidAt: salaryForm.paidAt || null,
+      notes: salaryForm.notes,
+    };
+    try {
+      if (salaryForm.id) await staffApi.updateSalary(schoolId, memberId, salaryForm.id, payload);
+      else await staffApi.createSalary(schoolId, memberId, payload);
+      setSalaryForm(emptySalary());
+      await reload();
+    } catch (error: any) {
+      setFormError(errorMessage(error, 'Η μισθοδοσία δεν αποθηκεύτηκε'));
+    } finally {
+      setSalarySaving(false);
+    }
+  }
+
+  async function removeSalary(salaryId: string) {
+    if (!window.confirm('Να διαγραφεί αυτή η μισθοδοσία;')) return;
+    setFormError('');
+    try {
+      await staffApi.deleteSalary(schoolId, memberId, salaryId);
+      await reload();
+    } catch (error: any) {
+      setFormError(errorMessage(error, 'Η διαγραφή δεν ολοκληρώθηκε'));
+    }
+  }
+
+  async function saveEntitlement() {
+    setLeaveSaving(true);
+    setFormError('');
+    try {
+      await staffApi.updateProfile(schoolId, memberId, { annualLeaveDays: Number(leaveDays || 0) });
+      await reload();
+    } catch (error: any) {
+      setFormError(errorMessage(error, 'Οι ημέρες άδειας δεν αποθηκεύτηκαν'));
+    } finally {
+      setLeaveSaving(false);
+    }
+  }
+
+  async function saveLeave() {
+    if (!leaveForm.startDate || !leaveForm.endDate) return;
+    setLeaveSaving(true);
+    setFormError('');
+    const payload = {
+      leaveType: leaveForm.leaveType,
+      startDate: leaveForm.startDate,
+      endDate: leaveForm.endDate,
+      notes: leaveForm.notes,
+    };
+    try {
+      if (leaveForm.id) await staffApi.updateLeave(schoolId, memberId, leaveForm.id, payload);
+      else await staffApi.createLeave(schoolId, memberId, payload);
+      setLeaveForm(emptyLeave());
+      await reload();
+    } catch (error: any) {
+      setFormError(errorMessage(error, 'Η άδεια δεν αποθηκεύτηκε'));
+    } finally {
+      setLeaveSaving(false);
+    }
+  }
+
   async function handleLeaveStatus(leaveId: string, status: string) {
     setApprovingId(leaveId);
-    await staffApi.updateLeave(schoolId, memberId, leaveId, status);
+    await staffApi.updateLeave(schoolId, memberId, leaveId, { status });
     const updated = await staffApi.get(schoolId, memberId) as any;
     setMember(updated);
     setApprovingId(null);
@@ -417,6 +530,38 @@ export default function StaffProfilePage() {
             <StatMini label="Μισθός Brutto" value={profile?.monthlyGross ? `€${Number(profile.monthlyGross).toFixed(0)}/μήνα` : '—'} color="text-emerald-700" />
             <StatMini label="Εγγραφές" value={`${member.teacherProfile?.salaryRecords?.length ?? 0}`} color="text-gray-900" />
           </div>
+          {isAdmin && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+              <label className="text-xs text-gray-500">Μήνας
+                <select value={salaryForm.month} onChange={(event) => setSalaryForm({ ...salaryForm, month: event.target.value })} className="mt-1 w-full border border-gray-200 rounded-lg px-2 py-2 text-sm text-gray-900">
+                  {MONTH_NAMES.slice(1).map((name, index) => <option key={name} value={index + 1}>{name}</option>)}
+                </select>
+              </label>
+              <label className="text-xs text-gray-500">Έτος
+                <input type="number" value={salaryForm.year} onChange={(event) => setSalaryForm({ ...salaryForm, year: event.target.value })} className="mt-1 w-full border border-gray-200 rounded-lg px-2 py-2 text-sm" />
+              </label>
+              <label className="text-xs text-gray-500">Brutto €
+                <input type="number" value={salaryForm.grossAmount} onChange={(event) => setSalaryForm({ ...salaryForm, grossAmount: event.target.value })} className="mt-1 w-full border border-gray-200 rounded-lg px-2 py-2 text-sm" />
+              </label>
+              <label className="text-xs text-gray-500">Κρατήσεις €
+                <input type="number" value={salaryForm.deductions} onChange={(event) => setSalaryForm({ ...salaryForm, deductions: event.target.value })} className="mt-1 w-full border border-gray-200 rounded-lg px-2 py-2 text-sm" />
+              </label>
+              <label className="text-xs text-gray-500">Πληρώθηκε
+                <input type="date" value={salaryForm.paidAt} onChange={(event) => setSalaryForm({ ...salaryForm, paidAt: event.target.value })} className="mt-1 w-full border border-gray-200 rounded-lg px-2 py-2 text-sm" />
+              </label>
+              <label className="text-xs text-gray-500 md:col-span-2">Σημείωση
+                <input value={salaryForm.notes} onChange={(event) => setSalaryForm({ ...salaryForm, notes: event.target.value })} className="mt-1 w-full border border-gray-200 rounded-lg px-2 py-2 text-sm" />
+              </label>
+              <div className="flex items-end gap-2">
+                <button type="button" onClick={saveSalary} disabled={salarySaving || !salaryForm.grossAmount} className="px-3 py-2 rounded-lg bg-[#77328D] text-white text-sm font-semibold disabled:opacity-50">
+                  {salaryForm.id ? 'Αποθήκευση' : 'Προσθήκη'}
+                </button>
+                {salaryForm.id && (
+                  <button type="button" onClick={() => setSalaryForm(emptySalary())} className="px-3 py-2 rounded-lg border text-sm">Άκυρο</button>
+                )}
+              </div>
+            </div>
+          )}
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
             <table className="w-full text-sm">
               <thead>
@@ -425,12 +570,13 @@ export default function StaffProfilePage() {
                   <th className="px-6 py-3 font-medium">Brutto</th>
                   <th className="px-6 py-3 font-medium">Κρατήσεις</th>
                   <th className="px-6 py-3 font-medium">Καθαρά</th>
-                  <th className="px-6 py-3 font-medium rounded-tr-xl">Πληρώθηκε</th>
+                  <th className="px-6 py-3 font-medium">Πληρώθηκε</th>
+                  {isAdmin && <th className="px-6 py-3 font-medium rounded-tr-xl" />}
                 </tr>
               </thead>
               <tbody>
                 {!member.teacherProfile?.salaryRecords?.length ? (
-                  <tr><td colSpan={5} className="px-6 py-10 text-center text-gray-400">Δεν υπάρχουν εγγραφές μισθοδοσίας.</td></tr>
+                  <tr><td colSpan={6} className="px-6 py-10 text-center text-gray-400">Δεν υπάρχουν εγγραφές μισθοδοσίας.</td></tr>
                 ) : member.teacherProfile.salaryRecords.map((r: any) => (
                   <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50">
                     <td className="px-6 py-4 font-medium text-gray-900">{MONTH_NAMES[r.month]} {r.year}</td>
@@ -447,6 +593,20 @@ export default function StaffProfilePage() {
                         <span className="text-amber-600 text-xs font-medium">Εκκρεμεί</span>
                       )}
                     </td>
+                    {isAdmin && (
+                      <td className="px-6 py-4 text-right whitespace-nowrap">
+                        <button type="button" onClick={() => setSalaryForm({
+                          id: r.id,
+                          month: String(r.month),
+                          year: String(r.year),
+                          grossAmount: String(Number(r.grossAmount)),
+                          deductions: String(Number(r.deductions)),
+                          paidAt: r.paidAt ? String(r.paidAt).slice(0, 10) : '',
+                          notes: r.notes ?? '',
+                        })} className="text-xs font-semibold text-[#77328D] mr-3">Επεξεργασία</button>
+                        <button type="button" onClick={() => removeSalary(r.id)} className="text-xs font-semibold text-red-600">Διαγραφή</button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -458,6 +618,31 @@ export default function StaffProfilePage() {
       {/* Tab: Άδειες */}
       {tab === 'leaves' && (
         <div className="space-y-4">
+          {isAdmin && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 space-y-4">
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="text-xs text-gray-500">Ημέρες κανονικής άδειας που δικαιούται
+                  <input type="number" min={0} value={leaveDays} onChange={(event) => setLeaveDays(event.target.value)} className="mt-1 block w-40 border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                </label>
+                <button type="button" onClick={saveEntitlement} disabled={leaveSaving} className="px-3 py-2 rounded-lg bg-[#77328D] text-white text-sm font-semibold disabled:opacity-50">Αποθήκευση δικαιώματος</button>
+                <p className="text-sm text-gray-600">Υπόλοιπο σχολικής χρονιάς: <span className="font-bold text-gray-900">{leaveBalance(member.teacherProfile?.annualLeaveDays, member.teacherProfile?.leaveRequests).remaining}</span> ημέρες</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+                <select value={leaveForm.leaveType} onChange={(event) => setLeaveForm({ ...leaveForm, leaveType: event.target.value })} className="border border-gray-200 rounded-lg px-2 py-2 text-sm">
+                  <option value="annual">Κανονική</option>
+                  <option value="sick">Ασθένεια</option>
+                  <option value="maternity">Μητρότητα</option>
+                  <option value="other">Άλλη</option>
+                </select>
+                <input type="date" value={leaveForm.startDate} onChange={(event) => setLeaveForm({ ...leaveForm, startDate: event.target.value })} className="border border-gray-200 rounded-lg px-2 py-2 text-sm" />
+                <input type="date" value={leaveForm.endDate} onChange={(event) => setLeaveForm({ ...leaveForm, endDate: event.target.value })} className="border border-gray-200 rounded-lg px-2 py-2 text-sm" />
+                <input value={leaveForm.notes} onChange={(event) => setLeaveForm({ ...leaveForm, notes: event.target.value })} placeholder="Σημείωση" className="border border-gray-200 rounded-lg px-2 py-2 text-sm" />
+                <button type="button" onClick={saveLeave} disabled={leaveSaving || !leaveForm.startDate || !leaveForm.endDate} className="px-3 py-2 rounded-lg bg-[#E95926] text-white text-sm font-semibold disabled:opacity-50">
+                  {leaveForm.id ? 'Αποθήκευση άδειας' : 'Προσθήκη άδειας'}
+                </button>
+              </div>
+            </div>
+          )}
           {!member.teacherProfile?.leaveRequests?.length ? (
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-10 text-center text-gray-400">
               <CalendarDays className="h-8 w-8 mx-auto mb-2 text-gray-300" />
@@ -483,22 +668,39 @@ export default function StaffProfilePage() {
                     </div>
                     {leave.notes && <p className="text-sm text-gray-600 mt-1 italic">"{leave.notes}"</p>}
                   </div>
-                  {leave.status === 'pending' && user?.role === 'school_admin' && (
+                  {isAdmin && (
                     <div className="flex gap-2">
                       <button
-                        disabled={approvingId === leave.id}
-                        onClick={() => handleLeaveStatus(leave.id, 'approved')}
-                        className="px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 disabled:opacity-50"
+                        type="button"
+                        onClick={() => setLeaveForm({
+                          id: leave.id,
+                          leaveType: leave.leaveType,
+                          startDate: String(leave.startDate).slice(0, 10),
+                          endDate: String(leave.endDate).slice(0, 10),
+                          notes: leave.notes ?? '',
+                        })}
+                        className="px-3 py-1.5 border text-xs rounded-lg"
                       >
-                        Έγκριση
+                        Επεξεργασία
                       </button>
-                      <button
-                        disabled={approvingId === leave.id}
-                        onClick={() => handleLeaveStatus(leave.id, 'rejected')}
-                        className="px-3 py-1.5 bg-red-100 text-red-700 text-xs rounded-lg hover:bg-red-200 disabled:opacity-50"
-                      >
-                        Απόρριψη
-                      </button>
+                      {leave.status === 'pending' && (
+                        <>
+                          <button
+                            disabled={approvingId === leave.id}
+                            onClick={() => handleLeaveStatus(leave.id, 'approved')}
+                            className="px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 disabled:opacity-50"
+                          >
+                            Έγκριση
+                          </button>
+                          <button
+                            disabled={approvingId === leave.id}
+                            onClick={() => handleLeaveStatus(leave.id, 'rejected')}
+                            className="px-3 py-1.5 bg-red-100 text-red-700 text-xs rounded-lg hover:bg-red-200 disabled:opacity-50"
+                          >
+                            Απόρριψη
+                          </button>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>

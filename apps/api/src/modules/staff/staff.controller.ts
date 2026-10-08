@@ -22,6 +22,21 @@ export class StaffController {
     return this.staff.findAll(schoolId);
   }
 
+  @Get('me/leaves')
+  myLeaves(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
+    return this.staff.myLeaves(schoolId, user.sub);
+  }
+
+  @Post('me/leaves')
+  @Roles('teacher', 'school_admin')
+  createMyLeave(
+    @Param('schoolId') schoolId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { leaveType: string; startDate: string; endDate: string; notes?: string },
+  ) {
+    return this.staff.createMyLeave(schoolId, user.sub, body);
+  }
+
   @Get(':memberId')
   findOne(@Param('schoolId') schoolId: string, @Param('memberId') memberId: string) {
     return this.staff.findOne(memberId, schoolId);
@@ -62,6 +77,27 @@ export class StaffController {
     return this.staff.createSalary(memberId, schoolId, body);
   }
 
+  @Patch(':memberId/salary/:salaryId')
+  @Roles('school_admin')
+  updateSalary(
+    @Param('schoolId') schoolId: string,
+    @Param('memberId') memberId: string,
+    @Param('salaryId') salaryId: string,
+    @Body() body: any,
+  ) {
+    return this.staff.updateSalary(memberId, schoolId, salaryId, body);
+  }
+
+  @Delete(':memberId/salary/:salaryId')
+  @Roles('school_admin')
+  deleteSalary(
+    @Param('schoolId') schoolId: string,
+    @Param('memberId') memberId: string,
+    @Param('salaryId') salaryId: string,
+  ) {
+    return this.staff.deleteSalary(memberId, schoolId, salaryId);
+  }
+
   @Get(':memberId/leaves')
   getLeaves(@Param('schoolId') schoolId: string, @Param('memberId') memberId: string) {
     return this.staff.getLeaves(memberId, schoolId);
@@ -79,11 +115,12 @@ export class StaffController {
   @Patch(':memberId/leaves/:leaveId')
   @Roles('school_admin')
   updateLeave(
+    @Param('schoolId') schoolId: string,
     @Param('leaveId') leaveId: string,
-    @Body() body: { status: string },
+    @Body() body: { status?: string; leaveType?: string; startDate?: string; endDate?: string; notes?: string | null },
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.staff.updateLeaveStatus(leaveId, body.status, user.sub);
+    return this.staff.updateLeave(leaveId, schoolId, body, user.sub);
   }
 
   @Post(':memberId/avatar')

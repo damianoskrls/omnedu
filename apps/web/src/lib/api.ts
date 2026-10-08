@@ -121,7 +121,7 @@ export const schoolsApi = {
     api.delete(`/schools/${id}/holidays/${holidayId}`),
   getTeacherAbsences: (id: string, academicYear?: string) =>
     api.get(`/schools/${id}/teacher-absences`, { params: academicYear ? { academicYear } : {} }),
-  createTeacherAbsence: (id: string, data: { teacherUserId: string; date: string; note?: string; academicYear?: string }) =>
+  createTeacherAbsence: (id: string, data: { teacherUserId: string; date: string; endDate?: string; note?: string; reason?: string; substituteUserId?: string; academicYear?: string }) =>
     api.post(`/schools/${id}/teacher-absences`, data),
   deleteTeacherAbsence: (id: string, absenceId: string) =>
     api.delete(`/schools/${id}/teacher-absences/${absenceId}`),
@@ -482,12 +482,16 @@ export const staffApi = {
     api.get(`/schools/${schoolId}/staff/${memberId}/salary`),
   createSalary: (schoolId: string, memberId: string, data: any) =>
     api.post(`/schools/${schoolId}/staff/${memberId}/salary`, data),
+  updateSalary: (schoolId: string, memberId: string, salaryId: string, data: any) =>
+    api.patch(`/schools/${schoolId}/staff/${memberId}/salary/${salaryId}`, data),
+  deleteSalary: (schoolId: string, memberId: string, salaryId: string) =>
+    api.delete(`/schools/${schoolId}/staff/${memberId}/salary/${salaryId}`),
   getLeaves: (schoolId: string, memberId: string) =>
     api.get(`/schools/${schoolId}/staff/${memberId}/leaves`),
   createLeave: (schoolId: string, memberId: string, data: any) =>
     api.post(`/schools/${schoolId}/staff/${memberId}/leaves`, data),
-  updateLeave: (schoolId: string, memberId: string, leaveId: string, status: string) =>
-    api.patch(`/schools/${schoolId}/staff/${memberId}/leaves/${leaveId}`, { status }),
+  updateLeave: (schoolId: string, memberId: string, leaveId: string, data: any) =>
+    api.patch(`/schools/${schoolId}/staff/${memberId}/leaves/${leaveId}`, data),
 };
 
 export const celebrationsApi = {

@@ -7,6 +7,7 @@ import 'teacher_student_screen.dart';
 import 'teacher_thematic_screen.dart';
 import 'teacher_meetings_screen.dart';
 import 'teacher_notify_screen.dart';
+import 'teacher_leaves_screen.dart';
 
 final _myClassesProvider = FutureProvider.family<List<dynamic>, String>(
   (ref, schoolId) async {
@@ -106,6 +107,18 @@ class _TeacherHomeScreenState extends ConsumerState<TeacherHomeScreen> {
                               'Καλή δύναμη για σήμερα',
                               style: TextStyle(fontSize: 13, color: Colors.white70),
                             ),
+                            const SizedBox(height: 12),
+                            OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.white,
+                                side: const BorderSide(color: Colors.white70),
+                              ),
+                              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                                builder: (_) => TeacherLeavesScreen(schoolId: widget.schoolId),
+                              )),
+                              icon: const Icon(Icons.beach_access_rounded, size: 18),
+                              label: const Text('Άδειες'),
+                            ),
                           ],
                         ),
                       ),
@@ -160,7 +173,7 @@ class _TeacherHomeScreenState extends ConsumerState<TeacherHomeScreen> {
                               ],
                             ),
                             child: Text(
-                              cls['name'] as String,
+                              cls['covering'] is Map ? '${cls['name']} · αντικ.' : cls['name'] as String,
                               style: TextStyle(
                                 color: isSelected ? Colors.white : const Color(0xFF6B7280),
                                 fontWeight: FontWeight.w600,
@@ -175,6 +188,25 @@ class _TeacherHomeScreenState extends ConsumerState<TeacherHomeScreen> {
                 ),
               ],
 
+              if (_selectedClassId != null && _coveringOf(classes, _selectedClassId) != null)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF6EE),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFF3D2C2)),
+                      ),
+                      child: Text(
+                        _coverText(_coveringOf(classes, _selectedClassId)!),
+                        style: const TextStyle(color: Color(0xFF7A3412), height: 1.35, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                ),
               if (_selectedClassId != null)
                 SliverToBoxAdapter(
                   child: Padding(
@@ -240,12 +272,12 @@ class _TeacherHomeScreenState extends ConsumerState<TeacherHomeScreen> {
                 ),
 
               // Students label
-              const SliverToBoxAdapter(
+              SliverToBoxAdapter(
                 child: Padding(
-                  padding: EdgeInsets.fromLTRB(20, 24, 20, 12),
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
                   child: Text(
-                    'Μαθητές',
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF1E1B4B)),
+                    _coveringOf(classes, _selectedClassId) == null ? 'Μαθητές' : 'Μαθητές προς αντικατάσταση σήμερα',
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF1E1B4B)),
                   ),
                 ),
               ),
@@ -273,6 +305,23 @@ class _TeacherHomeScreenState extends ConsumerState<TeacherHomeScreen> {
     );
   }
 
+}
+
+Map<String, dynamic>? _coveringOf(List<dynamic> classes, String? classId) {
+  if (classId == null) return null;
+  for (final raw in classes) {
+    if (raw is! Map || raw['id'] != classId) continue;
+    final covering = raw['covering'];
+    if (covering is Map) return Map<String, dynamic>.from(covering);
+  }
+  return null;
+}
+
+String _coverText(Map<String, dynamic> covering) {
+  final name = covering['teacherName']?.toString() ?? 'εκπαιδευτικό';
+  final reason = covering['reason']?.toString() ?? '';
+  final because = reason.isEmpty ? '' : ' λόγω $reason';
+  return 'Σήμερα αντικαθιστάς τον/την $name$because. Η ημερήσια ενημέρωση αυτών των παιδιών περνάει μόνο για αυτή την ημέρα.';
 }
 
 class _StudentsSliver extends ConsumerWidget {

@@ -20,13 +20,46 @@ export class ClassesService {
   }
 
   async findByTeacher(schoolId: string, teacherUserId: string) {
-    return this.prisma.class.findMany({
+    const include = {
+      _count: { select: { enrollments: true } },
+      academicYear: true,
+    };
+    const own = await this.prisma.class.findMany({
       where: { schoolId, teachers: { some: { userId: teacherUserId } } },
-      include: {
-        _count: { select: { enrollments: true } },
-        academicYear: true,
-      },
+      include,
     });
+    const today = athensToday();
+    const covers = await this.prisma.teacherAbsence.findMany({
+      where: {
+        schoolId,
+        substituteUserId: teacherUserId,
+        date: { gte: new Date(`${today}T00:00:00.000Z`), lte: new Date(`${today}T23:59:59.999Z`) },
+      },
+      include: { teacher: { select: { fullName: true } } },
+    });
+    const absentIds = [...new Set(covers.map((row) => row.teacherUserId))];
+    const covered = absentIds.length
+      ? await this.prisma.class.findMany({
+        where: {
+          schoolId,
+          academicYear: { isCurrent: true },
+          teachers: { some: { userId: { in: absentIds } } },
+        },
+        include: { ...include, teachers: { select: { userId: true } } },
+      })
+      : [];
+    const byId = new Map<string, Record<string, unknown>>();
+    for (const cls of own) byId.set(cls.id, { ...cls, covering: null });
+    for (const cls of covered) {
+      const match = covers.find((row) => cls.teachers.some((teacher) => teacher.userId === row.teacherUserId));
+      const covering = match
+        ? { teacherName: match.teacher.fullName, reason: match.reason || match.note || '', date: today }
+        : null;
+      const existing = byId.get(cls.id);
+      const { teachers: _teachers, ...rest } = cls;
+      byId.set(cls.id, { ...(existing ?? rest), covering: covering ?? (existing?.covering ?? null) });
+    }
+    return [...byId.values()];
   }
 
   async findOne(id: string, schoolId: string) {
@@ -94,4 +127,13 @@ export class ClassesService {
       data: { schoolId, ...data, startsOn: new Date(data.startsOn), endsOn: new Date(data.endsOn) },
     });
   }
+}
+
+function athensToday() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Athens',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
 }

@@ -11,6 +11,7 @@ import '../../features/parent/screens/celebration_detail_screen.dart';
 import '../../features/parent/screens/events_screen.dart';
 import '../../features/parent/screens/school_posts_screen.dart';
 import '../../features/parent/screens/teacher_absences_screen.dart';
+import '../../features/teacher/screens/teacher_leaves_screen.dart';
 import '../../features/parent/screens/parent_meetings_screen.dart';
 import '../../features/parent/screens/billing_screen.dart';
 import '../../features/parent/screens/bulletin_screen.dart';
@@ -319,6 +320,11 @@ Future<void> openNotification(BuildContext context, WidgetRef ref, Map<String, d
     return;
   }
 
+  if (type == 'leave') {
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => TeacherLeavesScreen(schoolId: schoolId)));
+    return;
+  }
+
   if (_isRegulation(notice, data)) {
     await Navigator.push(
       context,
@@ -496,6 +502,7 @@ class InboxScreen extends ConsumerWidget {
     if (type == 'school_event' || type == 'event_post') return Icons.photo_library_rounded;
     if (type == 'school_post') return Icons.newspaper_rounded;
     if (type == 'teacher_absence') return Icons.person_off_rounded;
+    if (type == 'leave') return Icons.beach_access_rounded;
     if (type == 'thematic') return Icons.auto_stories_rounded;
     if (type == 'parent_meeting' || type == 'parent_meeting_request' || type == 'parent_meeting_accepted') {
       return Icons.event_available_rounded;

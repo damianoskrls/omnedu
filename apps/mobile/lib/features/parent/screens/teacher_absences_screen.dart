@@ -78,6 +78,9 @@ class _AbsenceCard extends StatelessWidget {
     final teacher = absence['teacher'];
     final name = teacher is Map ? teacher['fullName']?.toString() ?? 'Εκπαιδευτικός' : 'Εκπαιδευτικός';
     final note = absence['note']?.toString() ?? '';
+    final reason = absence['reason']?.toString() ?? '';
+    final substitute = absence['substitute'];
+    final substituteName = substitute is Map ? substitute['fullName']?.toString() ?? '' : '';
     final mentions = children.map(ChildMention.fromMap).whereType<ChildMention>().toList();
     return Container(
       width: double.infinity,
@@ -97,6 +100,16 @@ class _AbsenceCard extends StatelessWidget {
           const Text('Απουσία εκπαιδευτικού', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF77328D))),
           const SizedBox(height: 4),
           Text('$name · ${_formatDay(absence['date']?.toString())}', style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF2C2422))),
+          if (substituteName.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Αντικατάσταση από $substituteName${reason.isNotEmpty ? ' λόγω $reason' : ''}.',
+              style: const TextStyle(fontSize: 13, height: 1.35, color: Color(0xFF4B5563)),
+            ),
+          ] else if (reason.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text('Λόγος: $reason', style: const TextStyle(fontSize: 13, height: 1.35, color: Color(0xFF4B5563))),
+          ],
           if (note.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(note, style: const TextStyle(fontSize: 13, height: 1.35, color: Color(0xFF4B5563))),

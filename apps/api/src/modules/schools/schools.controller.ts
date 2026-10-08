@@ -103,7 +103,7 @@ export class SchoolsController {
   @Roles('super_admin', 'school_admin')
   createTeacherAbsence(
     @Param('id') id: string,
-    @Body() body: { teacherUserId?: string; date?: string; note?: string; academicYear?: string },
+    @Body() body: { teacherUserId?: string; date?: string; endDate?: string; note?: string; reason?: string; substituteUserId?: string; academicYear?: string },
   ) {
     return this.schools.createTeacherAbsence(id, body);
   }

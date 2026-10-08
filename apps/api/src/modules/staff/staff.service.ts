@@ -1,10 +1,21 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { normalizePhone } from '../auth/phone';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
-export class StaffService {
-  constructor(private prisma: PrismaService) {}
+export class StaffService implements OnModuleInit {
+  constructor(private prisma: PrismaService, private notifications: NotificationsService) {}
+
+  async onModuleInit() {
+    try {
+      await this.prisma.$executeRawUnsafe(
+        `ALTER TABLE "teacher_profiles" ADD COLUMN IF NOT EXISTS "annual_leave_days" INTEGER NOT NULL DEFAULT 0`,
+      );
+    } catch {
+      // The column is also added by migration. A repeat on boot is safe.
+    }
+  }
 
   async findAll(schoolId: string) {
     return this.prisma.schoolMember.findMany({
@@ -54,6 +65,7 @@ export class StaffService {
     contractType?: string | null;
     hireDate?: string | null;
     monthlyGross?: number | string | null;
+    annualLeaveDays?: number | string | null;
     education?: { degree: string; institution: string; year: number }[];
   }) {
     const member = await this.prisma.schoolMember.findFirst({ where: { id: memberId, schoolId } });
@@ -95,6 +107,11 @@ export class StaffService {
         if (!Number.isFinite(amount) || amount < 0) throw new BadRequestException('Ο μισθός δεν είναι έγκυρος');
         profile.monthlyGross = amount;
       }
+    }
+    if (data.annualLeaveDays !== undefined) {
+      const days = Number(data.annualLeaveDays);
+      if (!Number.isInteger(days) || days < 0 || days > 366) throw new BadRequestException('Οι ημέρες άδειας δεν είναι έγκυρες');
+      profile.annualLeaveDays = days;
     }
     if (data.education !== undefined) profile.education = data.education;
 
@@ -150,18 +167,66 @@ export class StaffService {
   }) {
     const profile = await this.getProfileOrThrow(memberId, schoolId);
     const net = data.grossAmount - (data.deductions ?? 0);
-    return this.prisma.salaryRecord.create({
-      data: {
-        teacherProfileId: profile.id,
-        month: data.month,
-        year: data.year,
-        grossAmount: data.grossAmount,
-        deductions: data.deductions ?? 0,
-        netAmount: net,
-        paidAt: data.paidAt ? new Date(data.paidAt) : undefined,
-        notes: data.notes,
-      },
-    });
+    try {
+      return await this.prisma.salaryRecord.create({
+        data: {
+          teacherProfileId: profile.id,
+          month: data.month,
+          year: data.year,
+          grossAmount: data.grossAmount,
+          deductions: data.deductions ?? 0,
+          netAmount: net,
+          paidAt: data.paidAt ? new Date(data.paidAt) : undefined,
+          notes: data.notes,
+        },
+      });
+    } catch (error) {
+      if ((error as { code?: string })?.code === 'P2002') {
+        throw new ConflictException('Υπάρχει ήδη μισθοδοσία για αυτόν τον μήνα. Άνοιξέ την για επεξεργασία.');
+      }
+      throw error;
+    }
+  }
+
+  async updateSalary(memberId: string, schoolId: string, salaryId: string, data: {
+    month?: number; year?: number; grossAmount?: number;
+    deductions?: number; paidAt?: string | null; notes?: string | null;
+  }) {
+    const profile = await this.getProfileOrThrow(memberId, schoolId);
+    const row = await this.prisma.salaryRecord.findFirst({ where: { id: salaryId, teacherProfileId: profile.id } });
+    if (!row) throw new NotFoundException('Η μισθοδοσία δεν βρέθηκε');
+    const gross = data.grossAmount ?? Number(row.grossAmount);
+    const deductions = data.deductions ?? Number(row.deductions);
+    if (!Number.isFinite(gross) || gross < 0 || !Number.isFinite(deductions) || deductions < 0) {
+      throw new BadRequestException('Τα ποσά δεν είναι έγκυρα');
+    }
+    try {
+      return await this.prisma.salaryRecord.update({
+        where: { id: salaryId },
+        data: {
+          month: data.month ?? row.month,
+          year: data.year ?? row.year,
+          grossAmount: gross,
+          deductions,
+          netAmount: gross - deductions,
+          ...(data.paidAt !== undefined ? { paidAt: data.paidAt ? new Date(data.paidAt) : null } : {}),
+          ...(data.notes !== undefined ? { notes: data.notes?.trim() || null } : {}),
+        },
+      });
+    } catch (error) {
+      if ((error as { code?: string })?.code === 'P2002') {
+        throw new ConflictException('Υπάρχει ήδη μισθοδοσία για αυτόν τον μήνα.');
+      }
+      throw error;
+    }
+  }
+
+  async deleteSalary(memberId: string, schoolId: string, salaryId: string) {
+    const profile = await this.getProfileOrThrow(memberId, schoolId);
+    const row = await this.prisma.salaryRecord.findFirst({ where: { id: salaryId, teacherProfileId: profile.id } });
+    if (!row) throw new NotFoundException('Η μισθοδοσία δεν βρέθηκε');
+    await this.prisma.salaryRecord.delete({ where: { id: salaryId } });
+    return { ok: true };
   }
 
   async getLeaves(memberId: string, schoolId: string) {
@@ -176,6 +241,7 @@ export class StaffService {
     leaveType: string; startDate: string; endDate: string; notes?: string;
   }) {
     const profile = await this.getProfileOrThrow(memberId, schoolId);
+    this.assertLeaveInput(data.leaveType, data.startDate, data.endDate);
     return this.prisma.leaveRequest.create({
       data: {
         teacherProfileId: profile.id,
@@ -188,10 +254,73 @@ export class StaffService {
     });
   }
 
-  async updateLeaveStatus(leaveId: string, status: string, approverId: string) {
-    return this.prisma.leaveRequest.update({
+  async updateLeave(leaveId: string, schoolId: string, data: {
+    status?: string;
+    leaveType?: string;
+    startDate?: string;
+    endDate?: string;
+    notes?: string | null;
+  }, approverId: string) {
+    const leave = await this.prisma.leaveRequest.findFirst({
+      where: { id: leaveId, teacherProfile: { schoolMember: { schoolId } } },
+      include: { teacherProfile: { include: { schoolMember: true } } },
+    });
+    if (!leave) throw new NotFoundException('Η άδεια δεν βρέθηκε');
+    const status = data.status ?? leave.status;
+    if (!['pending', 'approved', 'rejected'].includes(status)) throw new BadRequestException('Η κατάσταση δεν είναι έγκυρη');
+    const leaveType = data.leaveType ?? leave.leaveType;
+    if (!['annual', 'sick', 'maternity', 'other'].includes(leaveType)) throw new BadRequestException('Ο τύπος άδειας δεν είναι έγκυρος');
+    const start = data.startDate ? new Date(data.startDate) : leave.startDate;
+    const end = data.endDate ? new Date(data.endDate) : leave.endDate;
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+      throw new BadRequestException('Οι ημερομηνίες της άδειας δεν είναι έγκυρες');
+    }
+    const updated = await this.prisma.leaveRequest.update({
       where: { id: leaveId },
-      data: { status, approvedById: approverId },
+      data: {
+        status,
+        leaveType,
+        startDate: start,
+        endDate: end,
+        ...(data.notes !== undefined ? { notes: data.notes?.trim() || null } : {}),
+        ...(data.status && data.status !== 'pending' ? { approvedById: approverId } : {}),
+      },
+    });
+    if (data.status && data.status !== leave.status && data.status !== 'pending') {
+      const label = data.status === 'approved' ? 'εγκρίθηκε' : 'απορρίφθηκε';
+      await this.notifications.notifyUsers(schoolId, [leave.teacherProfile.schoolMember.userId], {
+        event: 'leave_decision',
+        type: 'leave',
+        title: data.status === 'approved' ? 'Η άδειά σου εγκρίθηκε' : 'Η άδειά σου απορρίφθηκε',
+        body: `Το αίτημα άδειας ${label}.`,
+        data: { screen: 'leaves', leaveId },
+      });
+    }
+    return updated;
+  }
+
+  async myLeaves(schoolId: string, userId: string) {
+    const summary = await this.leaveSummary(schoolId, userId);
+    if (!summary) throw new NotFoundException('Δεν βρέθηκε προφίλ προσωπικού');
+    return summary;
+  }
+
+  async createMyLeave(schoolId: string, userId: string, data: {
+    leaveType: string; startDate: string; endDate: string; notes?: string;
+  }) {
+    const member = await this.memberForUser(schoolId, userId);
+    if (!member) throw new NotFoundException('Δεν βρέθηκε προφίλ προσωπικού');
+    this.assertLeaveInput(data.leaveType, data.startDate, data.endDate);
+    const profile = member.teacherProfile ?? await this.prisma.teacherProfile.create({ data: { schoolMemberId: member.id } });
+    return this.prisma.leaveRequest.create({
+      data: {
+        teacherProfileId: profile.id,
+        leaveType: data.leaveType,
+        startDate: new Date(data.startDate),
+        endDate: new Date(data.endDate),
+        notes: data.notes?.trim() || null,
+        status: 'pending',
+      },
     });
   }
 
@@ -212,6 +341,68 @@ export class StaffService {
     }
     return member.teacherProfile;
   }
+
+  private async memberForUser(schoolId: string, userId: string) {
+    return this.prisma.schoolMember.findFirst({
+      where: { schoolId, userId, isActive: true, role: { in: ['teacher', 'school_admin'] } },
+      include: { teacherProfile: true },
+      orderBy: { role: 'desc' },
+    });
+  }
+
+  private async leaveSummary(schoolId: string, userId: string) {
+    const member = await this.memberForUser(schoolId, userId);
+    if (!member) return null;
+    const profile = member.teacherProfile ?? await this.prisma.teacherProfile.create({ data: { schoolMemberId: member.id } });
+    const requests = await this.prisma.leaveRequest.findMany({
+      where: { teacherProfileId: profile.id },
+      orderBy: { startDate: 'desc' },
+    });
+    const { from, to } = currentSchoolYear();
+    const usedDays = requests
+      .filter((row) => row.status === 'approved' && row.leaveType === 'annual')
+      .reduce((sum, row) => sum + overlapDays(row.startDate, row.endDate, from, to), 0);
+    const pendingDays = requests
+      .filter((row) => row.status === 'pending' && row.leaveType === 'annual')
+      .reduce((sum, row) => sum + overlapDays(row.startDate, row.endDate, from, to), 0);
+    const entitlement = profile.annualLeaveDays ?? 0;
+    return {
+      entitlement,
+      usedDays,
+      pendingDays,
+      remaining: entitlement - usedDays,
+      requests,
+    };
+  }
+
+  private assertLeaveInput(leaveType: string, startDate: string, endDate: string) {
+    if (!['annual', 'sick', 'maternity', 'other'].includes(leaveType)) throw new BadRequestException('Ο τύπος άδειας δεν είναι έγκυρος');
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+      throw new BadRequestException('Οι ημερομηνίες της άδειας δεν είναι έγκυρες');
+    }
+  }
+}
+
+function currentSchoolYear(now = new Date()) {
+  const day = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Athens',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+  const [year, month] = day.split('-').map(Number);
+  const start = month >= 9 ? year : year - 1;
+  return { from: `${start}-09-01`, to: `${start + 1}-08-31` };
+}
+
+function overlapDays(start: Date, end: Date, from: string, to: string) {
+  const a = start.toISOString().slice(0, 10) > from ? start.toISOString().slice(0, 10) : from;
+  const b = end.toISOString().slice(0, 10) < to ? end.toISOString().slice(0, 10) : to;
+  if (b < a) return 0;
+  const ms = new Date(`${b}T00:00:00.000Z`).getTime() - new Date(`${a}T00:00:00.000Z`).getTime();
+  return Math.round(ms / 86400000) + 1;
 }
 
 function blankToNull(value?: string | null) {

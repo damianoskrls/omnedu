@@ -139,7 +139,8 @@ model User {
   uploadedEventMedia       SchoolEventMedia[]
   taughtParentMeetings     ParentMeeting[]       @relation("MeetingTeacher")
   meetingRequests          ParentMeetingRequest[]
-  teacherAbsences          TeacherAbsence[]
+  teacherAbsences          TeacherAbsence[] @relation("AbsenceTeacher")
+  substituteAbsences       TeacherAbsence[] @relation("AbsenceSubstitute")
 
   @@map("users")
 }
@@ -185,8 +186,9 @@ model TeacherProfile {
   education      Json?
   contractType   String?   @default("full_time") @map("contract_type")
   hireDate       DateTime? @map("hire_date") @db.Date
-  monthlyGross   Decimal?  @map("monthly_gross") @db.Decimal(10, 2)
-  createdAt      DateTime  @default(now()) @map("created_at")
+  monthlyGross     Decimal?  @map("monthly_gross") @db.Decimal(10, 2)
+  annualLeaveDays  Int       @default(0) @map("annual_leave_days")
+  createdAt        DateTime  @default(now()) @map("created_at")
 
   schoolMember  SchoolMember   @relation(fields: [schoolMemberId], references: [id], onDelete: Cascade)
   salaryRecords SalaryRecord[]
@@ -1194,19 +1196,23 @@ model SchoolHoliday {
 }
 
 model TeacherAbsence {
-  id            String   @id @default(uuid())
-  schoolId      String   @map("school_id")
-  teacherUserId String   @map("teacher_user_id")
-  date          DateTime @db.Date
-  note          String?
-  academicYear  String   @map("academic_year")
-  createdAt     DateTime @default(now()) @map("created_at")
+  id               String   @id @default(uuid())
+  schoolId         String   @map("school_id")
+  teacherUserId    String   @map("teacher_user_id")
+  date             DateTime @db.Date
+  note             String?
+  reason           String?
+  substituteUserId String?  @map("substitute_user_id")
+  academicYear     String   @map("academic_year")
+  createdAt        DateTime @default(now()) @map("created_at")
 
-  school  School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  teacher User   @relation(fields: [teacherUserId], references: [id], onDelete: Cascade)
+  school     School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  teacher    User   @relation("AbsenceTeacher", fields: [teacherUserId], references: [id], onDelete: Cascade)
+  substitute User?  @relation("AbsenceSubstitute", fields: [substituteUserId], references: [id], onDelete: SetNull)
 
   @@unique([schoolId, teacherUserId, date])
   @@index([schoolId, academicYear])
+  @@index([schoolId, substituteUserId, date])
   @@map("teacher_absences")
 }
 

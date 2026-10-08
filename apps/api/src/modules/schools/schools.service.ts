@@ -289,7 +289,10 @@ export class SchoolsService implements OnModuleInit {
     await this.ensureAbsenceTable();
     const rows = await this.prisma.teacherAbsence.findMany({
       where: { schoolId, ...(academicYear ? { academicYear } : {}) },
-      include: { teacher: { select: { id: true, fullName: true, avatarUrl: true } } },
+      include: {
+        teacher: { select: { id: true, fullName: true, avatarUrl: true } },
+        substitute: { select: { id: true, fullName: true, avatarUrl: true } },
+      },
       orderBy: { date: 'asc' },
     });
     if (user.isSuperAdmin || user.role === 'school_admin' || user.role === 'teacher') return rows;
@@ -299,37 +302,85 @@ export class SchoolsService implements OnModuleInit {
 
   async createTeacherAbsence(
     schoolId: string,
-    data: { teacherUserId?: string; date?: string; note?: string; academicYear?: string },
+    data: {
+      teacherUserId?: string;
+      date?: string;
+      endDate?: string;
+      note?: string;
+      reason?: string;
+      substituteUserId?: string;
+      academicYear?: string;
+    },
   ) {
     await this.ensureAbsenceTable();
     const teacherUserId = String(data.teacherUserId ?? '').trim();
     const day = String(data.date ?? '').slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new BadRequestException('Διάλεξε ημερομηνία.');
+    const end = String(data.endDate ?? '').slice(0, 10) || day;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || end < day) {
+      throw new BadRequestException('Διάλεξε έγκυρες ημερομηνίες.');
+    }
+    const days = eachAbsenceDay(day, end);
+    if (days.length > 62) throw new BadRequestException('Η απουσία δεν μπορεί να ξεπερνά τους δύο μήνες.');
     const member = await this.prisma.schoolMember.findFirst({
       where: { schoolId, userId: teacherUserId, role: 'teacher', isActive: true },
       include: { user: { select: { fullName: true } } },
     });
     if (!member) throw new BadRequestException('Διάλεξε εκπαιδευτικό του σχολείου.');
+    const substituteUserId = String(data.substituteUserId ?? '').trim();
+    let substituteName = '';
+    if (substituteUserId) {
+      if (substituteUserId === teacherUserId) throw new BadRequestException('Ο αντικαταστάτης πρέπει να είναι άλλος εκπαιδευτικός.');
+      const substitute = await this.prisma.schoolMember.findFirst({
+        where: { schoolId, userId: substituteUserId, role: 'teacher', isActive: true },
+        include: { user: { select: { fullName: true } } },
+      });
+      if (!substitute) throw new BadRequestException('Διάλεξε εκπαιδευτικό για αντικατάσταση.');
+      substituteName = substitute.user.fullName;
+    }
     const academicYear = String(data.academicYear ?? '').trim() || this.yearForDay(day);
     const note = String(data.note ?? '').trim();
-    try {
-      const created = await this.prisma.teacherAbsence.create({
-        data: {
+    const reason = String(data.reason ?? '').trim();
+    const saved = [];
+    for (const current of days) {
+      saved.push(await this.prisma.teacherAbsence.upsert({
+        where: {
+          schoolId_teacherUserId_date: {
+            schoolId,
+            teacherUserId,
+            date: new Date(`${current}T12:00:00.000Z`),
+          },
+        },
+        create: {
           schoolId,
           teacherUserId,
-          date: new Date(`${day}T12:00:00.000Z`),
+          date: new Date(`${current}T12:00:00.000Z`),
           note: note || null,
+          reason: reason || null,
+          substituteUserId: substituteUserId || null,
           academicYear,
         },
-        include: { teacher: { select: { id: true, fullName: true, avatarUrl: true } } },
-      });
-      await this.notifyTeacherAbsence(schoolId, created.id, teacherUserId, member.user.fullName, day, note);
-      return created;
-    } catch (error) {
-      const code = (error as { code?: string })?.code;
-      if (code === 'P2002') throw new ConflictException('Η απουσία αυτού του εκπαιδευτικού είναι ήδη καταχωρημένη για αυτή την ημέρα.');
-      throw error;
+        update: {
+          note: note || null,
+          reason: reason || null,
+          substituteUserId: substituteUserId || null,
+          academicYear,
+        },
+        include: {
+          teacher: { select: { id: true, fullName: true, avatarUrl: true } },
+          substitute: { select: { id: true, fullName: true, avatarUrl: true } },
+        },
+      }));
     }
+    await this.notifyTeacherAbsence(
+      schoolId,
+      saved[0].id,
+      teacherUserId,
+      member.user.fullName,
+      days,
+      reason || note,
+      substituteName,
+    );
+    return saved.length === 1 ? saved[0] : saved;
   }
 
   async deleteTeacherAbsence(schoolId: string, absenceId: string) {
@@ -339,7 +390,15 @@ export class SchoolsService implements OnModuleInit {
     return this.prisma.teacherAbsence.delete({ where: { id: absenceId } });
   }
 
-  private async notifyTeacherAbsence(schoolId: string, absenceId: string, teacherUserId: string, teacherName: string, day: string, note: string) {
+  private async notifyTeacherAbsence(
+    schoolId: string,
+    absenceId: string,
+    teacherUserId: string,
+    teacherName: string,
+    days: string[],
+    reason: string,
+    substituteName: string,
+  ) {
     const classes = await this.prisma.classTeacher.findMany({
       where: { userId: teacherUserId, class: { schoolId } },
       select: { classId: true },
@@ -355,15 +414,18 @@ export class SchoolsService implements OnModuleInit {
       },
       select: { userId: true },
     });
-    const [year, month, date] = day.split('-');
-    const label = `${date}/${month}/${year}`;
-    const body = [`${teacherName} θα απουσιάσει στις ${label}.`, note].filter(Boolean).join(' ').slice(0, 180);
+    const when = absenceWhen(days);
+    const because = reason ? ` λόγω ${reason}` : '';
+    const body = (substituteName
+      ? `${when} θα αντικατασταθεί ο/η ${teacherName} από τον/την ${substituteName}${because}.`
+      : `${when} θα απουσιάσει ο/η ${teacherName}${because}.`
+    ).slice(0, 220);
     await this.notifications.notifyUsers(schoolId, parents.map((parent) => parent.userId), {
       event: 'teacher_absence',
       type: 'teacher_absence',
       title: 'Απουσία εκπαιδευτικού',
       body,
-      data: { screen: 'absences', absenceId, teacherUserId, date: day },
+      data: { screen: 'absences', absenceId, teacherUserId, date: days[0] },
     });
   }
 
@@ -401,6 +463,9 @@ export class SchoolsService implements OnModuleInit {
       )`,
       `CREATE UNIQUE INDEX IF NOT EXISTS "teacher_absences_school_id_teacher_user_id_date_key" ON "teacher_absences"("school_id", "teacher_user_id", "date")`,
       `CREATE INDEX IF NOT EXISTS "teacher_absences_school_id_academic_year_idx" ON "teacher_absences"("school_id", "academic_year")`,
+      `ALTER TABLE "teacher_absences" ADD COLUMN IF NOT EXISTS "reason" TEXT`,
+      `ALTER TABLE "teacher_absences" ADD COLUMN IF NOT EXISTS "substitute_user_id" TEXT`,
+      `CREATE INDEX IF NOT EXISTS "teacher_absences_school_id_substitute_user_id_date_idx" ON "teacher_absences"("school_id", "substitute_user_id", "date")`,
     ];
     for (const sql of statements) {
       try {
@@ -411,4 +476,42 @@ export class SchoolsService implements OnModuleInit {
       }
     }
   }
+}
+
+function eachAbsenceDay(start: string, end: string) {
+  const days: string[] = [];
+  const cursor = new Date(`${start}T12:00:00.000Z`);
+  const last = new Date(`${end}T12:00:00.000Z`);
+  while (cursor.getTime() <= last.getTime()) {
+    days.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return days;
+}
+
+function athensToday() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Athens',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
+function greekDay(day: string) {
+  const [year, month, date] = day.split('-');
+  return `${date}/${month}/${year}`;
+}
+
+function absenceWhen(days: string[]) {
+  const today = athensToday();
+  const tomorrowDate = new Date(`${today}T12:00:00.000Z`);
+  tomorrowDate.setUTCDate(tomorrowDate.getUTCDate() + 1);
+  const tomorrow = tomorrowDate.toISOString().slice(0, 10);
+  if (days.length === 1) {
+    if (days[0] === today) return 'Σήμερα';
+    if (days[0] === tomorrow) return 'Αύριο';
+    return `Στις ${greekDay(days[0])}`;
+  }
+  return `Από ${greekDay(days[0])} έως ${greekDay(days[days.length - 1])}`;
 }
