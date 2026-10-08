@@ -18,8 +18,8 @@
                         <subviews>
                             <imageView opaque="NO" clipsSubviews="YES" multipleTouchEnabled="YES" contentMode="scaleAspectFit" image="LaunchImage" translatesAutoresizingMaskIntoConstraints="NO" id="YRO-k0-Ey4">
                                 <constraints>
-                                    <constraint firstAttribute="width" constant="160" id="logo-w"/>
-                                    <constraint firstAttribute="height" constant="160" id="logo-h"/>
+                                    <constraint firstAttribute="width" constant="240" id="logo-w"/>
+                                    <constraint firstAttribute="height" constant="240" id="logo-h"/>
                                 </constraints>
                             </imageView>
                         </subviews>
