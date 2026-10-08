@@ -102,17 +102,28 @@ export default function MessagesPage() {
     }
   };
 
-  const titleOf = (convo: Conversation) => {
+  const peopleOf = (convo: Conversation) => {
     const people = others(convo, user?.id);
     const parentPeople = people.filter((person) => person.schoolMemberships?.some((row) => row.role === 'parent'));
     const named = parentPeople.length ? parentPeople : people.filter((person) => !person.schoolMemberships?.some((row) => row.role === 'school_admin'));
-    return named.map((person) => person.fullName).join(', ') || 'Συνομιλία';
+    return named.length ? named : people;
+  };
+  const titleOf = (convo: Conversation) => peopleOf(convo).map((person) => person.fullName).join(', ') || 'Συνομιλία';
+  const tagsOf = (convo: Conversation) => {
+    const tags = new Set<string>();
+    for (const person of peopleOf(convo)) {
+      const roles = new Set((person.schoolMemberships ?? []).map((row) => row.role));
+      if (roles.has('parent') || parents.some((parent) => parent.id === person.id)) tags.add('Γονέας');
+      if (roles.has('teacher') || teachers.some((teacher) => teacher.id === person.id)) tags.add('Εκπαιδευτικός');
+      if (roles.has('school_admin') && !tags.has('Γονέας') && !tags.has('Εκπαιδευτικός')) tags.add('Διαχειριστής');
+    }
+    return ['Γονέας', 'Εκπαιδευτικός', 'Διαχειριστής'].filter((tag) => tags.has(tag));
   };
   const needle = query.trim().toLowerCase();
   const matches = (name: string, extra = '') => !needle || `${name} ${extra}`.toLowerCase().includes(needle);
   const visibleParents = parents.filter((parent) => matches(parent.name, parent.students?.join(' ') ?? ''));
   const visibleTeachers = teachers.filter((teacher) => matches(teacher.name));
-  const visibleConvos = convos.filter((convo) => matches(titleOf(convo)));
+  const visibleConvos = convos.filter((convo) => matches(titleOf(convo), tagsOf(convo).join(' ')));
   const active = convos.find((row) => row.id === activeId);
 
   return (
@@ -173,7 +184,10 @@ export default function MessagesPage() {
                   return (
                     <button key={convo.id} onClick={() => openConversation(convo.id)} className={`flex w-full items-center gap-2 px-4 py-3 text-left ${activeId === convo.id ? 'bg-[#faf5fc]' : 'hover:bg-gray-50'}`}>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-semibold text-gray-900">{titleOf(convo)}</span>
+                        <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+                          <span className="truncate text-sm font-semibold text-gray-900">{titleOf(convo)}</span>
+                          {tagsOf(convo).map((tag) => <RoleTag key={tag} tag={tag} />)}
+                        </span>
                         <span className="block truncate text-xs text-gray-500">{preview}</span>
                       </span>
                       {convo.unread && (
@@ -191,7 +205,10 @@ export default function MessagesPage() {
             <div className="flex flex-1 items-center justify-center text-sm text-gray-400">Διάλεξε μια συνομιλία</div>
           ) : (
             <>
-              <div className="border-b border-gray-100 px-5 py-3 font-semibold text-gray-900">{titleOf(active)}</div>
+              <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-5 py-3 font-semibold text-gray-900">
+                <span className="truncate">{titleOf(active)}</span>
+                {tagsOf(active).map((tag) => <RoleTag key={tag} tag={tag} />)}
+              </div>
               <div className="flex-1 space-y-2 overflow-y-auto px-5 py-4">
                 {messages.map((message) => {
                   const mine = message.senderId === user?.id;
@@ -264,6 +281,17 @@ export default function MessagesPage() {
       </div>
     </div>
   );
+}
+
+function RoleTag({ tag }: { tag: string }) {
+  const teacher = tag === 'Εκπαιδευτικός';
+  const admin = tag === 'Διαχειριστής';
+  const tone = teacher
+    ? 'bg-[#fff1ec] text-[#E95926]'
+    : admin
+      ? 'bg-gray-100 text-gray-600'
+      : 'bg-[#f3e8f7] text-[#77328D]';
+  return <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${tone}`}>{tag}</span>;
 }
 
 function others(convo: Conversation, userId?: string) {
