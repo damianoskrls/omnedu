@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
@@ -59,6 +61,7 @@ class HomeScreen extends ConsumerWidget {
     final absencesAsync = ref.watch(teacherAbsencesProvider(schoolId));
     final user = ref.watch(authProvider).user;
     final firstName = user?.fullName.split(' ').first ?? '';
+    final cards = _childMaps(childrenAsync.asData?.value ?? const []);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF6F3FA),
@@ -121,7 +124,10 @@ class HomeScreen extends ConsumerWidget {
             ),
 
             SliverToBoxAdapter(
-              child: AbsenceHomeNotice(absences: absencesAsync.asData?.value ?? const []),
+              child: AbsenceHomeNotice(
+                absences: absencesAsync.asData?.value ?? const [],
+                children: cards,
+              ),
             ),
 
             SliverToBoxAdapter(
@@ -143,7 +149,6 @@ class HomeScreen extends ConsumerWidget {
                   }
                   final plans = thematicAsync.asData?.value ?? const [];
                   final meetings = meetingsAsync.asData?.value ?? const [];
-                  final cards = children.map((raw) => Map<String, dynamic>.from(raw as Map)).toList();
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -168,20 +173,12 @@ class HomeScreen extends ConsumerWidget {
                         ),
                       ),
                       for (var i = 0; i < cards.length; i++) ...[
-                        if (cards.length > 1)
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 22, 20, 0),
-                            child: Text(
-                              cards[i]['fullName']?.toString() ?? '',
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF2C2422)),
-                            ),
-                          ),
                         DayHistoryPanel(
                           schoolId: schoolId,
                           child: cards[i],
-                          showMenu: i == 0,
                         ),
                         _HomeExtras(
+                          child: cards[i],
                           thematic: _thematicFor(plans, cards[i]),
                           meeting: acceptedMeetingFor(meetings, cards[i]['id']?.toString()),
                         ),
@@ -224,10 +221,14 @@ class HomeScreen extends ConsumerWidget {
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: Column(
-                          children: posts.map((p) => _PostMini(
-                            post: p as Map<String, dynamic>,
-                            schoolId: schoolId,
-                          )).toList(),
+                          children: posts.map((p) {
+                            final post = Map<String, dynamic>.from(p as Map);
+                            return _PostMini(
+                              post: post,
+                              schoolId: schoolId,
+                              children: _childrenForPost(cards, post),
+                            );
+                          }).toList(),
                         ),
                       ),
                     ],
@@ -242,6 +243,41 @@ class HomeScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+List<Map<String, dynamic>> _childMaps(List<dynamic> children) {
+  return children.whereType<Map>().map((raw) => Map<String, dynamic>.from(raw)).toList();
+}
+
+Map<String, dynamic>? _classOf(Map<String, dynamic> child) {
+  final enrollments = child['enrollments'] as List? ?? [];
+  if (enrollments.isEmpty || enrollments.first is! Map) return null;
+  final klass = enrollments.first['class'];
+  return klass is Map ? Map<String, dynamic>.from(klass) : null;
+}
+
+List<String> _audienceIds(dynamic raw) {
+  if (raw is List) return raw.map((item) => item.toString()).where((item) => item.isNotEmpty).toList();
+  if (raw is! String || raw.trim().isEmpty) return const [];
+  try {
+    final parsed = jsonDecode(raw);
+    if (parsed is List) return parsed.map((item) => item.toString()).where((item) => item.isNotEmpty).toList();
+  } catch (_) {}
+  return const [];
+}
+
+List<Map<String, dynamic>> _childrenForPost(List<Map<String, dynamic>> children, Map<String, dynamic> post) {
+  final type = post['audienceType']?.toString() ?? 'all';
+  if (type == 'teachers') return const [];
+  if (type != 'class' && type != 'level') return children;
+  final ids = _audienceIds(post['audienceIds']).toSet();
+  if (ids.isEmpty) return children;
+  return children.where((child) {
+    final klass = _classOf(child);
+    if (klass == null) return false;
+    final key = type == 'level' ? klass['levelId']?.toString() : klass['id']?.toString();
+    return key != null && ids.contains(key);
+  }).toList();
 }
 
 Map<String, dynamic>? _thematicFor(List<dynamic> plans, Map<String, dynamic> child) {
@@ -317,9 +353,10 @@ class _ChildEntryCard extends StatelessWidget {
 }
 
 class _HomeExtras extends StatelessWidget {
+  final Map<String, dynamic> child;
   final Map<String, dynamic>? thematic;
   final Map<String, dynamic>? meeting;
-  const _HomeExtras({required this.thematic, required this.meeting});
+  const _HomeExtras({required this.child, required this.thematic, required this.meeting});
 
   @override
   Widget build(BuildContext context) {
@@ -335,18 +372,21 @@ class _HomeExtras extends StatelessWidget {
               Icons.event_available_rounded,
               'Επερχόμενη συνάντηση',
               '${meetingDay(meeting!['meetingDate'])} στις ${meeting!['acceptedSlot'] ?? ''}',
+              child,
             ),
           _extraRow(
             Icons.auto_stories_rounded,
             'Διαθεματικό ${thematicMonthLabel(thematicMonthKey(DateTime.now()))}',
             title,
+            child,
           ),
         ],
       ),
     );
   }
 
-  Widget _extraRow(IconData icon, String label, String value) {
+  Widget _extraRow(IconData icon, String label, String value, Map<String, dynamic> child) {
+    final mention = ChildMention.fromMap(child);
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 8),
@@ -356,19 +396,28 @@ class _HomeExtras extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color(0xFFF0E6F4)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: const Color(0xFFE95926), size: 18),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF77328D))),
-                const SizedBox(height: 2),
-                Text(value, style: const TextStyle(fontSize: 13, color: Color(0xFF374151))),
-              ],
-            ),
+          if (mention != null) ...[
+            ChildMentions(people: [mention]),
+            const SizedBox(height: 8),
+          ],
+          Row(
+            children: [
+              Icon(icon, color: const Color(0xFFE95926), size: 18),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF77328D))),
+                    const SizedBox(height: 2),
+                    Text(value, style: const TextStyle(fontSize: 13, color: Color(0xFF374151))),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -379,7 +428,8 @@ class _HomeExtras extends StatelessWidget {
 class _PostMini extends StatelessWidget {
   final Map<String, dynamic> post;
   final String schoolId;
-  const _PostMini({required this.post, required this.schoolId});
+  final List<Map<String, dynamic>> children;
+  const _PostMini({required this.post, required this.schoolId, required this.children});
 
   static const _typeColors = {
     'excursion': (Color(0xFFECFDF5), Color(0xFF059669), 'Εκδρομή'),
@@ -396,6 +446,7 @@ class _PostMini extends StatelessWidget {
     final rawUrls = post['mediaUrls'];
     final mediaUrls = rawUrls is List ? rawUrls.cast<String>() : <String>[];
     final (bg, fg, label) = _typeColors[postType] ?? _typeColors['general']!;
+    final mentions = children.map(ChildMention.fromMap).whereType<ChildMention>().toList();
 
     return GestureDetector(
       onTap: () => Navigator.push(context, MaterialPageRoute(
@@ -409,7 +460,14 @@ class _PostMini extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3))],
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (mentions.isNotEmpty) ...[
+              ChildMentions(people: mentions),
+              const SizedBox(height: 10),
+            ],
+            Row(
           children: [
             if (mediaUrls.isNotEmpty)
               ClipRRect(
@@ -441,6 +499,8 @@ class _PostMini extends StatelessWidget {
               const SizedBox(width: 8),
               Text(_shortDate(publishedAt), style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
             ],
+          ],
+        ),
           ],
         ),
       ),

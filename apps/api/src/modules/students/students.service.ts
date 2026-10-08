@@ -151,6 +151,7 @@ export class StudentsService {
               select: {
                 id: true,
                 name: true,
+                levelId: true,
                 instructions: { orderBy: { sortOrder: 'asc' } },
                 teachers: {
                   include: { user: { select: { id: true, fullName: true, avatarUrl: true } } },

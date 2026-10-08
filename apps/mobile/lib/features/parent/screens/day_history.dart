@@ -32,6 +32,15 @@ final dayHistoryMenuProvider =
 String dayHistoryIso(DateTime d) =>
     '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
+Widget _childLabel(Map<String, dynamic> child) {
+  final mention = ChildMention.fromMap(child);
+  if (mention == null) return const SizedBox.shrink();
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 10),
+    child: ChildMentions(people: [mention]),
+  );
+}
+
 class DayHistoryPanel extends ConsumerWidget {
   final String schoolId;
   final Map<String, dynamic> child;
@@ -70,7 +79,7 @@ class DayHistoryPanel extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
           child: reportsAsync.when(
             loading: () => const DayHistoryLoadingCard(),
-            error: (e, _) => const DayHistoryEmptyCard('Σφάλμα φόρτωσης'),
+            error: (e, _) => DayHistoryEmptyCard('Σφάλμα φόρτωσης', child: child),
             data: (reports) {
               Map<String, dynamic>? todayReport;
               for (final raw in reports) {
@@ -82,9 +91,9 @@ class DayHistoryPanel extends ConsumerWidget {
                 }
               }
               if (todayReport == null) {
-                return const DayHistoryEmptyCard('Δεν υπάρχει ενημέρωση για σήμερα ακόμα');
+                return DayHistoryEmptyCard('Δεν υπάρχει ενημέρωση για σήμερα ακόμα', child: child);
               }
-              return DayDiaryCard(report: todayReport, colors: colors);
+              return DayDiaryCard(report: todayReport, colors: colors, child: child);
             },
           ),
         ),
@@ -94,10 +103,10 @@ class DayHistoryPanel extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
             child: menuAsync.when(
               loading: () => const DayHistoryLoadingCard(),
-              error: (_, __) => const DayHistoryEmptyCard('Δεν υπάρχει καταχωρημένο μενού'),
+              error: (_, __) => DayHistoryEmptyCard('Δεν υπάρχει καταχωρημένο μενού', child: child),
               data: (menu) => menu == null
-                  ? const DayHistoryEmptyCard('Δεν υπάρχει καταχωρημένο μενού για σήμερα')
-                  : DayMenuCard(menu: menu, colors: colors),
+                  ? DayHistoryEmptyCard('Δεν υπάρχει καταχωρημένο μενού για σήμερα', child: child)
+                  : DayMenuCard(menu: menu, colors: colors, child: child),
             ),
           ),
         ],
@@ -113,7 +122,7 @@ class DayHistoryPanel extends ConsumerWidget {
                 return !d.startsWith(todayStr);
               }).take(10).toList();
               if (recent.isEmpty) {
-                return const DayHistoryEmptyCard('Δεν υπάρχουν προηγούμενες ενημερώσεις');
+                return DayHistoryEmptyCard('Δεν υπάρχουν προηγούμενες ενημερώσεις', child: child);
               }
               return Column(
                 children: [
@@ -123,6 +132,7 @@ class DayHistoryPanel extends ConsumerWidget {
                       child: DayDiaryCard(
                         report: Map<String, dynamic>.from(raw as Map),
                         colors: colors,
+                        child: child,
                       ),
                     ),
                 ],
@@ -168,19 +178,26 @@ class DayHistoryLoadingCard extends StatelessWidget {
 
 class DayHistoryEmptyCard extends StatelessWidget {
   final String message;
-  const DayHistoryEmptyCard(this.message, {super.key});
+  final Map<String, dynamic>? child;
+  const DayHistoryEmptyCard(this.message, {super.key, this.child});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.info_outline_rounded, color: Color(0xFF77328D), size: 20),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(message, style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 14)),
+          if (child != null) _childLabel(child!),
+          Row(
+            children: [
+              const Icon(Icons.info_outline_rounded, color: Color(0xFF77328D), size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(message, style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 14)),
+              ),
+            ],
           ),
         ],
       ),
@@ -223,6 +240,7 @@ class _InstructionsBlock extends StatelessWidget {
                 border: Border.all(color: const Color(0xFFF6C7B8)),
               ),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                _childLabel(child),
                 Row(children: [
                   Expanded(
                     child: Text(i['title'] as String? ?? '',
@@ -310,7 +328,9 @@ class _EventsBlock extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: const Color(0xFFF0E6F4)),
               ),
-              child: Row(children: [
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                _childLabel(child),
+                Row(children: [
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(event['title'] as String? ?? '',
                       style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Color(0xFF2C2422))),
@@ -324,6 +344,7 @@ class _EventsBlock extends StatelessWidget {
                   child: Text(statusLabels[status] ?? status,
                       style: TextStyle(color: sc.$1, fontSize: 11, fontWeight: FontWeight.w600)),
                 ),
+              ]),
               ]),
             );
           }),
@@ -346,7 +367,8 @@ class _EventsBlock extends StatelessWidget {
 class DayDiaryCard extends StatelessWidget {
   final Map<String, dynamic> report;
   final List<Color> colors;
-  const DayDiaryCard({super.key, required this.report, required this.colors});
+  final Map<String, dynamic>? child;
+  const DayDiaryCard({super.key, required this.report, required this.colors, this.child});
 
   static const _moodEmojis = {
     'χαρούμενος': '😊', 'happy': '😊', 'ήρεμος': '😌', 'calm': '😌',
@@ -406,6 +428,7 @@ class DayDiaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (child != null) _childLabel(child!),
           Row(
             children: [
               Container(
@@ -529,7 +552,8 @@ class DayDiaryCard extends StatelessWidget {
 class DayMenuCard extends StatelessWidget {
   final Map<String, dynamic> menu;
   final List<Color> colors;
-  const DayMenuCard({super.key, required this.menu, required this.colors});
+  final Map<String, dynamic>? child;
+  const DayMenuCard({super.key, required this.menu, required this.colors, this.child});
 
   @override
   Widget build(BuildContext context) {
@@ -542,7 +566,7 @@ class DayMenuCard extends StatelessWidget {
 
     final filled = items.where((i) => i.$3 != null && (i.$3 as String).isNotEmpty).toList();
     if (filled.isEmpty) {
-      return const DayHistoryEmptyCard('Δεν υπάρχει καταχωρημένο μενού για σήμερα');
+      return DayHistoryEmptyCard('Δεν υπάρχει καταχωρημένο μενού για σήμερα', child: child);
     }
 
     return Container(
@@ -555,6 +579,11 @@ class DayMenuCard extends StatelessWidget {
       ),
       child: Column(
         children: [
+          if (child != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+              child: Align(alignment: Alignment.centerLeft, child: _childLabel(child!)),
+            ),
           ...filled.map((item) {
             final isLast = filled.last == item && (menu['notes'] == null || (menu['notes'] as String).isEmpty);
             return Container(
