@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
+import '../../../core/widgets/person_face.dart';
+import 'owner_profiles.dart';
 
 const _kinds = <(String, String)>[
   ('overview', 'Γενική εικόνα'),
@@ -53,6 +55,7 @@ class _OwnerHomeState extends ConsumerState<OwnerHome> {
         loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFF77328D))),
         error: (_, __) => const Center(child: Text('Η αναφορά δεν φορτώθηκε')),
         data: (data) => _Report(
+          schoolId: widget.schoolId,
           data: data,
           kind: _kind,
           onKind: (kind) => setState(() => _kind = kind),
@@ -73,6 +76,7 @@ class _OwnerHomeState extends ConsumerState<OwnerHome> {
 }
 
 class _Report extends StatelessWidget {
+  final String schoolId;
   final Map<String, dynamic> data;
   final String kind;
   final ValueChanged<String> onKind;
@@ -80,6 +84,7 @@ class _Report extends StatelessWidget {
   final void Function(String month, String year) onMonth;
 
   const _Report({
+    required this.schoolId,
     required this.data,
     required this.kind,
     required this.onKind,
@@ -163,50 +168,81 @@ class _Report extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _Stat('Μαθητές', counts['students']),
-              _Stat('Τάξεις', counts['classes']),
-              _Stat('Γονείς', counts['parents']),
-              _Stat('Προσωπικό', counts['staff']),
+              _Stat('Μαθητές', counts['students'], onTap: () => onKind('children')),
+              _Stat('Τάξεις', counts['classes'], onTap: () => onKind('children')),
+              _Stat('Γονείς', counts['parents'], onTap: () => onKind('parents')),
+              _Stat('Προσωπικό', counts['staff'], onTap: () => onKind('staff')),
               _Stat('Σχολικό', counts['onBus']),
               _Stat('Αλλεργίες', counts['withAllergies']),
-              _Stat('Χωρίς τάξη', counts['unassigned']),
+              _Stat('Χωρίς τάξη', counts['unassigned'], onTap: () => onKind('children')),
               _Stat('Αδέλφια', counts['siblingFamilies']),
             ],
           ),
           const SizedBox(height: 12),
-          _Card(title: 'Οικονομικά · $monthLabel', lines: [
-            'Χρέωση ${_money(finances['monthDue'])}',
-            'Πληρωμές ${_money(finances['monthPaid'])}',
-            'Υπόλοιπο ${_money(finances['monthRemaining'])}',
-            'Ανοιχτοί λογαριασμοί ${finances['openCount'] ?? 0}',
-            'Έτος ${_money(finances['yearDue'])} χρέωση · ${_money(finances['yearPaid'])} πληρωμές',
-          ]),
+          _Panel(
+            title: 'Χρεώσεις έτους',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    _Legend(color: ownerPurple, label: 'Χρέωση'),
+                    SizedBox(width: 12),
+                    _Legend(color: ownerOrange, label: 'Πληρωμές'),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                OwnerMonthChart(series: ownerList(data['monthSeries']), month: month, year: calendarYear),
+                const SizedBox(height: 8),
+                Text('$monthLabel · χρέωση ${ownerMoney(finances['monthDue'])} · πληρωμές ${ownerMoney(finances['monthPaid'])} · υπόλοιπο ${ownerMoney(finances['monthRemaining'])}', style: const TextStyle(color: ownerMuted, fontSize: 12)),
+                const SizedBox(height: 4),
+                Text('Ανοιχτοί λογαριασμοί ${finances['openCount'] ?? 0}', style: const TextStyle(color: ownerMuted, fontSize: 12)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          _Panel(
+            title: 'Ανάλυση χρεώσεων έτους',
+            child: OwnerSplitBar(parts: [
+              (label: 'Δίδακτρα', value: _num(finances['schoolFees']), color: ownerOrange),
+              (label: 'Σχολικό', value: _num(finances['busFees']), color: ownerPurple),
+              (label: 'Δραστηριότητες', value: _num(finances['activityFees']), color: const Color(0xFFC084FC)),
+            ]),
+          ),
+          const SizedBox(height: 12),
+          _Panel(
+            title: 'Μαθητές ανά τάξη',
+            child: OwnerHBars(
+              color: ownerPurple,
+              rows: [
+                for (final row in ownerList(data['classes']))
+                  (label: row['name']?.toString() ?? '', value: _num(row['students'])),
+              ],
+            ),
+          ),
         ],
         if (kind == 'owing') _People(
           title: 'Ποιοι χρωστάνε · $monthLabel',
           rows: data['owing'] is List ? data['owing'] as List : const [],
           subtitle: (row) => row['className']?.toString() ?? '',
-          trailing: (row) => _money(row['remaining']),
+          trailing: (row) => ownerMoney(row['remaining']),
           empty: 'Δεν υπάρχουν οφειλές για αυτόν τον μήνα.',
+          onTap: (row) => openOwnerStudent(context, schoolId, row['id']?.toString() ?? ''),
         ),
-        if (kind == 'parents') _People(
-          title: 'Γονείς',
-          rows: data['parents'] is List ? data['parents'] as List : const [],
-          subtitle: (row) {
-            final children = row['children'] is List ? (row['children'] as List).map((item) => '$item').where((item) => item.isNotEmpty).join(', ') : '';
-            final phone = row['phone']?.toString() ?? '';
-            return [phone, children].where((item) => item.isNotEmpty).join(' · ');
-          },
-          trailing: (_) => '',
-          empty: 'Δεν υπάρχουν γονείς.',
+        if (kind == 'parents') _Parents(schoolId: schoolId, rows: data['parents'] is List ? data['parents'] as List : const []),
+        if (kind == 'children') _ChildrenBoard(
+          schoolId: schoolId,
+          classes: ownerList(data['classes']),
+          unassigned: ownerList(data['unassigned']),
         ),
-        if (kind == 'children') _Classes(rows: data['classes'] is List ? data['classes'] as List : const []),
         if (kind == 'staff') _People(
           title: 'Προσωπικό',
           rows: data['staff'] is List ? data['staff'] as List : const [],
+          photo: (row) => row['avatarUrl']?.toString(),
           subtitle: (row) => row['phone']?.toString() ?? '',
           trailing: (row) => _roles[row['role']?.toString()] ?? '',
           empty: 'Δεν υπάρχει προσωπικό.',
+          onTap: (row) => openOwnerStaff(context, schoolId, row['id']?.toString() ?? ''),
         ),
       ],
     );
@@ -241,48 +277,75 @@ class _Filter extends StatelessWidget {
 class _Stat extends StatelessWidget {
   final String label;
   final dynamic value;
-  const _Stat(this.label, this.value);
+  final VoidCallback? onTap;
+  const _Stat(this.label, this.value, {this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Container(
+          width: 104,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE9D5F2)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${value ?? 0}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: ownerInk)),
+              const SizedBox(height: 2),
+              Text(label, style: const TextStyle(fontSize: 11, color: ownerMuted)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Panel extends StatelessWidget {
+  final String title;
+  final Widget child;
+  const _Panel({required this.title, required this.child});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 104,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE9D5F2)),
-      ),
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${value ?? 0}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Color(0xFF3D1152))),
-          const SizedBox(height: 2),
-          Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w800, color: ownerInk)),
+          const SizedBox(height: 10),
+          child,
         ],
       ),
     );
   }
 }
 
-class _Card extends StatelessWidget {
-  final String title;
-  final List<String> lines;
-  const _Card({required this.title, required this.lines});
+class _Legend extends StatelessWidget {
+  final Color color;
+  final String label;
+  const _Legend({required this.color, required this.label});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          for (final line in lines) Padding(padding: const EdgeInsets.only(bottom: 4), child: Text(line)),
-        ],
-      ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        const SizedBox(width: 4),
+        Text(label, style: const TextStyle(fontSize: 12, color: ownerMuted)),
+      ],
     );
   }
 }
@@ -292,41 +355,27 @@ class _People extends StatelessWidget {
   final List<dynamic> rows;
   final String Function(Map<String, dynamic> row) subtitle;
   final String Function(Map<String, dynamic> row) trailing;
+  final String? Function(Map<String, dynamic> row)? photo;
+  final void Function(Map<String, dynamic> row)? onTap;
   final String empty;
-  const _People({required this.title, required this.rows, required this.subtitle, required this.trailing, required this.empty});
+  const _People({required this.title, required this.rows, required this.subtitle, required this.trailing, required this.empty, this.photo, this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+    return _Panel(
+      title: title,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          if (rows.isEmpty) Text(empty, style: const TextStyle(color: Color(0xFF6B7280))),
+          if (rows.isEmpty) Text(empty, style: const TextStyle(color: ownerMuted)),
           for (final raw in rows)
             if (raw is Map)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(raw['fullName']?.toString() ?? '', style: const TextStyle(fontWeight: FontWeight.w600)),
-                          if (subtitle(Map<String, dynamic>.from(raw)).isNotEmpty)
-                            Text(subtitle(Map<String, dynamic>.from(raw)), style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12)),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(trailing(Map<String, dynamic>.from(raw)), style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12)),
-                  ],
-                ),
+              _TapRow(
+                name: raw['fullName']?.toString() ?? '',
+                photoUrl: photo?.call(Map<String, dynamic>.from(raw)),
+                subtitle: subtitle(Map<String, dynamic>.from(raw)),
+                trailing: trailing(Map<String, dynamic>.from(raw)),
+                onTap: onTap == null ? null : () => onTap!(Map<String, dynamic>.from(raw)),
               ),
         ],
       ),
@@ -334,15 +383,124 @@ class _People extends StatelessWidget {
   }
 }
 
-class _Classes extends StatelessWidget {
+class _Parents extends StatelessWidget {
+  final String schoolId;
   final List<dynamic> rows;
-  const _Classes({required this.rows});
+  const _Parents({required this.schoolId, required this.rows});
 
   @override
   Widget build(BuildContext context) {
-    final classes = rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
-    if (classes.isEmpty) {
-      return const _Card(title: 'Παιδιά ανά τάξη', lines: ['Δεν υπάρχουν τάξεις για αυτό το έτος.']);
+    final parents = rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+    if (parents.isEmpty) return const _Panel(title: 'Γονείς', child: Text('Δεν υπάρχουν γονείς.', style: TextStyle(color: ownerMuted)));
+    return Column(
+      children: [
+        for (final parent in parents)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _Panel(
+              title: parent['fullName']?.toString() ?? '',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if ((parent['phone']?.toString() ?? '').isNotEmpty)
+                    Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(parent['phone'].toString(), style: const TextStyle(color: ownerMuted))),
+                  for (final child in ownerList(parent['children']))
+                    _TapRow(
+                      name: child['fullName']?.toString() ?? '',
+                      subtitle: 'Προφίλ παιδιού',
+                      trailing: '',
+                      onTap: () => openOwnerStudent(context, schoolId, child['id']?.toString() ?? ''),
+                    ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _ChildrenBoard extends StatefulWidget {
+  final String schoolId;
+  final List<Map<String, dynamic>> classes;
+  final List<Map<String, dynamic>> unassigned;
+  const _ChildrenBoard({required this.schoolId, required this.classes, required this.unassigned});
+
+  @override
+  State<_ChildrenBoard> createState() => _ChildrenBoardState();
+}
+
+class _ChildrenBoardState extends State<_ChildrenBoard> {
+  bool _byClass = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final children = <Map<String, dynamic>>[
+      for (final klass in widget.classes)
+        for (final child in ownerList(klass['roster']))
+          {...child, 'className': klass['name'], 'classId': klass['id']},
+      ...widget.unassigned,
+    ]..sort((a, b) => (a['fullName']?.toString() ?? '').compareTo(b['fullName']?.toString() ?? ''));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            ChoiceChip(
+              label: const Text('Τάξεις'),
+              selected: _byClass,
+              selectedColor: const Color(0xFFF3E8F7),
+              labelStyle: TextStyle(color: _byClass ? ownerPurple : const Color(0xFF374151), fontWeight: FontWeight.w700),
+              onSelected: (_) => setState(() => _byClass = true),
+            ),
+            const SizedBox(width: 8),
+            ChoiceChip(
+              label: const Text('Λίστα παιδιών'),
+              selected: !_byClass,
+              selectedColor: const Color(0xFFF3E8F7),
+              labelStyle: TextStyle(color: !_byClass ? ownerPurple : const Color(0xFF374151), fontWeight: FontWeight.w700),
+              onSelected: (_) => setState(() => _byClass = false),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (_byClass) _ClassGroups(schoolId: widget.schoolId, classes: widget.classes, unassigned: widget.unassigned),
+        if (!_byClass)
+          _Panel(
+            title: 'Όλα τα παιδιά',
+            child: children.isEmpty
+                ? const Text('Δεν υπάρχουν παιδιά για αυτό το έτος.', style: TextStyle(color: ownerMuted))
+                : Column(
+                    children: [
+                      for (final child in children)
+                        _TapRow(
+                          name: child['fullName']?.toString() ?? '',
+                          photoUrl: child['avatarUrl']?.toString(),
+                          subtitle: [
+                            if ((child['className']?.toString() ?? '').isNotEmpty) 'Τάξη ${child['className']}' else 'Χωρίς τάξη',
+                            if ((child['allergies']?.toString() ?? '').trim().isNotEmpty) 'Αλλεργία ${child['allergies']}',
+                          ].join(' · '),
+                          trailing: '',
+                          onTap: () => openOwnerStudent(context, widget.schoolId, child['id']?.toString() ?? ''),
+                        ),
+                    ],
+                  ),
+          ),
+      ],
+    );
+  }
+}
+
+class _ClassGroups extends StatelessWidget {
+  final String schoolId;
+  final List<Map<String, dynamic>> classes;
+  final List<Map<String, dynamic>> unassigned;
+  const _ClassGroups({required this.schoolId, required this.classes, required this.unassigned});
+
+  @override
+  Widget build(BuildContext context) {
+    if (classes.isEmpty && unassigned.isEmpty) {
+      return const _Panel(title: 'Τάξεις', child: Text('Δεν υπάρχουν τάξεις για αυτό το έτος.', style: TextStyle(color: ownerMuted)));
     }
     final levels = <String, List<Map<String, dynamic>>>{};
     for (final row in classes) {
@@ -350,26 +508,32 @@ class _Classes extends StatelessWidget {
       levels.putIfAbsent(level, () => []).add(row);
     }
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final entry in levels.entries)
-          Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+        for (final entry in levels.entries) ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8, left: 4),
+            child: Text(entry.key, style: const TextStyle(fontWeight: FontWeight.w800, color: ownerPurple)),
+          ),
+          for (final klass in entry.value)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _ClassCard(schoolId: schoolId, klass: klass),
+            ),
+        ],
+        if (unassigned.isNotEmpty)
+          _Panel(
+            title: 'Χωρίς τάξη',
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(entry.key, style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF77328D))),
-                for (final klass in entry.value) ...[
-                  const SizedBox(height: 10),
-                  Text('${klass['name']} · ${klass['students'] ?? 0}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                  if (klass['studentNames'] is List)
-                    for (final name in klass['studentNames'] as List)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Text('$name', style: const TextStyle(color: Color(0xFF374151))),
-                      ),
-                ],
+                for (final child in unassigned)
+                  _TapRow(
+                    name: child['fullName']?.toString() ?? '',
+                    photoUrl: child['avatarUrl']?.toString(),
+                    subtitle: 'Προφίλ μαθητή',
+                    trailing: '',
+                    onTap: () => openOwnerStudent(context, schoolId, child['id']?.toString() ?? ''),
+                  ),
               ],
             ),
           ),
@@ -378,7 +542,116 @@ class _Classes extends StatelessWidget {
   }
 }
 
-String _money(dynamic value) {
-  final amount = value is num ? value.toDouble() : double.tryParse('$value') ?? 0;
-  return '${amount.toStringAsFixed(2)} €';
+class _ClassCard extends StatelessWidget {
+  final String schoolId;
+  final Map<String, dynamic> klass;
+  const _ClassCard({required this.schoolId, required this.klass});
+
+  @override
+  Widget build(BuildContext context) {
+    final teachers = ownerList(klass['teachers']);
+    final roster = ownerList(klass['roster']);
+    final preview = roster.take(6).toList();
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => openOwnerClass(context, schoolId: schoolId, klass: klass),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(child: Text(klass['name']?.toString() ?? '', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: ownerInk))),
+                  Text('${klass['students'] ?? roster.length}', style: const TextStyle(fontWeight: FontWeight.w800, color: ownerPurple)),
+                  const Icon(Icons.chevron_right_rounded, color: ownerPurple),
+                ],
+              ),
+              if (teachers.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 36,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: teachers.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    itemBuilder: (context, index) {
+                      final teacher = teachers[index];
+                      return InkWell(
+                        onTap: () => openOwnerStaff(context, schoolId, teacher['memberId']?.toString() ?? ''),
+                        child: Row(
+                          children: [
+                            PersonFace(name: teacher['fullName']?.toString() ?? '', photoUrl: teacher['avatarUrl']?.toString(), size: 28, radius: 9, fontSize: 12),
+                            const SizedBox(width: 6),
+                            Text(teacher['fullName']?.toString() ?? '', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+              if (preview.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final child in preview)
+                      InkWell(
+                        onTap: () => openOwnerStudent(context, schoolId, child['id']?.toString() ?? ''),
+                        child: PersonFace(name: child['fullName']?.toString() ?? '', photoUrl: child['avatarUrl']?.toString(), size: 36, radius: 12),
+                      ),
+                    if (roster.length > preview.length)
+                      Text('+${roster.length - preview.length}', style: const TextStyle(color: ownerMuted, fontWeight: FontWeight.w700)),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
+
+class _TapRow extends StatelessWidget {
+  final String name;
+  final String? photoUrl;
+  final String subtitle;
+  final String trailing;
+  final VoidCallback? onTap;
+  const _TapRow({required this.name, this.photoUrl, required this.subtitle, required this.trailing, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            PersonFace(name: name, photoUrl: photoUrl, size: 36, radius: 12),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name, style: const TextStyle(fontWeight: FontWeight.w700, color: ownerInk)),
+                  if (subtitle.isNotEmpty) Text(subtitle, style: const TextStyle(color: ownerMuted, fontSize: 12)),
+                ],
+              ),
+            ),
+            if (trailing.isNotEmpty) Text(trailing, style: const TextStyle(color: ownerMuted, fontSize: 12, fontWeight: FontWeight.w700)),
+            if (onTap != null) const Icon(Icons.chevron_right_rounded, color: ownerPurple),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+double _num(dynamic value) => value is num ? value.toDouble() : double.tryParse('$value') ?? 0;

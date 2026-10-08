@@ -5,6 +5,7 @@ import { schoolYearBounds } from '../billing/billing-quote';
 type StudentRow = {
   id: string;
   fullName: string;
+  avatarUrl: string | null;
   allergies: string | null;
   className: string;
   classId: string | null;
@@ -40,12 +41,13 @@ export class ReportsService {
       ? { label: selectedYear.label, months: months.map((row) => ({ month: row.month, year: row.year })) }
       : schoolYearBounds(now);
 
-    const [students, classes, charges, yearCharges, parents, staff, inactive] = await Promise.all([
+    const [students, classes, charges, yearCharges, parents, staff, inactive, monthGroups] = await Promise.all([
       this.prisma.student.findMany({
         where: { schoolId, isActive: true },
         select: {
           id: true,
           fullName: true,
+          avatarUrl: true,
           allergies: true,
           enrollments: {
             where: selectedYear ? { academicYearId: selectedYear.id } : { academicYear: { isCurrent: true } },
@@ -70,6 +72,12 @@ export class ReportsService {
           name: true,
           capacity: true,
           level: { select: { name: true, order: true } },
+          teachers: {
+            select: {
+              isPrimary: true,
+              user: { select: { id: true, fullName: true, avatarUrl: true } },
+            },
+          },
         },
         orderBy: { name: 'asc' },
       }),
@@ -96,42 +104,56 @@ export class ReportsService {
       }),
       this.prisma.schoolMember.findMany({
         where: { schoolId, role: { in: ['teacher', 'school_admin', 'owner'] }, isActive: true },
-        select: { role: true, user: { select: { id: true, fullName: true, phone: true } } },
+        select: { id: true, role: true, user: { select: { id: true, fullName: true, phone: true, avatarUrl: true } } },
         orderBy: { user: { fullName: 'asc' } },
       }),
       this.prisma.student.count({ where: { schoolId, isActive: false } }),
+      schoolYear.months.length
+        ? this.prisma.monthlyCharge.groupBy({
+            by: ['month', 'year'],
+            where: { schoolId, OR: schoolYear.months.map((row) => ({ month: row.month, year: row.year })) },
+            _sum: { totalDue: true, paidAmount: true },
+          })
+        : Promise.resolve([]),
     ]);
 
     const enrolled = students.filter((student) => student.enrollments.length > 0);
     const byClass = new Map<string, number>();
-    const namesByClass = new Map<string, string[]>();
+    const rosterByClass = new Map<string, { id: string; fullName: string; avatarUrl: string | null; allergies: string | null }[]>();
     const unassigned: StudentRow[] = [];
     const allergies: StudentRow[] = [];
     const bus: StudentRow[] = [];
-    const childrenByParent = new Map<string, string[]>();
+    const childrenByParent = new Map<string, { id: string; fullName: string }[]>();
     for (const student of enrolled) {
       const enrollment = student.enrollments[0];
       const card: StudentRow = {
         id: student.id,
         fullName: student.fullName,
+        avatarUrl: student.avatarUrl,
         allergies: student.allergies,
         className: enrollment?.class.name ?? '',
         classId: enrollment?.class.id ?? null,
       };
       if (card.classId) {
         byClass.set(card.classId, (byClass.get(card.classId) ?? 0) + 1);
-        const names = namesByClass.get(card.classId) ?? [];
-        names.push(student.fullName);
-        namesByClass.set(card.classId, names);
+        const roster = rosterByClass.get(card.classId) ?? [];
+        roster.push({ id: student.id, fullName: student.fullName, avatarUrl: student.avatarUrl, allergies: student.allergies });
+        rosterByClass.set(card.classId, roster);
       } else unassigned.push(card);
       if (student.allergies?.trim()) allergies.push(card);
       if (student.studentServices.some((row) => row.service.serviceType === 'bus')) bus.push(card);
       for (const link of student.parents) {
         const list = childrenByParent.get(link.userId) ?? [];
-        list.push(student.fullName);
+        list.push({ id: student.id, fullName: student.fullName });
         childrenByParent.set(link.userId, list);
       }
     }
+
+    const memberByUser = new Map<string, string>();
+    for (const row of staff) {
+      if (!memberByUser.has(row.user.id) || row.role === 'teacher') memberByUser.set(row.user.id, row.id);
+    }
+    const sortPeople = (a: { fullName: string }, b: { fullName: string }) => a.fullName.localeCompare(b.fullName, 'el');
 
     const owing = charges
       .filter((row) => row.status === 'unpaid' || row.status === 'partial')
@@ -149,13 +171,13 @@ export class ReportsService {
     const monthDue = charges.reduce((sum, row) => sum + Number(row.totalDue), 0);
     const monthPaid = charges.reduce((sum, row) => sum + Number(row.paidAmount), 0);
     const siblings = siblingFamilies(enrolled);
-    const parentRows = new Map<string, { id: string; fullName: string; phone: string | null; children: string[] }>();
+    const parentRows = new Map<string, { id: string; fullName: string; phone: string | null; children: { id: string; fullName: string }[] }>();
     for (const member of parents) {
       parentRows.set(member.user.id, {
         id: member.user.id,
         fullName: member.user.fullName,
         phone: member.user.phone,
-        children: [...(childrenByParent.get(member.user.id) ?? [])].sort((a, b) => a.localeCompare(b, 'el')),
+        children: [...(childrenByParent.get(member.user.id) ?? [])].sort(sortPeople),
       });
     }
     for (const student of enrolled) {
@@ -165,21 +187,34 @@ export class ReportsService {
           id: link.user.id,
           fullName: link.user.fullName,
           phone: link.user.phone,
-          children: [...(childrenByParent.get(link.userId) ?? [])].sort((a, b) => a.localeCompare(b, 'el')),
+          children: [...(childrenByParent.get(link.userId) ?? [])].sort(sortPeople),
         });
       }
     }
 
     const classRows = classes
-      .map((row) => ({
-        id: row.id,
-        name: row.name,
-        level: row.level?.name ?? 'Χωρίς βαθμίδα',
-        levelOrder: row.level?.order ?? 999,
-        capacity: row.capacity,
-        students: byClass.get(row.id) ?? 0,
-        studentNames: (namesByClass.get(row.id) ?? []).sort((a, b) => a.localeCompare(b, 'el')),
-      }))
+      .map((row) => {
+        const roster = [...(rosterByClass.get(row.id) ?? [])].sort(sortPeople);
+        return {
+          id: row.id,
+          name: row.name,
+          level: row.level?.name ?? 'Χωρίς βαθμίδα',
+          levelOrder: row.level?.order ?? 999,
+          capacity: row.capacity,
+          students: byClass.get(row.id) ?? 0,
+          studentNames: roster.map((child) => child.fullName),
+          roster,
+          teachers: [...row.teachers]
+            .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary) || a.user.fullName.localeCompare(b.user.fullName, 'el'))
+            .map((teacher) => ({
+              userId: teacher.user.id,
+              memberId: memberByUser.get(teacher.user.id) ?? null,
+              fullName: teacher.user.fullName,
+              avatarUrl: teacher.user.avatarUrl,
+              isPrimary: teacher.isPrimary,
+            })),
+        };
+      })
       .sort((a, b) => a.levelOrder - b.levelOrder || a.level.localeCompare(b.level, 'el') || a.name.localeCompare(b.name, 'el'));
 
     return {
@@ -203,9 +238,11 @@ export class ReportsService {
       classes: classRows,
       parents: [...parentRows.values()].sort((a, b) => a.fullName.localeCompare(b.fullName, 'el')),
       staff: staff.map((row) => ({
-        id: row.user.id,
+        id: row.id,
+        userId: row.user.id,
         fullName: row.user.fullName,
         phone: row.user.phone,
+        avatarUrl: row.user.avatarUrl,
         role: row.role,
       })),
       unassigned,
@@ -225,6 +262,17 @@ export class ReportsService {
         busFees: Number(yearCharges._sum.busFee ?? 0),
         activityFees: Number(yearCharges._sum.activityFees ?? 0),
       },
+      monthSeries: months.map((row) => {
+        const hit = monthGroups.find((group) => group.month === row.month && group.year === row.year);
+        const short = ['', 'Ιαν', 'Φεβ', 'Μάρ', 'Απρ', 'Μάι', 'Ιουν', 'Ιουλ', 'Αυγ', 'Σεπ', 'Οκτ', 'Νοε', 'Δεκ'];
+        return {
+          month: row.month,
+          year: row.year,
+          label: short[row.month] ?? row.label,
+          due: Number(hit?._sum.totalDue ?? 0),
+          paid: Number(hit?._sum.paidAmount ?? 0),
+        };
+      }),
       owing,
     };
   }
