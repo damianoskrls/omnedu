@@ -26,12 +26,13 @@ class AppTopBar extends ConsumerWidget {
     final user = ref.watch(authProvider).user;
     if (user == null) return const SizedBox.shrink();
     final schoolId = user.schoolId ?? '';
-    final staff = user.usesStaffShell;
+    final owner = user.isOwner;
+    final staff = user.usesStaffShell && !owner;
     final notificationsIndex = staff ? 2 : 4;
     final messagesIndex = staff ? 3 : 5;
     final current = ref.watch(shellTabProvider);
-    final inbox = schoolId.isEmpty ? const AsyncValue<List<dynamic>>.data([]) : ref.watch(inboxProvider(schoolId));
-    final conversations = schoolId.isEmpty ? const AsyncValue<List<dynamic>>.data([]) : ref.watch(conversationsProvider(schoolId));
+    final inbox = owner || schoolId.isEmpty ? const AsyncValue<List<dynamic>>.data([]) : ref.watch(inboxProvider(schoolId));
+    final conversations = owner || schoolId.isEmpty ? const AsyncValue<List<dynamic>>.data([]) : ref.watch(conversationsProvider(schoolId));
     final notes = inbox.maybeWhen(
       data: (rows) => rows.where((row) => row is Map && row['isRead'] != true).length,
       orElse: () => 0,
@@ -64,20 +65,22 @@ class AppTopBar extends ConsumerWidget {
                 child: Image.asset('assets/images/school_logo.png', width: 36, height: 36, fit: BoxFit.contain),
               ),
               const Spacer(),
-              _TopAction(
-                icon: current == notificationsIndex ? Icons.notifications_rounded : Icons.notifications_outlined,
-                active: current == notificationsIndex,
-                count: notes,
-                onTap: () => open(notificationsIndex),
-              ),
-              const SizedBox(width: 4),
-              _TopAction(
-                icon: current == messagesIndex ? Icons.chat_bubble_rounded : Icons.chat_bubble_outline_rounded,
-                active: current == messagesIndex,
-                count: messages,
-                onTap: () => open(messagesIndex),
-              ),
-              const SizedBox(width: 8),
+              if (!owner) ...[
+                _TopAction(
+                  icon: current == notificationsIndex ? Icons.notifications_rounded : Icons.notifications_outlined,
+                  active: current == notificationsIndex,
+                  count: notes,
+                  onTap: () => open(notificationsIndex),
+                ),
+                const SizedBox(width: 4),
+                _TopAction(
+                  icon: current == messagesIndex ? Icons.chat_bubble_rounded : Icons.chat_bubble_outline_rounded,
+                  active: current == messagesIndex,
+                  count: messages,
+                  onTap: () => open(messagesIndex),
+                ),
+                const SizedBox(width: 8),
+              ],
               GestureDetector(
                 onTap: () => _accountSheet(ref),
                 child: PersonFace(

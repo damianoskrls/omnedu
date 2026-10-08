@@ -9,8 +9,6 @@ import 'teacher_meetings_screen.dart';
 import 'teacher_notify_screen.dart';
 import '../../medications/medications_screen.dart';
 import 'teacher_leaves_screen.dart';
-import 'owner_reports_screen.dart';
-
 final _myClassesProvider = FutureProvider.family<List<dynamic>, String>(
   (ref, schoolId) async {
     final dio = ref.read(dioProvider);
@@ -146,14 +144,6 @@ class _TeacherHomeScreenState extends ConsumerState<TeacherHomeScreen> {
                   ),
                 ),
               ),
-
-              if (user.isOwner)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                    child: OwnerReportBody(schoolId: widget.schoolId),
-                  ),
-                ),
 
               // Class selector
               if (classes.isNotEmpty) ...[

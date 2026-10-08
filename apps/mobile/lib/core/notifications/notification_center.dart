@@ -271,6 +271,7 @@ Future<void> openNotification(BuildContext context, WidgetRef ref, Map<String, d
   if (!context.mounted || schoolId.isEmpty) return;
 
   if (type == 'message') {
+    if (ref.read(authProvider).user?.isOwner == true) return;
     final convId = data['conversationId'] as String? ?? '';
     if (convId.isEmpty) return;
     await Navigator.push(

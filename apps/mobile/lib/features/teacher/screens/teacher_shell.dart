@@ -8,6 +8,7 @@ import '../../../core/widgets/app_top_bar.dart';
 import 'teacher_home_screen.dart';
 import 'teacher_events_screen.dart';
 import 'messages_screen.dart';
+import 'owner_reports_screen.dart';
 
 class TeacherShell extends ConsumerStatefulWidget {
   final String? initialClassId;
@@ -22,6 +23,7 @@ class _TeacherShellState extends ConsumerState<TeacherShell> {
   Widget build(BuildContext context) {
     final user = ref.watch(authProvider).user!;
     final schoolId = user.schoolId ?? '';
+    if (user.isOwner) return OwnerHome(schoolId: schoolId);
 
     final pages = [
       TeacherHomeScreen(schoolId: schoolId),

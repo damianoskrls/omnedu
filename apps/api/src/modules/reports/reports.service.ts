@@ -14,12 +14,31 @@ type StudentRow = {
 export class ReportsService {
   constructor(private prisma: PrismaService) {}
 
-  async overview(schoolId: string) {
+  async overview(schoolId: string, query: { academicYearId?: string; month?: number; year?: number } = {}) {
     const today = athensToday();
     const now = new Date(`${today}T12:00:00.000Z`);
-    const month = Number(today.slice(5, 7));
-    const year = Number(today.slice(0, 4));
-    const schoolYear = schoolYearBounds(now);
+    const years = await this.prisma.academicYear.findMany({
+      where: { schoolId },
+      select: { id: true, label: true, startsOn: true, endsOn: true, isCurrent: true },
+      orderBy: { startsOn: 'desc' },
+    });
+    const selectedYear = years.find((row) => row.id === query.academicYearId) ?? years.find((row) => row.isCurrent) ?? years[0];
+    const months = selectedYear ? monthsBetween(selectedYear.startsOn, selectedYear.endsOn) : schoolYearBounds(now).months.map((row) => ({
+      ...row,
+      label: `${MONTHS[row.month]} ${row.year}`,
+    }));
+    const requested = months.find((row) => row.month === query.month && row.year === query.year);
+    const currentMonth = Number(today.slice(5, 7));
+    const currentYear = Number(today.slice(0, 4));
+    const picked = requested
+      ?? months.find((row) => row.month === currentMonth && row.year === currentYear)
+      ?? [...months].reverse().find((row) => row.year < currentYear || (row.year === currentYear && row.month <= currentMonth))
+      ?? months[0];
+    const month = picked?.month ?? currentMonth;
+    const year = picked?.year ?? currentYear;
+    const schoolYear = selectedYear
+      ? { label: selectedYear.label, months: months.map((row) => ({ month: row.month, year: row.year })) }
+      : schoolYearBounds(now);
 
     const [students, classes, charges, yearCharges, parents, staff, inactive] = await Promise.all([
       this.prisma.student.findMany({
@@ -29,10 +48,12 @@ export class ReportsService {
           fullName: true,
           allergies: true,
           enrollments: {
-            where: { academicYear: { isCurrent: true } },
-            select: { class: { select: { id: true, name: true } } },
+            where: selectedYear ? { academicYearId: selectedYear.id } : { academicYear: { isCurrent: true } },
+            select: {
+              class: { select: { id: true, name: true, level: { select: { name: true, order: true } } } },
+            },
           },
-          parents: { select: { userId: true } },
+          parents: { select: { userId: true, user: { select: { id: true, fullName: true, phone: true } } } },
           siblingLinks: { select: { siblingId: true } },
           siblingOf: { select: { studentId: true } },
           studentServices: {
@@ -43,12 +64,12 @@ export class ReportsService {
         orderBy: { fullName: 'asc' },
       }),
       this.prisma.class.findMany({
-        where: { schoolId, academicYear: { isCurrent: true } },
+        where: selectedYear ? { schoolId, academicYearId: selectedYear.id } : { schoolId, academicYear: { isCurrent: true } },
         select: {
           id: true,
           name: true,
           capacity: true,
-          level: { select: { name: true } },
+          level: { select: { name: true, order: true } },
         },
         orderBy: { name: 'asc' },
       }),
@@ -68,16 +89,27 @@ export class ReportsService {
         },
         _sum: { totalDue: true, paidAmount: true, subsidyTotal: true, schoolFee: true, busFee: true, activityFees: true },
       }),
-      this.prisma.schoolMember.count({ where: { schoolId, role: 'parent', isActive: true } }),
-      this.prisma.schoolMember.count({ where: { schoolId, role: { in: ['teacher', 'school_admin', 'owner'] }, isActive: true } }),
+      this.prisma.schoolMember.findMany({
+        where: { schoolId, role: 'parent', isActive: true },
+        select: { user: { select: { id: true, fullName: true, phone: true } } },
+        orderBy: { user: { fullName: 'asc' } },
+      }),
+      this.prisma.schoolMember.findMany({
+        where: { schoolId, role: { in: ['teacher', 'school_admin', 'owner'] }, isActive: true },
+        select: { role: true, user: { select: { id: true, fullName: true, phone: true } } },
+        orderBy: { user: { fullName: 'asc' } },
+      }),
       this.prisma.student.count({ where: { schoolId, isActive: false } }),
     ]);
 
+    const enrolled = students.filter((student) => student.enrollments.length > 0);
     const byClass = new Map<string, number>();
+    const namesByClass = new Map<string, string[]>();
     const unassigned: StudentRow[] = [];
     const allergies: StudentRow[] = [];
     const bus: StudentRow[] = [];
-    for (const student of students) {
+    const childrenByParent = new Map<string, string[]>();
+    for (const student of enrolled) {
       const enrollment = student.enrollments[0];
       const card: StudentRow = {
         id: student.id,
@@ -86,10 +118,19 @@ export class ReportsService {
         className: enrollment?.class.name ?? '',
         classId: enrollment?.class.id ?? null,
       };
-      if (card.classId) byClass.set(card.classId, (byClass.get(card.classId) ?? 0) + 1);
-      else unassigned.push(card);
+      if (card.classId) {
+        byClass.set(card.classId, (byClass.get(card.classId) ?? 0) + 1);
+        const names = namesByClass.get(card.classId) ?? [];
+        names.push(student.fullName);
+        namesByClass.set(card.classId, names);
+      } else unassigned.push(card);
       if (student.allergies?.trim()) allergies.push(card);
       if (student.studentServices.some((row) => row.service.serviceType === 'bus')) bus.push(card);
+      for (const link of student.parents) {
+        const list = childrenByParent.get(link.userId) ?? [];
+        list.push(student.fullName);
+        childrenByParent.set(link.userId, list);
+      }
     }
 
     const owing = charges
@@ -97,7 +138,7 @@ export class ReportsService {
       .map((row) => ({
         id: row.student.id,
         fullName: row.student.fullName,
-        className: students.find((student) => student.id === row.student.id)?.enrollments[0]?.class.name ?? '',
+        className: enrolled.find((student) => student.id === row.student.id)?.enrollments[0]?.class.name ?? '',
         status: row.status,
         totalDue: Number(row.totalDue),
         paidAmount: Number(row.paidAmount),
@@ -107,32 +148,66 @@ export class ReportsService {
 
     const monthDue = charges.reduce((sum, row) => sum + Number(row.totalDue), 0);
     const monthPaid = charges.reduce((sum, row) => sum + Number(row.paidAmount), 0);
-    const siblings = siblingFamilies(students);
+    const siblings = siblingFamilies(enrolled);
+    const parentRows = new Map<string, { id: string; fullName: string; phone: string | null; children: string[] }>();
+    for (const member of parents) {
+      parentRows.set(member.user.id, {
+        id: member.user.id,
+        fullName: member.user.fullName,
+        phone: member.user.phone,
+        children: [...(childrenByParent.get(member.user.id) ?? [])].sort((a, b) => a.localeCompare(b, 'el')),
+      });
+    }
+    for (const student of enrolled) {
+      for (const link of student.parents) {
+        if (parentRows.has(link.userId)) continue;
+        parentRows.set(link.userId, {
+          id: link.user.id,
+          fullName: link.user.fullName,
+          phone: link.user.phone,
+          children: [...(childrenByParent.get(link.userId) ?? [])].sort((a, b) => a.localeCompare(b, 'el')),
+        });
+      }
+    }
+
+    const classRows = classes
+      .map((row) => ({
+        id: row.id,
+        name: row.name,
+        level: row.level?.name ?? 'Χωρίς βαθμίδα',
+        levelOrder: row.level?.order ?? 999,
+        capacity: row.capacity,
+        students: byClass.get(row.id) ?? 0,
+        studentNames: (namesByClass.get(row.id) ?? []).sort((a, b) => a.localeCompare(b, 'el')),
+      }))
+      .sort((a, b) => a.levelOrder - b.levelOrder || a.level.localeCompare(b.level, 'el') || a.name.localeCompare(b.name, 'el'));
 
     return {
       month,
       year,
+      academicYearId: selectedYear?.id ?? null,
       schoolYear: schoolYear.label,
+      years: years.map((row) => ({ id: row.id, label: row.label, isCurrent: row.isCurrent })),
+      months,
       counts: {
-        students: students.length,
+        students: enrolled.length,
         inactive,
-        parents,
-        staff,
+        parents: parentRows.size,
+        staff: staff.length,
         classes: classes.length,
         unassigned: unassigned.length,
         siblingFamilies: siblings.length,
         withAllergies: allergies.length,
         onBus: bus.length,
       },
-      classes: classes
-        .map((row) => ({
-          id: row.id,
-          name: row.name,
-          level: row.level?.name ?? '',
-          capacity: row.capacity,
-          students: byClass.get(row.id) ?? 0,
-        }))
-        .sort((a, b) => a.level.localeCompare(b.level, 'el') || a.name.localeCompare(b.name, 'el')),
+      classes: classRows,
+      parents: [...parentRows.values()].sort((a, b) => a.fullName.localeCompare(b.fullName, 'el')),
+      staff: staff.map((row) => ({
+        id: row.user.id,
+        fullName: row.user.fullName,
+        phone: row.user.phone,
+        role: row.role,
+      })),
       unassigned,
       siblings,
       allergies,
@@ -213,6 +288,26 @@ function siblingFamilies(students: {
         .sort((a, b) => a.fullName.localeCompare(b.fullName, 'el')),
     }))
     .sort((a, b) => a.children[0].fullName.localeCompare(b.children[0].fullName, 'el'));
+}
+
+const MONTHS = ['', 'Ιανουάριος', 'Φεβρουάριος', 'Μάρτιος', 'Απρίλιος', 'Μάιος', 'Ιούνιος', 'Ιούλιος', 'Αύγουστος', 'Σεπτέμβριος', 'Οκτώβριος', 'Νοέμβριος', 'Δεκέμβριος'];
+
+function monthsBetween(startsOn: Date, endsOn: Date) {
+  const months: { month: number; year: number; label: string }[] = [];
+  let year = startsOn.getUTCFullYear();
+  let month = startsOn.getUTCMonth() + 1;
+  const endYear = endsOn.getUTCFullYear();
+  const endMonth = endsOn.getUTCMonth() + 1;
+  while (year < endYear || (year === endYear && month <= endMonth)) {
+    months.push({ month, year, label: `${MONTHS[month]} ${year}` });
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+    if (months.length > 24) break;
+  }
+  return months;
 }
 
 function athensToday() {
