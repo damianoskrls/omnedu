@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -35,6 +35,16 @@ export class StaffController {
     @Body() body: any,
   ) {
     return this.staff.upsertProfile(memberId, schoolId, body);
+  }
+
+  @Delete(':memberId')
+  @Roles('school_admin')
+  remove(
+    @Param('schoolId') schoolId: string,
+    @Param('memberId') memberId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.staff.remove(memberId, schoolId, user.sub);
   }
 
   @Get(':memberId/salary')

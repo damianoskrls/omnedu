@@ -6,7 +6,7 @@ import { staffApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
 import {
   ArrowLeft, Phone, Mail, MapPin, GraduationCap, Briefcase,
-  CheckCircle, Clock, XCircle, CalendarDays, Camera,
+  CheckCircle, Clock, XCircle, CalendarDays, Camera, Pencil, Trash2,
 } from 'lucide-react';
 
 const TABS = [
@@ -55,6 +55,14 @@ export default function StaffProfilePage() {
   const [tab, setTab] = useState('profile');
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [form, setForm] = useState({
+    fullName: '', email: '', phone: '', address: '', specialization: '',
+    contractType: 'full_time', hireDate: '', bio: '', monthlyGross: '',
+  });
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const isAdmin = user?.role === 'school_admin';
 
@@ -65,6 +73,54 @@ export default function StaffProfilePage() {
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [schoolId, memberId]);
+
+  function startEdit() {
+    const profile = member?.teacherProfile;
+    setForm({
+      fullName: member?.user?.fullName ?? '',
+      email: member?.user?.email ?? '',
+      phone: profile?.phone || member?.user?.phone || '',
+      address: profile?.address ?? '',
+      specialization: profile?.specialization ?? '',
+      contractType: profile?.contractType || 'full_time',
+      hireDate: profile?.hireDate ? String(profile.hireDate).slice(0, 10) : '',
+      bio: profile?.bio ?? '',
+      monthlyGross: profile?.monthlyGross != null ? String(Number(profile.monthlyGross)) : '',
+    });
+    setFormError('');
+    setEditing(true);
+    setTab('profile');
+  }
+
+  async function saveProfile() {
+    setSaving(true);
+    setFormError('');
+    try {
+      const updated = await staffApi.updateProfile(schoolId, memberId, form) as any;
+      setMember(updated);
+      setEditing(false);
+    } catch (error: any) {
+      const message = error?.message;
+      setFormError(typeof message === 'string' ? message : 'Η αποθήκευση δεν ολοκληρώθηκε');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeMember() {
+    const name = member?.user?.fullName || 'αυτό το μέλος';
+    if (!window.confirm(`Να διαγραφεί ο/η ${name} από το προσωπικό;`)) return;
+    setRemoving(true);
+    setFormError('');
+    try {
+      await staffApi.remove(schoolId, memberId);
+      router.push('/school/staff');
+    } catch (error: any) {
+      const message = error?.message;
+      setFormError(typeof message === 'string' ? message : 'Η διαγραφή δεν ολοκληρώθηκε');
+      setRemoving(false);
+    }
+  }
 
   async function handleLeaveStatus(leaveId: string, status: string) {
     setApprovingId(leaveId);
@@ -173,13 +229,34 @@ export default function StaffProfilePage() {
               )}
             </div>
           </div>
-          {profile?.monthlyGross && (
-            <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 text-center flex-shrink-0">
-              <div className="text-xs text-emerald-600 font-medium">Μισθός Brutto</div>
-              <div className="text-xl font-bold text-emerald-700">€{Number(profile.monthlyGross).toFixed(0)}</div>
-              <div className="text-xs text-emerald-500">/ μήνα</div>
-            </div>
-          )}
+          <div className="flex flex-col items-end gap-3 flex-shrink-0">
+            {isAdmin && (
+              <div className="flex gap-2">
+                <button
+                  onClick={startEdit}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#77328D] text-white text-sm font-medium hover:bg-[#642678]"
+                >
+                  <Pencil className="h-4 w-4" /> Επεξεργασία
+                </button>
+                {member.user.id !== user?.id && (
+                  <button
+                    onClick={removeMember}
+                    disabled={removing}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-red-200 text-red-600 text-sm font-medium hover:bg-red-50 disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4" /> {removing ? 'Διαγραφή...' : 'Διαγραφή'}
+                  </button>
+                )}
+              </div>
+            )}
+            {profile?.monthlyGross && (
+              <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 text-center">
+                <div className="text-xs text-emerald-600 font-medium">Μισθός Brutto</div>
+                <div className="text-xl font-bold text-emerald-700">€{Number(profile.monthlyGross).toFixed(0)}</div>
+                <div className="text-xs text-emerald-500">/ μήνα</div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -199,7 +276,62 @@ export default function StaffProfilePage() {
       </div>
 
       {/* Tab: Προφίλ */}
-      {tab === 'profile' && (
+      {formError && (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{formError}</div>
+      )}
+
+      {tab === 'profile' && editing && (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+          <h3 className="font-semibold text-gray-800 mb-4">Επεξεργασία προφίλ</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Field label="Ονοματεπώνυμο" value={form.fullName} onChange={(value) => setForm({ ...form, fullName: value })} />
+            <Field label="Email" value={form.email} onChange={(value) => setForm({ ...form, email: value })} />
+            <Field label="Τηλέφωνο" value={form.phone} onChange={(value) => setForm({ ...form, phone: value })} />
+            <Field label="Διεύθυνση" value={form.address} onChange={(value) => setForm({ ...form, address: value })} />
+            <Field label="Ειδικότητα" value={form.specialization} onChange={(value) => setForm({ ...form, specialization: value })} />
+            <label className="block text-sm">
+              <span className="text-gray-500 text-xs font-medium">Σύμβαση</span>
+              <select
+                value={form.contractType}
+                onChange={(event) => setForm({ ...form, contractType: event.target.value })}
+                className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="full_time">Πλήρης απασχόληση</option>
+                <option value="part_time">Μερική απασχόληση</option>
+                <option value="hourly">Ωρομίσθιος</option>
+              </select>
+            </label>
+            <Field label="Ημ. πρόσληψης" type="date" value={form.hireDate} onChange={(value) => setForm({ ...form, hireDate: value })} />
+            <Field label="Μισθός brutto (€)" type="number" value={form.monthlyGross} onChange={(value) => setForm({ ...form, monthlyGross: value })} />
+            <label className="block text-sm md:col-span-2">
+              <span className="text-gray-500 text-xs font-medium">Βιογραφικό</span>
+              <textarea
+                value={form.bio}
+                onChange={(event) => setForm({ ...form, bio: event.target.value })}
+                rows={4}
+                className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+              />
+            </label>
+          </div>
+          <div className="flex gap-2 mt-5">
+            <button
+              onClick={saveProfile}
+              disabled={saving}
+              className="px-4 py-2 rounded-lg bg-[#77328D] text-white text-sm font-medium hover:bg-[#642678] disabled:opacity-50"
+            >
+              {saving ? 'Αποθήκευση...' : 'Αποθήκευση'}
+            </button>
+            <button
+              onClick={() => { setEditing(false); setFormError(''); }}
+              className="px-4 py-2 rounded-lg border border-gray-200 text-sm text-gray-600"
+            >
+              Άκυρο
+            </button>
+          </div>
+        </div>
+      )}
+
+      {tab === 'profile' && !editing && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
             <h3 className="font-semibold text-gray-800 mb-4">Στοιχεία Επικοινωνίας</h3>
@@ -376,6 +508,20 @@ export default function StaffProfilePage() {
         </div>
       )}
     </div>
+  );
+}
+
+function Field({ label, value, onChange, type = 'text' }: { label: string; value: string; onChange: (value: string) => void; type?: string }) {
+  return (
+    <label className="block text-sm">
+      <span className="text-gray-500 text-xs font-medium">{label}</span>
+      <input
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+      />
+    </label>
   );
 }
 

@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { normalizePhone } from '../auth/phone';
 
 @Injectable()
 export class StaffService {
@@ -44,25 +45,95 @@ export class StaffService {
   }
 
   async upsertProfile(memberId: string, schoolId: string, data: {
-    phone?: string; address?: string; bio?: string; specialization?: string;
-    contractType?: string; hireDate?: string; monthlyGross?: number;
+    fullName?: string;
+    email?: string;
+    phone?: string | null;
+    address?: string | null;
+    bio?: string | null;
+    specialization?: string | null;
+    contractType?: string | null;
+    hireDate?: string | null;
+    monthlyGross?: number | string | null;
     education?: { degree: string; institution: string; year: number }[];
   }) {
     const member = await this.prisma.schoolMember.findFirst({ where: { id: memberId, schoolId } });
     if (!member) throw new NotFoundException('Staff member not found');
 
-    return this.prisma.teacherProfile.upsert({
-      where: { schoolMemberId: memberId },
-      create: {
-        schoolMemberId: memberId,
-        ...data,
-        hireDate: data.hireDate ? new Date(data.hireDate) : undefined,
-      },
-      update: {
-        ...data,
-        hireDate: data.hireDate ? new Date(data.hireDate) : undefined,
-      },
+    const userData: { fullName?: string; email?: string; phone?: string | null } = {};
+    if (data.fullName !== undefined) {
+      const fullName = data.fullName.trim();
+      if (!fullName) throw new BadRequestException('Συμπληρώστε το ονοματεπώνυμο');
+      userData.fullName = fullName;
+    }
+    if (data.email !== undefined) {
+      const email = data.email.trim().toLowerCase();
+      if (!email) throw new BadRequestException('Συμπληρώστε το email');
+      const taken = await this.prisma.user.findFirst({ where: { email, NOT: { id: member.userId } } });
+      if (taken) throw new ConflictException('Αυτό το email χρησιμοποιείται ήδη');
+      userData.email = email;
+    }
+    if (data.phone !== undefined) userData.phone = normalizePhone(data.phone);
+
+    if (Object.keys(userData).length) {
+      await this.prisma.user.update({ where: { id: member.userId }, data: userData });
+    }
+
+    const profile: Record<string, unknown> = {};
+    if (data.phone !== undefined) profile.phone = normalizePhone(data.phone);
+    if (data.address !== undefined) profile.address = blankToNull(data.address);
+    if (data.bio !== undefined) profile.bio = blankToNull(data.bio);
+    if (data.specialization !== undefined) profile.specialization = blankToNull(data.specialization);
+    if (data.contractType !== undefined) {
+      const allowed = ['full_time', 'part_time', 'hourly'];
+      profile.contractType = data.contractType && allowed.includes(data.contractType) ? data.contractType : null;
+    }
+    if (data.hireDate !== undefined) profile.hireDate = data.hireDate ? new Date(data.hireDate) : null;
+    if (data.monthlyGross !== undefined) {
+      if (data.monthlyGross === '' || data.monthlyGross === null) profile.monthlyGross = null;
+      else {
+        const amount = Number(data.monthlyGross);
+        if (!Number.isFinite(amount) || amount < 0) throw new BadRequestException('Ο μισθός δεν είναι έγκυρος');
+        profile.monthlyGross = amount;
+      }
+    }
+    if (data.education !== undefined) profile.education = data.education;
+
+    if (Object.keys(profile).length) {
+      await this.prisma.teacherProfile.upsert({
+        where: { schoolMemberId: memberId },
+        create: { schoolMemberId: memberId, ...(profile as object) },
+        update: profile,
+      });
+    }
+
+    return this.findOne(memberId, schoolId);
+  }
+
+  async remove(memberId: string, schoolId: string, actorId: string) {
+    const member = await this.prisma.schoolMember.findFirst({ where: { id: memberId, schoolId, isActive: true } });
+    if (!member) throw new NotFoundException('Staff member not found');
+    if (member.userId === actorId) throw new ForbiddenException('Δεν μπορείτε να διαγράψετε τον δικό σας λογαριασμό');
+    if (member.role === 'school_admin') {
+      const admins = await this.prisma.schoolMember.count({ where: { schoolId, role: 'school_admin', isActive: true } });
+      if (admins <= 1) throw new ForbiddenException('Πρέπει να μείνει τουλάχιστον ένας διαχειριστής');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.schoolMember.update({ where: { id: member.id }, data: { isActive: false } });
+      const classes = await tx.class.findMany({ where: { schoolId }, select: { id: true } });
+      if (classes.length) {
+        await tx.classTeacher.deleteMany({
+          where: { userId: member.userId, classId: { in: classes.map((row) => row.id) } },
+        });
+      }
+      await tx.levelCoordinator.deleteMany({ where: { userId: member.userId, level: { schoolId } } });
+      await tx.level.updateMany({ where: { schoolId, coordinatorId: member.userId }, data: { coordinatorId: null } });
+      const stillActive = await tx.schoolMember.count({ where: { userId: member.userId, isActive: true } });
+      if (stillActive === 0) {
+        await tx.user.update({ where: { id: member.userId }, data: { isActive: false } });
+      }
     });
+    return { ok: true };
   }
 
   async getSalary(memberId: string, schoolId: string) {
@@ -141,4 +212,9 @@ export class StaffService {
     }
     return member.teacherProfile;
   }
+}
+
+function blankToNull(value?: string | null) {
+  const text = value?.trim() ?? '';
+  return text || null;
 }

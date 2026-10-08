@@ -469,6 +469,8 @@ export const staffApi = {
   get: (schoolId: string, memberId: string) => api.get(`/schools/${schoolId}/staff/${memberId}`),
   updateProfile: (schoolId: string, memberId: string, data: any) =>
     api.patch(`/schools/${schoolId}/staff/${memberId}/profile`, data),
+  remove: (schoolId: string, memberId: string) =>
+    api.delete(`/schools/${schoolId}/staff/${memberId}`),
   uploadAvatar: (schoolId: string, memberId: string, file: File) => {
     const fd = new FormData();
     fd.append('file', file);
