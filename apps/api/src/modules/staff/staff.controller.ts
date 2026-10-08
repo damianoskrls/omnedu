@@ -24,11 +24,11 @@ export class StaffController {
 
   @Post()
   @Roles('school_admin')
-  createOwner(
+  createMember(
     @Param('schoolId') schoolId: string,
-    @Body() body: { fullName?: string; phone?: string },
+    @Body() body: { fullName?: string; phone?: string; role?: string },
   ) {
-    return this.staff.createOwner(schoolId, body);
+    return this.staff.createMember(schoolId, body);
   }
 
   @Get('me/leaves')

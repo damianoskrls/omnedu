@@ -56,9 +56,10 @@ export class StaffService implements OnModuleInit {
     return { ...member, classes };
   }
 
-  async createOwner(schoolId: string, data: { fullName?: string; phone?: string }) {
+  async createMember(schoolId: string, data: { fullName?: string; phone?: string; role?: string }) {
     const fullName = data.fullName?.trim() ?? '';
     const phone = normalizePhone(data.phone);
+    const role = data.role === 'school_admin' || data.role === 'owner' ? data.role : 'teacher';
     if (!fullName) throw new BadRequestException('Συμπληρώστε το ονοματεπώνυμο');
     if (!phone || phone.length < 10) throw new BadRequestException('Συμπληρώστε ένα έγκυρο κινητό');
 
@@ -67,26 +68,24 @@ export class StaffService implements OnModuleInit {
     });
     const user = existing ?? await this.prisma.user.create({
       data: {
-        email: `owner-${phone.replace(/\D/g, '')}@omnedu.placeholder`,
+        email: `staff-${phone.replace(/\D/g, '')}-${role}@omnedu.placeholder`,
         fullName,
         phone,
         passwordHash: randomBytes(32).toString('hex'),
       },
     });
-    if (existing && existing.fullName !== fullName) {
-      await this.prisma.user.update({ where: { id: existing.id }, data: { fullName, phone } });
-    }
 
     const membership = await this.prisma.schoolMember.findFirst({
-      where: { schoolId, userId: user.id, role: 'owner' },
+      where: { schoolId, userId: user.id, role },
     });
-    if (membership?.isActive) throw new ConflictException('Αυτό το κινητό είναι ήδη ιδιοκτήτης');
+    const roleLabel = role === 'owner' ? 'ιδιοκτήτης' : role === 'school_admin' ? 'διαχειριστής' : 'εκπαιδευτικός';
+    if (membership?.isActive) throw new ConflictException(`Αυτό το κινητό είναι ήδη ${roleLabel}`);
     if (membership) {
       await this.prisma.schoolMember.update({ where: { id: membership.id }, data: { isActive: true } });
       return this.findOne(membership.id, schoolId);
     }
     const created = await this.prisma.schoolMember.create({
-      data: { schoolId, userId: user.id, role: 'owner' },
+      data: { schoolId, userId: user.id, role },
     });
     return this.findOne(created.id, schoolId);
   }

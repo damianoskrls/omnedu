@@ -473,7 +473,7 @@ export const extraServicesApi = {
 
 export const staffApi = {
   list: (schoolId: string) => api.get(`/schools/${schoolId}/staff`),
-  createOwner: (schoolId: string, data: { fullName: string; phone: string }) =>
+  create: (schoolId: string, data: { fullName: string; phone: string; role: string }) =>
     api.post(`/schools/${schoolId}/staff`, data),
   get: (schoolId: string, memberId: string) => api.get(`/schools/${schoolId}/staff/${memberId}`),
   updateProfile: (schoolId: string, memberId: string, data: any) =>

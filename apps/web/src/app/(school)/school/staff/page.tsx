@@ -34,6 +34,7 @@ export default function StaffPage() {
   const [formError, setFormError] = useState('');
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
+  const [role, setRole] = useState('teacher');
 
   useEffect(() => {
     if (!schoolId) return;
@@ -55,49 +56,61 @@ export default function StaffPage() {
           onClick={() => { setAdding(true); setFormError(''); }}
           className="flex items-center gap-2 bg-[#77328D] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#642678]"
         >
-          <Plus className="h-4 w-4" /> Ιδιοκτήτης
+          <Plus className="h-4 w-4" /> Νέο προσωπικό
         </button>
       </div>
 
       {adding && (
-        <form
-          className="mb-6 max-w-lg rounded-2xl border border-[#77328D]/15 bg-white p-5 shadow-sm"
-          onSubmit={async (event) => {
-            event.preventDefault();
-            setSaving(true);
-            setFormError('');
-            try {
-              await staffApi.createOwner(schoolId, { fullName, phone });
-              const data: any = await staffApi.list(schoolId);
-              setMembers(Array.isArray(data) ? data : []);
-              setFullName('');
-              setPhone('');
-              setAdding(false);
-            } catch (error: any) {
-              setFormError(typeof error?.message === 'string' ? error.message : 'Ο ιδιοκτήτης δεν αποθηκεύτηκε');
-            } finally {
-              setSaving(false);
-            }
-          }}
-        >
-          <h2 className="font-semibold text-gray-900">Νέος ιδιοκτήτης</h2>
-          <p className="mt-1 text-sm text-gray-500">Μπαίνει στην εφαρμογή με το κινητό του και βλέπει όλες τις τάξεις και τις αναφορές. Μπορείς να προσθέσεις και τους δύο.</p>
-          <label className="mt-4 block text-sm font-medium text-gray-700">
-            Ονοματεπώνυμο
-            <input value={fullName} onChange={(event) => setFullName(event.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2" />
-          </label>
-          <label className="mt-3 block text-sm font-medium text-gray-700">
-            Κινητό
-            <input value={phone} onChange={(event) => setPhone(event.target.value)} inputMode="tel" className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2" placeholder="69XXXXXXXX" />
-          </label>
-          {formError && <p className="mt-3 text-sm text-red-600">{formError}</p>}
-          <div className="mt-4 flex gap-2">
-            <button type="submit" disabled={saving} className="rounded-xl bg-[#77328D] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-              {saving ? 'Αποθήκευση...' : 'Αποθήκευση'}
-            </button>
-            <button type="button" onClick={() => setAdding(false)} className="rounded-xl px-4 py-2 text-sm text-gray-500">Ακύρωση</button>
-          </div>
-        </form>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <form
+            className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              setSaving(true);
+              setFormError('');
+              try {
+                await staffApi.create(schoolId, { fullName, phone, role });
+                const data: any = await staffApi.list(schoolId);
+                setMembers(Array.isArray(data) ? data : []);
+                setFullName('');
+                setPhone('');
+                setRole('teacher');
+                setAdding(false);
+              } catch (error: any) {
+                const message = error?.message;
+                setFormError(Array.isArray(message) ? message.join(' ') : (typeof message === 'string' && message ? message : 'Το μέλος δεν αποθηκεύτηκε'));
+              } finally {
+                setSaving(false);
+              }
+            }}
+          >
+            <h2 className="font-semibold text-gray-900">Νέο προσωπικό</h2>
+            <p className="mt-1 text-sm text-gray-500">Μπαίνει στην εφαρμογή με το κινητό. Ο ιδιοκτήτης βλέπει όλες τις τάξεις και τις αναφορές.</p>
+            <label className="mt-4 block text-sm font-medium text-gray-700">
+              Ρόλος
+              <select value={role} onChange={(event) => setRole(event.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2">
+                <option value="teacher">Εκπαιδευτικός</option>
+                <option value="school_admin">Διαχειριστής</option>
+                <option value="owner">Ιδιοκτήτης</option>
+              </select>
+            </label>
+            <label className="mt-3 block text-sm font-medium text-gray-700">
+              Ονοματεπώνυμο
+              <input value={fullName} onChange={(event) => setFullName(event.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2" />
+            </label>
+            <label className="mt-3 block text-sm font-medium text-gray-700">
+              Κινητό
+              <input value={phone} onChange={(event) => setPhone(event.target.value)} inputMode="tel" className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2" placeholder="69XXXXXXXX" />
+            </label>
+            {formError && <p className="mt-3 text-sm text-red-600">{formError}</p>}
+            <div className="mt-4 flex gap-2">
+              <button type="submit" disabled={saving} className="rounded-xl bg-[#77328D] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                {saving ? 'Αποθήκευση...' : 'Αποθήκευση'}
+              </button>
+              <button type="button" onClick={() => setAdding(false)} className="rounded-xl px-4 py-2 text-sm text-gray-500">Ακύρωση</button>
+            </div>
+          </form>
+        </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
