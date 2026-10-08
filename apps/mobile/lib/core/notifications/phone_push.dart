@@ -71,6 +71,14 @@ Future<void> startPhonePush({
   _phonePushListening = true;
   FirebaseMessaging.onBackgroundMessage(firebaseBackgroundHandler);
   await FirebaseMessaging.instance.requestPermission(alert: true, badge: true, sound: true);
+  if (Platform.isIOS) {
+    await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(alert: true, badge: true, sound: true);
+    for (var attempt = 0; attempt < 6; attempt++) {
+      final apns = await FirebaseMessaging.instance.getAPNSToken();
+      if (apns != null && apns.isNotEmpty) break;
+      await Future<void>.delayed(const Duration(seconds: 1));
+    }
+  }
   FirebaseMessaging.onMessage.listen((message) {
     final title = message.notification?.title ?? message.data['title']?.toString() ?? 'Ονειροχώρα';
     final body = message.notification?.body ?? message.data['body']?.toString() ?? '';

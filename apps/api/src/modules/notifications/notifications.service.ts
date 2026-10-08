@@ -148,13 +148,11 @@ export class NotificationsService implements OnModuleInit {
                 collapseKey: 'oneirochora-broadcast',
                 notification: { channelId: 'oneirochora', sound: 'default', tag: 'oneirochora-broadcast' },
               },
-              apns: {
-                headers: { 'apns-priority': '10' },
-                payload: { aps: { sound: 'default' } },
-              },
+              apns: this.applePush(data.title.slice(0, 120), preview),
             });
             pushDelivered += res.successCount;
             recipientCount += res.successCount;
+            this.logPushFailures(res);
           } catch (e) {
             this.logger.error('FCM send error', e);
           }
@@ -342,6 +340,30 @@ export class NotificationsService implements OnModuleInit {
     }
   }
 
+  private applePush(title: string, body: string): admin.messaging.ApnsConfig {
+    return {
+      headers: { 'apns-priority': '10', 'apns-push-type': 'alert' },
+      payload: {
+        aps: {
+          alert: { title: title.slice(0, 120), body: body.slice(0, 180) },
+          sound: 'default',
+        },
+      },
+    };
+  }
+
+  private logPushFailures(res: admin.messaging.BatchResponse) {
+    const counts = new Map<string, number>();
+    for (const item of res.responses) {
+      const code = item.error?.code;
+      if (!code || code.includes('registration-token-not-registered') || code.includes('invalid-registration-token')) continue;
+      counts.set(code, (counts.get(code) ?? 0) + 1);
+    }
+    if (counts.size) {
+      this.logger.warn(`FCM failures: ${[...counts.entries()].map(([code, count]) => `${code} x${count}`).join(', ')}`);
+    }
+  }
+
   private async pushToUsers(userIds: string[], title: string, body: string, data: Record<string, string>) {
     if (!this.fcmApp) return;
     const tokens = await this.getTargetTokens(userIds);
@@ -358,11 +380,9 @@ export class NotificationsService implements OnModuleInit {
             collapseKey: 'oneirochora-event',
             notification: { channelId: 'oneirochora', sound: 'default', tag: `oneirochora-${payload.type || 'event'}` },
           },
-          apns: {
-            headers: { 'apns-priority': '10' },
-            payload: { aps: { sound: 'default' } },
-          },
+          apns: this.applePush(title, body),
         });
+        this.logPushFailures(res);
         const stale: string[] = [];
         res.responses.forEach((item, index) => {
           const code = item.error?.code ?? '';
