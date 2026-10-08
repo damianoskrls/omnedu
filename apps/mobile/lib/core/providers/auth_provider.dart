@@ -219,9 +219,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
         case DioExceptionType.connectionTimeout:
         case DioExceptionType.receiveTimeout:
         case DioExceptionType.sendTimeout:
-          return 'Η σύνδεση έληξε. Ελέγξτε το δίκτυό σας.';
         case DioExceptionType.connectionError:
-          return 'Δεν είναι δυνατή η σύνδεση. Ελέγξτε ότι είστε στο ίδιο δίκτυο.';
+          return 'Το κινητό δεν συνδέθηκε με την Ονειροχώρα. Ελέγξτε το Wi‑Fi ή τα δεδομένα.';
         default:
           return e.message ?? 'Σφάλμα σύνδεσης';
       }

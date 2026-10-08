@@ -1,13 +1,29 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../storage/secure_storage.dart';
 
-const _baseUrl = String.fromEnvironment(
-  'API_URL',
-  defaultValue: 'https://omneduapi-production.up.railway.app/api/v1',
-);
+const productionApiUrl = 'https://omneduapi-production.up.railway.app/api/v1';
+
+const _envApiUrl = String.fromEnvironment('API_URL', defaultValue: productionApiUrl);
+
+bool _localApi(String url) {
+  final host = Uri.tryParse(url)?.host ?? '';
+  return host == '10.0.2.2' || host == 'localhost' || host == '127.0.0.1';
+}
+
+// 10.0.2.2 is the Android emulator's name for the computer. On an iPhone it
+// never answers, so a saved run config that still points there times out.
+String get _baseUrl {
+  if (!Platform.isAndroid && _localApi(_envApiUrl)) return productionApiUrl;
+  return _envApiUrl;
+}
+
+bool _publicAuth(String path) {
+  return path.contains('/auth/otp') || path.contains('/auth/login') || path.contains('/auth/refresh');
+}
 
 // The API host (scheme + host + port) derived from _baseUrl.
 // Used to rewrite media URLs that the server emits as "http://localhost:..."
@@ -65,7 +81,10 @@ Future<String?> _refreshSession(SecureStorageService storage) async {
   final current = await storage.getAccessToken();
   final payload = current == null ? null : _payload(current);
   try {
-    final resp = await Dio().post(
+    final resp = await Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(seconds: 20),
+    )).post(
       '$_baseUrl/auth/refresh',
       data: {
         'refreshToken': refreshToken,
@@ -103,6 +122,10 @@ final dioProvider = Provider<Dio>((ref) {
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (options, handler) async {
+        if (_publicAuth(options.path)) {
+          options.headers.remove('Authorization');
+          return handler.next(options);
+        }
         var token = await storage.getAccessToken();
         if (token != null && _expired(token)) {
           token = await refreshSession(storage) ?? token;
