@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/api/api_client.dart';
+import '../../core/notifications/open_conversation.dart';
 import '../../core/utils/system_insets.dart';
 import '../../core/widgets/app_image.dart';
 import '../../core/widgets/person_face.dart';
@@ -341,9 +343,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _emojisOpen = false;
   String? _error;
   DateTime _lastTyping = DateTime.fromMillisecondsSinceEpoch(0);
+  Timer? _refresh;
+
+  @override
+  void initState() {
+    super.initState();
+    openConversationId.value = widget.convId;
+    _refresh = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (!mounted) return;
+      ref.invalidate(messagesProvider(ConvKey(widget.schoolId, widget.convId)));
+    });
+  }
 
   @override
   void dispose() {
+    _refresh?.cancel();
+    if (openConversationId.value == widget.convId) openConversationId.value = null;
     _ctrl.dispose();
     super.dispose();
   }

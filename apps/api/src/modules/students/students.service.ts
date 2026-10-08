@@ -590,6 +590,7 @@ export class StudentsService {
 
   async ensureParentChildren(parentUserId: string, schoolId: string) {
     const userIds = await this.accountUserIds(parentUserId);
+    const linkIds = await this.parentAccountIds(userIds, schoolId);
     const direct = await this.prisma.student.findMany({
       where: { schoolId, isActive: true, parents: { some: { userId: { in: userIds } } } },
       select: { id: true },
@@ -623,12 +624,31 @@ export class StudentsService {
       const relation = existing.find((row) => row.studentId === studentId)?.relation
         ?? existing[0]?.relation
         ?? 'γονέας';
-      for (const userId of userIds) {
+      for (const userId of linkIds) {
         if (have.has(`${studentId}:${userId}`)) continue;
         data.push({ studentId, userId, relation, isPrimary: false });
       }
     }
     if (data.length) await this.prisma.studentParent.createMany({ data, skipDuplicates: true });
+  }
+
+  private async parentAccountIds(userIds: string[], schoolId: string) {
+    if (!userIds.length) return userIds;
+    const members = await this.prisma.schoolMember.findMany({
+      where: { schoolId, userId: { in: userIds }, isActive: true },
+      select: { userId: true, role: true },
+    });
+    const roles = new Map<string, Set<string>>();
+    for (const row of members) {
+      const set = roles.get(row.userId) ?? new Set<string>();
+      set.add(row.role);
+      roles.set(row.userId, set);
+    }
+    return userIds.filter((id) => {
+      const set = roles.get(id);
+      if (!set || set.size === 0) return true;
+      return set.has('parent');
+    });
   }
 
   private async accountUserIds(userId: string) {

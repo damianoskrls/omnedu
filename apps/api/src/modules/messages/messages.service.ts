@@ -193,6 +193,15 @@ export class MessagesService {
         where: { conversationId_userId: { conversationId, userId } },
         data: { lastReadAt: new Date() },
       });
+      await this.prisma.notification.updateMany({
+        where: {
+          userId,
+          type: 'message',
+          isRead: false,
+          data: { path: ['conversationId'], equals: conversationId },
+        },
+        data: { isRead: true },
+      });
     } catch {
       // A failed read-receipt must not hide the messages.
     }
@@ -220,9 +229,21 @@ export class MessagesService {
     });
     if (conversation) {
       const senderName = created.sender?.fullName || 'Νέο μήνυμα';
+      const viewingSince = new Date(Date.now() - 12_000);
+      const presence = await this.prisma.conversationParticipant.findMany({
+        where: { conversationId },
+        select: { userId: true, lastReadAt: true },
+      });
+      const away = presence
+        .map((person) => person.userId)
+        .filter((id) => id !== senderId)
+        .filter((id) => {
+          const seen = presence.find((person) => person.userId === id)?.lastReadAt;
+          return !seen || seen < viewingSince;
+        });
       await this.notifications.notifyUsers(
         conversation.schoolId,
-        conversation.participants.map((person) => person.userId).filter((id) => id !== senderId),
+        away,
         {
           event: 'new_message',
           type: 'message',

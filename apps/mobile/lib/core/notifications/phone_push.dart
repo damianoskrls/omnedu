@@ -49,14 +49,14 @@ Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
 bool _phonePushListening = false;
 Future<void> Function(String token)? _phonePushToken;
 void Function(Map<String, dynamic> data)? _phonePushOpened;
-void Function(String title, String body)? _phonePushForeground;
+void Function(String title, String body, Map<String, dynamic> data)? _phonePushForeground;
 
 /// Registers this phone with Firebase so a message, bulletin, payment or
 /// admin notice can appear even when the app is closed.
 Future<void> startPhonePush({
   required Future<void> Function(String token) onToken,
   required void Function(Map<String, dynamic> data) onOpened,
-  required void Function(String title, String body) onForeground,
+  required void Function(String title, String body, Map<String, dynamic> data) onForeground,
 }) async {
   if (!PhonePushConfig.ready) return;
   _phonePushToken = onToken;
@@ -75,7 +75,7 @@ Future<void> startPhonePush({
     final title = message.notification?.title ?? message.data['title']?.toString() ?? 'Ονειροχώρα';
     final body = message.notification?.body ?? message.data['body']?.toString() ?? '';
     if (title.isEmpty && body.isEmpty) return;
-    _phonePushForeground?.call(title, body);
+    _phonePushForeground?.call(title, body, Map<String, dynamic>.from(message.data));
   });
   FirebaseMessaging.onMessageOpenedApp.listen((message) => _phonePushOpened?.call(message.data));
   final initial = await FirebaseMessaging.instance.getInitialMessage();

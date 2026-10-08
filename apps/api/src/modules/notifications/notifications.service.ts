@@ -287,7 +287,27 @@ export class NotificationsService implements OnModuleInit {
       where: { studentId, student: { schoolId } },
       select: { userId: true },
     });
-    return this.notifyUsers(schoolId, parents.map((row) => row.userId), input);
+    const userIds = [...new Set(parents.map((row) => row.userId))];
+    return this.notifyUsers(schoolId, await this.onlyParents(schoolId, userIds), input);
+  }
+
+  private async onlyParents(schoolId: string, userIds: string[]) {
+    if (!userIds.length) return [];
+    const members = await this.prisma.schoolMember.findMany({
+      where: { schoolId, userId: { in: userIds }, isActive: true },
+      select: { userId: true, role: true },
+    });
+    const roles = new Map<string, Set<string>>();
+    for (const row of members) {
+      const set = roles.get(row.userId) ?? new Set<string>();
+      set.add(row.role);
+      roles.set(row.userId, set);
+    }
+    return userIds.filter((id) => {
+      const set = roles.get(id);
+      if (!set || set.size === 0) return true;
+      return set.has('parent');
+    });
   }
 
   async notifyUsers(

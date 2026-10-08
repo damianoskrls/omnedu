@@ -55,6 +55,23 @@ export default function MessagesPage() {
   }, [schoolId]);
 
   useEffect(() => {
+    if (!schoolId || !activeId) return;
+    let stopped = false;
+    const refresh = () => {
+      api.get(`/schools/${schoolId}/conversations/${activeId}/messages`).then((data: any) => {
+        if (stopped) return;
+        setMessages(Array.isArray(data) ? data : []);
+        window.dispatchEvent(new Event('focus'));
+      }).catch(() => {});
+    };
+    const timer = window.setInterval(refresh, 4000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [schoolId, activeId]);
+
+  useEffect(() => {
     if (!schoolId) return;
     let stopped = false;
     const loadTyping = () => {

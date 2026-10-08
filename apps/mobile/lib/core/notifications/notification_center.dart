@@ -23,6 +23,7 @@ import '../../features/parent/screens/thematic_screen.dart';
 import '../../features/teacher/screens/teacher_meetings_screen.dart';
 import '../../features/teacher/screens/teacher_thematic_screen.dart';
 import '../api/api_client.dart';
+import 'open_conversation.dart';
 import '../providers/auth_provider.dart';
 import 'phone_push.dart';
 
@@ -87,11 +88,20 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
           'data': data,
         });
       },
-      onForeground: (title, body) {
+      onForeground: (title, body, data) {
+        if (_viewingMessage(data)) {
+          final conv = data['conversationId']?.toString() ?? '';
+          if (conv.isNotEmpty) {
+            ref.invalidate(messagesProvider(ConvKey(widget.schoolId, conv)));
+          }
+          return;
+        }
         _show({
           'id': 'live-${DateTime.now().microsecondsSinceEpoch}',
           'title': title,
           'body': body,
+          'type': data['type'],
+          'data': data,
         });
       },
     );
@@ -154,6 +164,14 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
         final notice = Map<String, dynamic>.from(item);
         final id = notice['id'] as String? ?? '';
         if (id.isEmpty || notice['isRead'] == true || _shown.contains(id)) continue;
+        if (_viewingMessage(notice)) {
+          _shown.add(id);
+          dio.post('/schools/${widget.schoolId}/notifications/inbox/$id/read').then((_) {}, onError: (_) {});
+          final raw = notice['data'];
+          final conv = raw is Map ? raw['conversationId']?.toString() ?? '' : '';
+          if (conv.isNotEmpty) ref.invalidate(messagesProvider(ConvKey(widget.schoolId, conv)));
+          continue;
+        }
         final sentAt = DateTime.tryParse(notice['sentAt']?.toString() ?? '');
         if (sentAt != null && DateTime.now().difference(sentAt.toLocal()) > const Duration(hours: 12)) {
           _shown.add(id);
@@ -209,6 +227,16 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
 
   @override
   Widget build(BuildContext context) => const SizedBox.shrink();
+}
+
+bool _viewingMessage(Map<dynamic, dynamic> notice) {
+  final open = openConversationId.value;
+  if (open == null || open.isEmpty) return false;
+  final type = notice['type']?.toString() ?? '';
+  if (type != 'message') return false;
+  final raw = notice['data'];
+  final conv = raw is Map ? raw['conversationId']?.toString() ?? '' : '';
+  return conv.isNotEmpty && conv == open;
 }
 
 bool _isRegulation(Map<String, dynamic> notice, Map<String, dynamic> data) {
