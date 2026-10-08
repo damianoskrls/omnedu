@@ -114,18 +114,6 @@ class _TeacherHomeScreenState extends ConsumerState<TeacherHomeScreen> {
                               spacing: 8,
                               runSpacing: 8,
                               children: [
-                                if (user.isOwner)
-                                  OutlinedButton.icon(
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: Colors.white,
-                                      side: const BorderSide(color: Colors.white70),
-                                    ),
-                                    onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                                      builder: (_) => OwnerReportsScreen(schoolId: widget.schoolId),
-                                    )),
-                                    icon: const Icon(Icons.insights_rounded, size: 18),
-                                    label: const Text('Αναφορές'),
-                                  ),
                                 if (!user.isOwner)
                                   OutlinedButton.icon(
                                     style: OutlinedButton.styleFrom(
@@ -158,6 +146,14 @@ class _TeacherHomeScreenState extends ConsumerState<TeacherHomeScreen> {
                   ),
                 ),
               ),
+
+              if (user.isOwner)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                    child: OwnerReportBody(schoolId: widget.schoolId),
+                  ),
+                ),
 
               // Class selector
               if (classes.isNotEmpty) ...[

@@ -16,26 +16,48 @@ class OwnerReportsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final report = ref.watch(_ownerReportProvider(schoolId));
     return Scaffold(
       backgroundColor: const Color(0xFFF8F4FC),
       appBar: AppBar(
         backgroundColor: Colors.white,
         title: const Text('Αναφορές', style: TextStyle(fontWeight: FontWeight.w700)),
       ),
-      body: report.when(
-        loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFF77328D))),
-        error: (_, __) => const Center(child: Text('Η αναφορά δεν φορτώθηκε')),
-        data: (data) {
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+        children: [OwnerReportBody(schoolId: schoolId)],
+      ),
+    );
+  }
+}
+
+class OwnerReportBody extends ConsumerWidget {
+  final String schoolId;
+  const OwnerReportBody({super.key, required this.schoolId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final report = ref.watch(_ownerReportProvider(schoolId));
+    return report.when(
+      loading: () => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(child: CircularProgressIndicator(color: Color(0xFF77328D))),
+      ),
+      error: (_, __) => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Text('Η αναφορά δεν φορτώθηκε'),
+      ),
+      data: (data) {
           final counts = data['counts'] is Map ? Map<String, dynamic>.from(data['counts'] as Map) : <String, dynamic>{};
           final finances = data['finances'] is Map ? Map<String, dynamic>.from(data['finances'] as Map) : <String, dynamic>{};
           final classes = data['classes'] is List ? data['classes'] as List : const [];
           final owing = data['owing'] is List ? data['owing'] as List : const [];
           final allergies = data['allergies'] is List ? data['allergies'] as List : const [];
           final bus = data['bus'] is List ? data['bus'] as List : const [];
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const Text('Αναφορές', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF1E1B4B))),
+              const SizedBox(height: 4),
               Text(
                 'Σχολικό έτος ${data['schoolYear'] ?? ''}',
                 style: const TextStyle(color: Color(0xFF6B7280), fontWeight: FontWeight.w600),
@@ -71,8 +93,7 @@ class OwnerReportsScreen extends ConsumerWidget {
               _People(title: 'Σχολικό', rows: bus, trailing: (row) => row['className']?.toString() ?? ''),
             ],
           );
-        },
-      ),
+      },
     );
   }
 }
