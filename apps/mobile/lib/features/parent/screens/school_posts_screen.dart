@@ -25,8 +25,9 @@ final schoolPostsProvider = FutureProvider.family<List<dynamic>, ({String school
 class SchoolPostsScreen extends ConsumerStatefulWidget {
   final String schoolId;
   final String? studentId;
+  final String? noticeType;
   final String title;
-  const SchoolPostsScreen({super.key, required this.schoolId, this.studentId, this.title = 'Νέα & Εκδηλώσεις'});
+  const SchoolPostsScreen({super.key, required this.schoolId, this.studentId, this.noticeType, this.title = 'Νέα & Εκδηλώσεις'});
 
   @override
   ConsumerState<SchoolPostsScreen> createState() => _SchoolPostsScreenState();
@@ -63,7 +64,7 @@ class _SchoolPostsScreenState extends ConsumerState<SchoolPostsScreen>
         backgroundColor: Colors.white,
         elevation: 0,
         title: Text(widget.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
-        bottom: widget.studentId != null
+        bottom: widget.studentId != null || widget.noticeType != null
             ? null
             : TabBar(
           controller: _tabCtrl,
@@ -77,6 +78,12 @@ class _SchoolPostsScreenState extends ConsumerState<SchoolPostsScreen>
       ),
       body: widget.studentId != null
           ? _PostsList(schoolId: widget.schoolId, studentId: widget.studentId, emptyLabel: 'Δεν υπάρχουν ακόμα στιγμές για αυτό το παιδί.')
+          : widget.noticeType != null
+          ? _PostsList(
+              schoolId: widget.schoolId,
+              type: widget.noticeType,
+              emptyLabel: 'Δεν υπάρχουν ακόμα ενημερώσεις για ξεχασμένα αντικείμενα.',
+            )
           : TabBarView(
               controller: _tabCtrl,
               children: _tabs.map((t) => _PostsList(
@@ -104,7 +111,10 @@ class _PostsList extends ConsumerWidget {
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('Σφάλμα φόρτωσης')),
       data: (posts) {
-        if (posts.isEmpty) {
+        final visible = type == null
+            ? posts.where((row) => row is! Map || row['postType']?.toString() != 'found').toList()
+            : posts;
+        if (visible.isEmpty) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -120,8 +130,8 @@ class _PostsList extends ConsumerWidget {
           onRefresh: () => ref.refresh(schoolPostsProvider(args).future),
           child: ListView.builder(
             padding: const EdgeInsets.all(16),
-            itemCount: posts.length,
-            itemBuilder: (_, i) => _PostCard(post: posts[i] as Map<String, dynamic>),
+            itemCount: visible.length,
+            itemBuilder: (_, i) => _PostCard(post: Map<String, dynamic>.from(visible[i] as Map)),
           ),
         );
       },
@@ -141,6 +151,7 @@ class _PostCard extends StatelessWidget {
     'birthday': (bg: Color(0xFFFDF2F8), icon: Color(0xFFBE185D), label: 'Γενέθλια'),
     'nameday': (bg: Color(0xFFFFF7ED), icon: Color(0xFFE95926), label: 'Γιορτή'),
     'classroom': (bg: Color(0xFFF3E8F7), icon: Color(0xFF77328D), label: 'Τάξη'),
+    'found': (bg: Color(0xFFFFF1EA), icon: Color(0xFFE95926), label: 'Εύρημα'),
   };
 
   @override

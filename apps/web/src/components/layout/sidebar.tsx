@@ -9,7 +9,7 @@ import { schoolsApi } from '@/lib/api';
 import {
   LayoutDashboard, School, Users, GraduationCap, BookOpen, Baby,
   MessageSquare, CreditCard, Settings, LogOut,
-  Layers, Utensils, ClipboardList, Pill, BellRing, Zap, Bus, Wrench, Newspaper, CalendarDays, ScrollText, NotebookPen, PartyPopper, TreePalm, BarChart3,
+  Layers, Utensils, ClipboardList, Pill, BellRing, Zap, Bus, Wrench, Newspaper, CalendarDays, ScrollText, NotebookPen, PartyPopper, TreePalm, BarChart3, Shirt,
   X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -64,6 +64,7 @@ const schoolNav: NavGroup[] = [
     label: 'Ενημέρωση',
     items: [
       { href: '/school/posts', label: 'Νέα & Εκδηλώσεις', icon: Newspaper },
+      { href: '/school/found', label: 'Ευρήματα', icon: Shirt },
       { href: '/school/events', label: 'Εκδρομές & Θέατρο', icon: CalendarDays },
       { href: '/school/celebrations', label: 'Γιορτές', icon: PartyPopper },
       { href: '/school/questionnaires', label: 'Ερωτηματολόγιο', icon: ClipboardList },

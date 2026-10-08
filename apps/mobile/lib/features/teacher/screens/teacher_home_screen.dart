@@ -10,6 +10,7 @@ import 'teacher_notify_screen.dart';
 import '../../medications/medications_screen.dart';
 import 'teacher_leaves_screen.dart';
 import 'class_moment_screen.dart';
+import 'found_item_screen.dart';
 final _myClassesProvider = FutureProvider.family<List<dynamic>, String>(
   (ref, schoolId) async {
     final dio = ref.read(dioProvider);
@@ -135,6 +136,17 @@ class _TeacherHomeScreenState extends ConsumerState<TeacherHomeScreen> {
                                   )),
                                   icon: const Icon(Icons.medication_rounded, size: 18),
                                   label: const Text('Φάρμακα'),
+                                ),
+                                OutlinedButton.icon(
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: Colors.white,
+                                    side: const BorderSide(color: Colors.white70),
+                                  ),
+                                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                                    builder: (_) => FoundItemsScreen(schoolId: widget.schoolId),
+                                  )),
+                                  icon: const Icon(Icons.checkroom_rounded, size: 18),
+                                  label: const Text('Ευρήματα'),
                                 ),
                               ],
                             ),

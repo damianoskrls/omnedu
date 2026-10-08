@@ -554,6 +554,7 @@ class InboxScreen extends ConsumerWidget {
     if (type == 'payment') return Icons.payments_rounded;
     if (type == 'celebration') return Icons.celebration_rounded;
     if (type == 'school_event' || type == 'event_post') return Icons.photo_library_rounded;
+    if (type == 'school_post' && data['postType']?.toString() == 'found') return Icons.checkroom_rounded;
     if (type == 'school_post') return Icons.newspaper_rounded;
     if (type == 'teacher_absence') return Icons.person_off_rounded;
     if (type == 'leave') return Icons.beach_access_rounded;

@@ -13,6 +13,7 @@ export class SchoolPostsService {
         publishedAt: { not: null },
         ...(type === 'moment' ? { postType: { in: ['birthday', 'nameday', 'classroom'] } } : {}),
         ...(type && type !== 'moment' ? { postType: type } : {}),
+        ...(!type ? { postType: { not: 'found' } } : {}),
       },
       include: {
         author: { select: { id: true, fullName: true, avatarUrl: true } },
@@ -52,10 +53,13 @@ export class SchoolPostsService {
     if (role === 'parent') throw new ForbiddenException('Οι γονείς δεν δημοσιεύουν αναρτήσεις.');
     const title = data.title?.trim() ?? '';
     if (!title) throw new BadRequestException('Γράψε έναν τίτλο.');
-    const audienceType = ['all', 'class', 'level', 'teachers', 'student'].includes(data.audienceType ?? '')
-      ? data.audienceType!
-      : 'all';
-    const audienceIds = this.audienceIds(data.audienceIds);
+    const found = data.postType === 'found';
+    const audienceType = found
+      ? 'all'
+      : ['all', 'class', 'level', 'teachers', 'student'].includes(data.audienceType ?? '')
+        ? data.audienceType!
+        : 'all';
+    const audienceIds = found ? '[]' : this.audienceIds(data.audienceIds);
     if ((audienceType === 'student' || audienceType === 'class') && this.parseIds(audienceIds).length === 0) {
       throw new BadRequestException(audienceType === 'student' ? 'Διάλεξε παιδί.' : 'Διάλεξε τάξη.');
     }
@@ -90,6 +94,7 @@ export class SchoolPostsService {
   }) {
     const post = await this.prisma.schoolPost.findFirst({ where: { id, schoolId } });
     if (!post) throw new NotFoundException('Post not found');
+    const found = (data.postType ?? post.postType) === 'found';
 
     const updated = await this.prisma.schoolPost.update({
       where: { id },
@@ -101,8 +106,9 @@ export class SchoolPostsService {
         ...(data.publishedAt !== undefined && {
           publishedAt: data.publishedAt ? new Date(data.publishedAt) : null,
         }),
-        ...(data.audienceType !== undefined && { audienceType: data.audienceType }),
-        ...(data.audienceIds !== undefined && { audienceIds: this.audienceIds(data.audienceIds) }),
+        ...(found ? { audienceType: 'all', audienceIds: '[]' } : {}),
+        ...(!found && data.audienceType !== undefined && { audienceType: data.audienceType }),
+        ...(!found && data.audienceIds !== undefined && { audienceIds: this.audienceIds(data.audienceIds) }),
       },
       include: {
         author: { select: { id: true, fullName: true, avatarUrl: true } },
@@ -142,8 +148,9 @@ export class SchoolPostsService {
       title: post.title,
       body,
       data: {
-        screen: 'posts',
+        screen: post.postType === 'found' ? 'found' : 'posts',
         postId: post.id,
+        postType: post.postType,
         ...(post.mediaUrls[0] ? { imageUrl: post.mediaUrls[0] } : {}),
       },
     });

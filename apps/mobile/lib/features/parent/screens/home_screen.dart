@@ -42,7 +42,8 @@ final _recentPostsProvider = FutureProvider.family<List<dynamic>, String>(
     try {
       final resp = await dio.get('/schools/$schoolId/posts');
       final data = resp.data;
-      return data is List ? data.take(3).toList() : [];
+      if (data is! List) return [];
+      return data.where((row) => row is! Map || row['postType']?.toString() != 'found').take(3).toList();
     } catch (_) {
       return [];
     }
@@ -73,6 +74,7 @@ class HomeScreen extends ConsumerWidget {
           ref.invalidate(childReportRangeProvider);
           ref.invalidate(dayHistoryMenuProvider);
           ref.invalidate(_recentPostsProvider(schoolId));
+          ref.invalidate(schoolPostsProvider((schoolId: schoolId, type: 'found', studentId: null)));
           ref.invalidate(monthThematicProvider(schoolId));
           ref.invalidate(parentMeetingsProvider(schoolId));
           ref.invalidate(teacherAbsencesProvider(schoolId));
@@ -215,6 +217,8 @@ class HomeScreen extends ConsumerWidget {
                 },
               ),
             ),
+
+            SliverToBoxAdapter(child: _FoundNoticesHome(schoolId: schoolId)),
 
             // Recent school posts section
             SliverToBoxAdapter(
@@ -437,6 +441,124 @@ class _GroupedExtras extends StatelessWidget {
           ],
           Text(value, style: const TextStyle(fontSize: 13, color: Color(0xFF374151))),
         ],
+      ),
+    );
+  }
+}
+
+class _FoundNoticesHome extends ConsumerWidget {
+  final String schoolId;
+  const _FoundNoticesHome({required this.schoolId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notices = ref.watch(schoolPostsProvider((schoolId: schoolId, type: 'found', studentId: null)));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 28, 20, 12),
+          child: Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Ενημερώσεις',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF2C2422)),
+                ),
+              ),
+              GestureDetector(
+                onTap: () => _openAll(context),
+                child: const Text('Όλες', style: TextStyle(fontSize: 13, color: Color(0xFF77328D), fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: notices.when(
+            loading: () => const LinearProgressIndicator(color: Color(0xFF77328D)),
+            error: (_, __) => const Text('Οι ενημερώσεις δεν φορτώθηκαν.', style: TextStyle(color: Color(0xFF6B7280))),
+            data: (posts) {
+              if (posts.isEmpty) {
+                return const Text(
+                  'Όταν βρεθεί κάτι στο σχολείο, η φωτογραφία και το μήνυμα της γραμματείας εμφανίζονται εδώ.',
+                  style: TextStyle(color: Color(0xFF6B7280), height: 1.4),
+                );
+              }
+              return Column(
+                children: [
+                  for (final raw in posts.take(3))
+                    if (raw is Map)
+                      _FoundNoticeCard(
+                        post: Map<String, dynamic>.from(raw),
+                        onTap: () => Navigator.push(context, MaterialPageRoute(
+                          builder: (_) => SchoolPostScreen(schoolId: schoolId, postId: raw['id']?.toString() ?? ''),
+                        )),
+                      ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _openAll(BuildContext context) {
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => SchoolPostsScreen(schoolId: schoolId, title: 'Ενημερώσεις', noticeType: 'found'),
+    ));
+  }
+}
+
+class _FoundNoticeCard extends StatelessWidget {
+  final Map<String, dynamic> post;
+  final VoidCallback onTap;
+  const _FoundNoticeCard({required this.post, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final title = post['title']?.toString() ?? 'Εύρημα';
+    final content = post['content']?.toString() ?? '';
+    final urls = post['mediaUrls'] is List ? (post['mediaUrls'] as List).map((item) => item.toString()).toList() : <String>[];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: urls.isEmpty
+                      ? const ColoredBox(
+                          color: Color(0xFFFFF1EA),
+                          child: SizedBox(width: 64, height: 64, child: Icon(Icons.checkroom_rounded, color: Color(0xFFE95926))),
+                        )
+                      : AppImage(urls.first, width: 64, height: 64, fit: BoxFit.cover),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)),
+                      if (content.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(content, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, height: 1.35, color: Color(0xFF6B7280))),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
