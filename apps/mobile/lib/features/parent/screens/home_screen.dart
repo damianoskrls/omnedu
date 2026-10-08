@@ -6,6 +6,7 @@ import '../../../core/api/api_client.dart';
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/widgets/app_image.dart';
 import '../../../core/widgets/person_face.dart';
+import '../../medications/medications_screen.dart';
 import 'child_hub_screen.dart';
 import 'day_history.dart';
 import 'parent_meetings_screen.dart';
@@ -75,6 +76,7 @@ class HomeScreen extends ConsumerWidget {
           ref.invalidate(monthThematicProvider(schoolId));
           ref.invalidate(parentMeetingsProvider(schoolId));
           ref.invalidate(teacherAbsencesProvider(schoolId));
+          ref.invalidate(medicationsProvider(schoolId));
         },
         child: CustomScrollView(
           slivers: [
@@ -206,6 +208,7 @@ class HomeScreen extends ConsumerWidget {
                         ),
                         for (final child in cards) ChildEventCards(child: child),
                       ],
+                      ParentMedicationSection(schoolId: schoolId),
                       _GroupedExtras(children: cards, plans: plans, meetings: meetings),
                     ],
                   );

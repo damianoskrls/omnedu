@@ -11,10 +11,10 @@ import { el } from 'date-fns/locale';
 import { PersonAvatar } from '@/components/PersonAvatar';
 
 const STATUS_META: Record<string, { label: string; color: string; icon: any }> = {
-  pending:   { label: 'Εκκρεμεί',  color: 'text-amber-600 bg-amber-50 border-amber-200',  icon: Clock },
-  approved:  { label: 'Εγκρίθηκε', color: 'text-emerald-600 bg-emerald-50 border-emerald-200', icon: CheckCircle2 },
+  pending:   { label: 'Αναμονή συναίνεσης',  color: 'text-amber-600 bg-amber-50 border-amber-200',  icon: Clock },
+  approved:  { label: 'Συναίνεση γονέα', color: 'text-emerald-600 bg-emerald-50 border-emerald-200', icon: CheckCircle2 },
   completed: { label: 'Ολοκληρώθηκε', color: 'text-blue-600 bg-blue-50 border-blue-200', icon: CheckCircle2 },
-  rejected:  { label: 'Απορρίφθηκε', color: 'text-red-600 bg-red-50 border-red-200',   icon: XCircle },
+  rejected:  { label: 'Χωρίς συναίνεση', color: 'text-red-600 bg-red-50 border-red-200',   icon: XCircle },
 };
 
 export default function MedicationsPage() {
@@ -74,11 +74,6 @@ export default function MedicationsPage() {
     }
   };
 
-  const acknowledge = async (id: string) => {
-    await medicationRequestsApi.acknowledge(schoolId, id);
-    load();
-  };
-
   const updateStatus = async (id: string, status: string) => {
     await medicationRequestsApi.updateStatus(schoolId, id, status);
     load();
@@ -100,12 +95,12 @@ export default function MedicationsPage() {
             <Pill className="text-rose-500" size={24} />
             Χορήγηση Φαρμάκων
           </h1>
-          <p className="text-sm text-gray-500 mt-1">Αιτήματα γονέων για χορήγηση φαρμάκου στο σχολείο</p>
+          <p className="text-sm text-gray-500 mt-1">Το αίτημα στέλνεται στον γονέα για συναίνεση και μετά φαίνεται στην εφαρμογή</p>
         </div>
         <div className="flex items-center gap-3">
           {pending > 0 && (
             <span className="bg-amber-100 text-amber-700 text-sm font-semibold px-3 py-1.5 rounded-full">
-              {pending} εκκρεμή
+              {pending} για συναίνεση
             </span>
           )}
           <button
@@ -169,7 +164,10 @@ export default function MedicationsPage() {
                       </p>
                       {req.reason && <p className="text-xs text-gray-400 mt-0.5">Αιτία: {req.reason}</p>}
                       {req.doctorNotes && (
-                        <p className="text-xs text-blue-600 mt-0.5">Οδηγίες γιατρού: {req.doctorNotes}</p>
+                        <p className="text-xs text-blue-600 mt-0.5">Οδηγίες: {req.doctorNotes}</p>
+                      )}
+                      {req.status === 'approved' && (
+                        <p className="text-xs text-emerald-700 mt-1">Με τη συναίνεση του γονέα{req.acknowledgedBy?.fullName ? ` (${req.acknowledgedBy.fullName})` : ''}</p>
                       )}
                       <p className="text-xs text-gray-400 mt-1">
                         Αίτημα από {req.requestedBy?.fullName} · {format(new Date(req.createdAt), 'd MMM yyyy', { locale: el })}
@@ -179,14 +177,6 @@ export default function MedicationsPage() {
 
                   {isAdmin && (
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      {req.status === 'pending' && (
-                        <button
-                          onClick={() => acknowledge(req.id)}
-                          className="text-xs text-emerald-600 border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg font-medium"
-                        >
-                          Αποδοχή
-                        </button>
-                      )}
                       {req.status === 'approved' && (
                         <button
                           onClick={() => updateStatus(req.id, 'completed')}
@@ -221,17 +211,14 @@ export default function MedicationsPage() {
               </button>
             </div>
 
-            <div className="p-6 space-y-4 max-h-[65vh] overflow-y-auto">
+            <div className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Μαθητής *</label>
-                <select
+                <StudentPicker
+                  students={students}
                   value={form.studentId}
-                  onChange={(e) => setForm({ ...form, studentId: e.target.value })}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  <option value="">— Επιλογή μαθητή —</option>
-                  {students.map((s) => <option key={s.id} value={s.id}>{s.fullName}</option>)}
-                </select>
+                  onChange={(studentId) => setForm({ ...form, studentId })}
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Φάρμακο *</label>
@@ -299,6 +286,76 @@ export default function MedicationsPage() {
                 {saving ? 'Αποστολή...' : 'Αποστολή Αιτήματος'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StudentPicker({
+  students,
+  value,
+  onChange,
+}: {
+  students: any[];
+  value: string;
+  onChange: (studentId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const selected = students.find((student) => student.id === value);
+  const needle = query.trim().toLowerCase();
+  const shown = needle
+    ? students.filter((student) => String(student.fullName ?? '').toLowerCase().includes(needle))
+    : students;
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm flex items-center gap-2 text-left focus:outline-none focus:ring-2 focus:ring-[#77328D]"
+      >
+        {selected ? (
+          <PersonAvatar name={selected.fullName} src={selected.avatarUrl} tone="brand" className="h-7 w-7 rounded-full text-[11px]" />
+        ) : (
+          <span className="h-7 w-7 rounded-full bg-gray-100 flex-shrink-0" />
+        )}
+        <span className={`flex-1 truncate ${selected ? 'text-gray-900' : 'text-gray-400'}`}>
+          {selected?.fullName ?? '— Επιλογή μαθητή —'}
+        </span>
+        <ChevronDown size={16} className="text-gray-400 flex-shrink-0" />
+      </button>
+      {open && (
+        <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+          <div className="p-2 border-b border-gray-100">
+            <input
+              autoFocus
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Αναζήτηση παιδιού"
+              className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#77328D]"
+            />
+          </div>
+          <div className="max-h-56 overflow-y-auto">
+            {shown.length === 0 ? (
+              <p className="px-3 py-4 text-sm text-gray-400">Δεν βρέθηκε παιδί</p>
+            ) : shown.map((student) => (
+              <button
+                key={student.id}
+                type="button"
+                onClick={() => {
+                  onChange(student.id);
+                  setOpen(false);
+                  setQuery('');
+                }}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-[#f8f2fa] ${student.id === value ? 'bg-[#f3e8f7]' : ''}`}
+              >
+                <PersonAvatar name={student.fullName} src={student.avatarUrl} tone="brand" className="h-8 w-8 rounded-full text-xs" />
+                <span className="font-medium text-gray-900 truncate">{student.fullName}</span>
+              </button>
+            ))}
           </div>
         </div>
       )}

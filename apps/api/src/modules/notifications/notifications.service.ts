@@ -18,6 +18,8 @@ const parentPushEvents = new Set([
   'parent_meeting_accepted',
   'teacher_absence',
   'questionnaire',
+  'medication_consent',
+  'medication_approved',
 ]);
 
 interface BroadcastData {

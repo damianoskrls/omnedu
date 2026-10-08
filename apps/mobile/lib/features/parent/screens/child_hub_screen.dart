@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/widgets/person_face.dart';
+import '../../medications/medications_screen.dart';
 import 'bulletin_screen.dart';
 import 'child_detail_screen.dart';
 import 'parent_child_pages.dart';
@@ -67,6 +68,14 @@ class ChildHubScreen extends StatelessWidget {
       }),
       _Tile('Εκδρομές', Icons.hiking_rounded, const Color(0xFFE95926), () {
         Navigator.push(context, MaterialPageRoute(builder: (_) => ChildEventsScreen(schoolId: schoolId, child: child)));
+      }),
+      _Tile('Φάρμακα', Icons.medication_rounded, const Color(0xFFBE185D), () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => MedicationsScreen(schoolId: schoolId, forParent: true, studentId: child['id']?.toString()),
+          ),
+        );
       }),
       _Tile('Ερωτηματολόγια', Icons.fact_check_rounded, const Color(0xFF1D4ED8), () {
         Navigator.push(context, MaterialPageRoute(builder: (_) => QuestionnairesScreen(schoolId: schoolId, child: child)));

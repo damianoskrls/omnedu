@@ -7,6 +7,7 @@ import 'teacher_student_screen.dart';
 import 'teacher_thematic_screen.dart';
 import 'teacher_meetings_screen.dart';
 import 'teacher_notify_screen.dart';
+import '../../medications/medications_screen.dart';
 import 'teacher_leaves_screen.dart';
 
 final _myClassesProvider = FutureProvider.family<List<dynamic>, String>(
@@ -108,16 +109,33 @@ class _TeacherHomeScreenState extends ConsumerState<TeacherHomeScreen> {
                               style: TextStyle(fontSize: 13, color: Colors.white70),
                             ),
                             const SizedBox(height: 12),
-                            OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.white,
-                                side: const BorderSide(color: Colors.white70),
-                              ),
-                              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                                builder: (_) => TeacherLeavesScreen(schoolId: widget.schoolId),
-                              )),
-                              icon: const Icon(Icons.beach_access_rounded, size: 18),
-                              label: const Text('Άδειες'),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                OutlinedButton.icon(
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: Colors.white,
+                                    side: const BorderSide(color: Colors.white70),
+                                  ),
+                                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                                    builder: (_) => TeacherLeavesScreen(schoolId: widget.schoolId),
+                                  )),
+                                  icon: const Icon(Icons.beach_access_rounded, size: 18),
+                                  label: const Text('Άδειες'),
+                                ),
+                                OutlinedButton.icon(
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: Colors.white,
+                                    side: const BorderSide(color: Colors.white70),
+                                  ),
+                                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                                    builder: (_) => MedicationsScreen(schoolId: widget.schoolId, forParent: false),
+                                  )),
+                                  icon: const Icon(Icons.medication_rounded, size: 18),
+                                  label: const Text('Φάρμακα'),
+                                ),
+                              ],
                             ),
                           ],
                         ),

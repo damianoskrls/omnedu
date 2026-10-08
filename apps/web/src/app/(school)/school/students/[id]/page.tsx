@@ -1158,7 +1158,7 @@ export default function StudentProfilePage() {
                             med.status === 'approved' ? 'bg-green-100 text-green-700' :
                             'bg-gray-100 text-gray-500'
                           }`}>
-                            {med.status === 'pending' ? 'Αναμονή' : med.status === 'approved' ? 'Εγκρίθηκε' : med.status}
+                            {med.status === 'pending' ? 'Αναμονή συναίνεσης' : med.status === 'approved' ? 'Συναίνεση γονέα' : med.status === 'rejected' ? 'Χωρίς συναίνεση' : med.status}
                           </span>
                         </div>
                         <div className="flex flex-wrap gap-3 mt-1 text-xs text-gray-500">

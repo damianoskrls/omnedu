@@ -1,6 +1,8 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, Request } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query } from '@nestjs/common';
 import { MedicationRequestsService } from './medication-requests.service';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 
 @Controller({ path: 'schools/:schoolId/medication-requests', version: '1' })
 export class MedicationRequestsController {
@@ -15,6 +17,12 @@ export class MedicationRequestsController {
     return this.svc.findAll(schoolId, studentId, status);
   }
 
+  @Get('mine')
+  mine(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
+    if (user.role === 'parent') return this.svc.findForParent(schoolId, user.sub);
+    return this.svc.findForTeacher(schoolId, user.sub);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @Param('schoolId') schoolId: string) {
     return this.svc.findOne(id, schoolId);
@@ -24,10 +32,21 @@ export class MedicationRequestsController {
   create(
     @Param('schoolId') schoolId: string,
     @Body() body: any,
-    @Request() req: any,
+    @CurrentUser() user: JwtPayload,
   ) {
-    const userId = req.user?.id ?? req.user?.userId;
-    return this.svc.create(schoolId, userId, body);
+    return this.svc.create(schoolId, user.sub, body);
+  }
+
+  @Patch(':id/consent')
+  @Roles('parent')
+  consent(
+    @Param('id') id: string,
+    @Param('schoolId') schoolId: string,
+    @Body() body: { decision?: string },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const decision = body.decision === 'rejected' ? 'rejected' : 'approved';
+    return this.svc.consent(id, schoolId, user.sub, decision);
   }
 
   @Patch(':id/acknowledge')
@@ -35,10 +54,9 @@ export class MedicationRequestsController {
   acknowledge(
     @Param('id') id: string,
     @Param('schoolId') schoolId: string,
-    @Request() req: any,
+    @CurrentUser() user: JwtPayload,
   ) {
-    const userId = req.user?.id ?? req.user?.userId;
-    return this.svc.acknowledge(id, schoolId, userId);
+    return this.svc.acknowledge(id, schoolId, user.sub);
   }
 
   @Patch(':id/status')

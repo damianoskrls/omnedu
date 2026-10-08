@@ -8,6 +8,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../features/medications/medications_screen.dart';
 import '../../features/messages/conversation_ui.dart';
 import '../../features/parent/screens/celebration_detail_screen.dart';
 import '../../features/parent/screens/events_screen.dart';
@@ -334,6 +335,21 @@ Future<void> openNotification(BuildContext context, WidgetRef ref, Map<String, d
     return;
   }
 
+  if (type == 'medication') {
+    final role = ref.read(authProvider).user?.role;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MedicationsScreen(
+          schoolId: schoolId,
+          forParent: role == 'parent',
+          studentId: data['studentId']?.toString(),
+        ),
+      ),
+    );
+    return;
+  }
+
   if (_isRegulation(notice, data)) {
     await Navigator.push(
       context,
@@ -512,6 +528,7 @@ class InboxScreen extends ConsumerWidget {
     if (type == 'school_post') return Icons.newspaper_rounded;
     if (type == 'teacher_absence') return Icons.person_off_rounded;
     if (type == 'leave') return Icons.beach_access_rounded;
+    if (type == 'medication') return Icons.medication_rounded;
     if (type == 'thematic') return Icons.auto_stories_rounded;
     if (type == 'parent_meeting' || type == 'parent_meeting_request' || type == 'parent_meeting_accepted') {
       return Icons.event_available_rounded;
