@@ -63,8 +63,8 @@ const schoolNav: NavGroup[] = [
   {
     label: 'Ενημέρωση',
     items: [
-      { href: '/school/posts', label: 'Νέα & Εκδηλώσεις', icon: Newspaper },
       { href: '/school/found', label: 'Ευρήματα', icon: Shirt },
+      { href: '/school/posts', label: 'Νέα & Εκδηλώσεις', icon: Newspaper },
       { href: '/school/events', label: 'Εκδρομές & Θέατρο', icon: CalendarDays },
       { href: '/school/celebrations', label: 'Γιορτές', icon: PartyPopper },
       { href: '/school/questionnaires', label: 'Ερωτηματολόγιο', icon: ClipboardList },

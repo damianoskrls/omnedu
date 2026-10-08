@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { activitiesApi, billingApi, classesApi, extraServicesApi, schoolEventsApi, staffApi, studentsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
-import { GraduationCap, BookOpen, CreditCard, UserPlus, ArrowUpRight, Bus, CalendarDays, Sparkles } from 'lucide-react';
+import { GraduationCap, BookOpen, CreditCard, UserPlus, ArrowUpRight, Bus, CalendarDays, Sparkles, Shirt } from 'lucide-react';
 import { eventDisplayStatus } from '@/lib/event-status';
 import { PersonAvatar } from '@/components/PersonAvatar';
 
@@ -79,6 +79,20 @@ export default function SchoolDashboard() {
           </p>
         </div>
       </div>
+
+      <Link
+        href="/school/found"
+        className="flex items-center gap-4 rounded-3xl border border-[#77328d]/10 bg-white px-6 py-4 shadow-[0_18px_40px_-28px_rgba(119,50,141,0.55)] transition-colors hover:bg-[#faf5fc]"
+      >
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#FFF1EA] text-[#E95926]">
+          <Shirt className="h-6 w-6" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-base font-extrabold text-[#2c2422]">Ευρήματα</span>
+          <span className="block text-sm text-[#6b625c]">Ανέβασε φωτογραφία για κάτι που βρέθηκε. Η ενημέρωση φεύγει σε όλους τους γονείς.</span>
+        </span>
+        <ArrowUpRight className="h-5 w-5 shrink-0 text-[#77328D]" />
+      </Link>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <DashCard label="Μαθητές" value={loading ? '…' : data?.students ?? 0} icon={GraduationCap} tone="purple" href="/school/students" />
