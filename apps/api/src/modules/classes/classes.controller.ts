@@ -33,6 +33,18 @@ export class ClassesController {
     return this.classes.create(schoolId, body);
   }
 
+  @Put(':id')
+  @Roles('school_admin')
+  update(@Param('schoolId') schoolId: string, @Param('id') id: string, @Body() body: any) {
+    return this.classes.update(id, schoolId, body);
+  }
+
+  @Delete(':id')
+  @Roles('school_admin')
+  remove(@Param('schoolId') schoolId: string, @Param('id') id: string) {
+    return this.classes.remove(id, schoolId);
+  }
+
   @Post(':id/teachers')
   @Roles('school_admin')
   assignTeacher(@Param('id') classId: string, @Body() body: { userId: string; isPrimary?: boolean }) {

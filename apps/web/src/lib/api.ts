@@ -184,6 +184,9 @@ export const classesApi = {
   get: (schoolId: string, id: string) => api.get(`/schools/${schoolId}/classes/${id}`),
   create: (schoolId: string, data: { name: string; academicYearId: string; levelId?: string; ageGroup?: string; capacity?: number }) =>
     api.post(`/schools/${schoolId}/classes`, data),
+  update: (schoolId: string, id: string, data: { name?: string; academicYearId?: string; levelId?: string | null; ageGroup?: string | null; capacity?: number | null }) =>
+    api.put(`/schools/${schoolId}/classes/${id}`, data),
+  remove: (schoolId: string, id: string) => api.delete(`/schools/${schoolId}/classes/${id}`),
   academicYears: (schoolId: string) =>
     api.get(`/schools/${schoolId}/classes/academic-years/list`),
   createInstruction: (schoolId: string, classId: string, data: { title: string; content: string; category?: string }) =>

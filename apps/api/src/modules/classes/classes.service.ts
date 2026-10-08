@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -102,6 +102,56 @@ export class ClassesService {
 
   async create(schoolId: string, data: { name: string; academicYearId: string; levelId?: string; ageGroup?: string; capacity?: number }) {
     return this.prisma.class.create({ data: { schoolId, ...data } });
+  }
+
+  async update(id: string, schoolId: string, data: {
+    name?: string;
+    academicYearId?: string;
+    levelId?: string | null;
+    ageGroup?: string | null;
+    capacity?: number | string | null;
+  }) {
+    const cls = await this.prisma.class.findFirst({ where: { id, schoolId } });
+    if (!cls) throw new NotFoundException('Η τάξη δεν βρέθηκε');
+    const name = data.name !== undefined ? data.name.trim() : undefined;
+    if (name !== undefined && !name) throw new BadRequestException('Συμπληρώστε το όνομα της τάξης');
+    if (data.academicYearId) {
+      const year = await this.prisma.academicYear.findFirst({ where: { id: data.academicYearId, schoolId } });
+      if (!year) throw new BadRequestException('Το σχολικό έτος δεν βρέθηκε');
+    }
+    if (data.levelId) {
+      const level = await this.prisma.level.findFirst({ where: { id: data.levelId, schoolId } });
+      if (!level) throw new BadRequestException('Η βαθμίδα δεν βρέθηκε');
+    }
+    let capacity: number | null | undefined;
+    if (data.capacity !== undefined) {
+      if (data.capacity === '' || data.capacity === null) capacity = null;
+      else {
+        capacity = Number(data.capacity);
+        if (!Number.isInteger(capacity) || capacity < 1) throw new BadRequestException('Η χωρητικότητα δεν είναι έγκυρη');
+      }
+    }
+    return this.prisma.class.update({
+      where: { id },
+      data: {
+        ...(name !== undefined ? { name } : {}),
+        ...(data.academicYearId ? { academicYearId: data.academicYearId } : {}),
+        ...(data.levelId !== undefined ? { levelId: data.levelId || null } : {}),
+        ...(data.ageGroup !== undefined ? { ageGroup: data.ageGroup?.trim() || null } : {}),
+        ...(capacity !== undefined ? { capacity } : {}),
+      },
+    });
+  }
+
+  async remove(id: string, schoolId: string) {
+    const cls = await this.prisma.class.findFirst({ where: { id, schoolId } });
+    if (!cls) throw new NotFoundException('Η τάξη δεν βρέθηκε');
+    await this.prisma.notificationBroadcast.updateMany({
+      where: { targetClassId: id },
+      data: { targetClassId: null },
+    });
+    await this.prisma.class.delete({ where: { id } });
+    return { ok: true };
   }
 
   async assignTeacher(classId: string, userId: string, isPrimary = false) {

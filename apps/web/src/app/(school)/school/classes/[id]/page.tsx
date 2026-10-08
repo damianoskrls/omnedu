@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { classesApi, studentsApi, parentMeetingsApi } from '@/lib/api';
+import { classesApi, studentsApi, parentMeetingsApi, levelsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, Users, GraduationCap, BookOpen, ChevronRight, Star,
@@ -29,10 +29,12 @@ function age(dob: string) {
 
 export default function ClassDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const classId = params.id as string;
   const user = useStoredUser();
   const schoolId = user?.schoolId ?? '';
   const isAdmin = user?.role === 'school_admin' || user?.role === 'teacher';
+  const canManage = user?.role === 'school_admin';
 
   const [cls, setCls] = useState<any>(null);
   const [students, setStudents] = useState<any[]>([]);
@@ -50,6 +52,12 @@ export default function ClassDetailPage() {
   const [instrForm, setInstrForm] = useState({ title: '', content: '', category: '' });
   const [savingInstr, setSavingInstr] = useState(false);
   const [deletingInstr, setDeletingInstr] = useState<string | null>(null);
+  const [editingClass, setEditingClass] = useState(false);
+  const [classForm, setClassForm] = useState({ name: '', levelId: '', academicYearId: '', ageGroup: '', capacity: '' });
+  const [levels, setLevels] = useState<any[]>([]);
+  const [years, setYears] = useState<any[]>([]);
+  const [savingClass, setSavingClass] = useState(false);
+  const [classError, setClassError] = useState('');
 
   const load = async () => {
     if (!schoolId || !classId) return;
@@ -120,6 +128,58 @@ export default function ClassDetailPage() {
     }
   };
 
+  const startEditClass = async () => {
+    const [levelRows, yearRows] = await Promise.all([
+      levelsApi.list(schoolId),
+      classesApi.academicYears(schoolId),
+    ]) as any[];
+    setLevels(Array.isArray(levelRows) ? levelRows : []);
+    setYears(Array.isArray(yearRows) ? yearRows : []);
+    setClassForm({
+      name: cls?.name ?? '',
+      levelId: cls?.level?.id ?? '',
+      academicYearId: cls?.academicYear?.id ?? '',
+      ageGroup: cls?.ageGroup ?? '',
+      capacity: cls?.capacity != null ? String(cls.capacity) : '',
+    });
+    setClassError('');
+    setEditingClass(true);
+  };
+
+  const saveClass = async () => {
+    if (!classForm.name.trim() || !classForm.academicYearId) return;
+    setSavingClass(true);
+    setClassError('');
+    try {
+      await classesApi.update(schoolId, classId, {
+        name: classForm.name.trim(),
+        academicYearId: classForm.academicYearId,
+        levelId: classForm.levelId || null,
+        ageGroup: classForm.ageGroup.trim() || null,
+        capacity: classForm.capacity ? Number(classForm.capacity) : null,
+      });
+      setEditingClass(false);
+      await load();
+    } catch (error: any) {
+      const message = error?.message;
+      setClassError(typeof message === 'string' ? message : 'Η αποθήκευση δεν ολοκληρώθηκε');
+    } finally {
+      setSavingClass(false);
+    }
+  };
+
+  const removeClass = async () => {
+    const note = students.length ? ` Οι ${students.length} μαθητές μένουν στο σχολείο και βγαίνουν από την τάξη.` : '';
+    if (!window.confirm(`Να διαγραφεί η τάξη ${cls?.name ?? ''};${note}`)) return;
+    try {
+      await classesApi.remove(schoolId, classId);
+      router.push('/school/classes');
+    } catch (error: any) {
+      const message = error?.message;
+      setClassError(typeof message === 'string' ? message : 'Η τάξη δεν διαγράφηκε');
+    }
+  };
+
   const deleteInstr = async (id: string) => {
     if (!confirm('Διαγραφή οδηγίας;')) return;
     setDeletingInstr(id);
@@ -181,7 +241,18 @@ export default function ClassDetailPage() {
               </div>
             </div>
           </div>
-          <div className="flex gap-4">
+          <div className="flex items-start gap-2">
+            {canManage && (
+              <div className="flex gap-2">
+                <button type="button" onClick={startEditClass} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-[#642678] hover:bg-[#faf5fc]">
+                  <Pencil className="h-4 w-4" /> Επεξεργασία
+                </button>
+                <button type="button" onClick={removeClass} className="inline-flex items-center gap-1 rounded-lg border border-red-100 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50">
+                  <Trash2 className="h-4 w-4" /> Διαγραφή
+                </button>
+              </div>
+            )}
+            <div className="flex gap-4">
             <div className="text-center px-4 py-2 bg-indigo-50 rounded-xl">
               <div className="text-2xl font-bold text-indigo-700">{students.length}</div>
               <div className="text-xs text-indigo-500 mt-0.5">Μαθητές</div>
@@ -190,8 +261,39 @@ export default function ClassDetailPage() {
               <div className="text-2xl font-bold text-violet-700">{cls.teachers?.length ?? 0}</div>
               <div className="text-xs text-violet-500 mt-0.5">Εκπαιδευτικοί</div>
             </div>
+            </div>
           </div>
         </div>
+        {editingClass && (
+          <div className="mt-5 grid grid-cols-1 gap-3 border-t border-gray-100 pt-4 md:grid-cols-2">
+            <label className="text-xs text-gray-500">Όνομα
+              <input value={classForm.name} onChange={(event) => setClassForm({ ...classForm, name: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900" />
+            </label>
+            <label className="text-xs text-gray-500">Σχολικό έτος
+              <select value={classForm.academicYearId} onChange={(event) => setClassForm({ ...classForm, academicYearId: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900">
+                {years.map((year) => <option key={year.id} value={year.id}>{year.label}{year.isCurrent ? ' (τρέχον)' : ''}</option>)}
+              </select>
+            </label>
+            <label className="text-xs text-gray-500">Βαθμίδα
+              <select value={classForm.levelId} onChange={(event) => setClassForm({ ...classForm, levelId: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900">
+                <option value="">Χωρίς βαθμίδα</option>
+                {levels.map((level) => <option key={level.id} value={level.id}>{level.name}</option>)}
+              </select>
+            </label>
+            <label className="text-xs text-gray-500">Ηλικιακή ομάδα
+              <input value={classForm.ageGroup} onChange={(event) => setClassForm({ ...classForm, ageGroup: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900" />
+            </label>
+            <label className="text-xs text-gray-500">Χωρητικότητα
+              <input type="number" min={1} value={classForm.capacity} onChange={(event) => setClassForm({ ...classForm, capacity: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900" />
+            </label>
+            <div className="flex items-end gap-2">
+              <button type="button" onClick={saveClass} disabled={savingClass} className="rounded-lg bg-[#77328D] px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">Αποθήκευση</button>
+              <button type="button" onClick={() => setEditingClass(false)} className="rounded-lg border px-3 py-2 text-sm">Άκυρο</button>
+            </div>
+            {classError && <p className="text-sm text-red-600 md:col-span-2">{classError}</p>}
+          </div>
+        )}
+        {classError && !editingClass && <p className="mt-3 text-sm text-red-600">{classError}</p>}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

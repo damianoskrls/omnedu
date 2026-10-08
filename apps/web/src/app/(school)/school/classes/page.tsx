@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { classesApi, levelsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
-import { Plus, Users, BookOpen, ChevronRight, GraduationCap, X } from 'lucide-react';
+import { Plus, Users, BookOpen, ChevronRight, GraduationCap, X, Pencil, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { PersonAvatar } from '@/components/PersonAvatar';
 
@@ -65,7 +65,9 @@ export default function ClassesPage() {
   const [levels, setLevels] = useState<any[]>([]);
   const [academicYears, setAcademicYears] = useState<any[]>([]);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
   const [newClass, setNewClass] = useState({ name: '', levelId: '', academicYearId: '', ageGroup: '', capacity: '' });
 
   const load = () => {
@@ -85,20 +87,64 @@ export default function ClassesPage() {
 
   const currentAcademicYear = academicYears.find(y => y.isCurrent);
 
-  const createClass = async () => {
+  const closeForm = () => {
+    setShowCreate(false);
+    setEditingId(null);
+    setFormError('');
+  };
+
+  const openEdit = (cls: any) => {
+    setEditingId(cls.id);
+    setNewClass({
+      name: cls.name ?? '',
+      levelId: cls.level?.id ?? '',
+      academicYearId: cls.academicYear?.id ?? '',
+      ageGroup: cls.ageGroup ?? '',
+      capacity: cls.capacity != null ? String(cls.capacity) : '',
+    });
+    setFormError('');
+    setShowCreate(true);
+  };
+
+  const removeClass = async (cls: any) => {
+    const count = cls._count?.enrollments ?? 0;
+    const note = count ? ` Οι ${count} μαθητές μένουν στο σχολείο και βγαίνουν από την τάξη.` : '';
+    if (!window.confirm(`Να διαγραφεί η τάξη ${cls.name};${note}`)) return;
+    try {
+      await classesApi.remove(schoolId, cls.id);
+      load();
+    } catch (error: any) {
+      const message = error?.message;
+      window.alert(typeof message === 'string' ? message : 'Η τάξη δεν διαγράφηκε');
+    }
+  };
+
+  const saveClass = async () => {
     if (!newClass.name.trim() || !newClass.academicYearId) return;
     setSaving(true);
+    setFormError('');
+    const payload = {
+      name: newClass.name.trim(),
+      academicYearId: newClass.academicYearId,
+      levelId: newClass.levelId || null,
+      ageGroup: newClass.ageGroup.trim() || null,
+      capacity: newClass.capacity ? Number(newClass.capacity) : null,
+    };
     try {
-      await classesApi.create(schoolId, {
-        name: newClass.name.trim(),
-        academicYearId: newClass.academicYearId,
-        levelId: newClass.levelId || undefined,
-        ageGroup: newClass.ageGroup || undefined,
-        capacity: newClass.capacity ? Number(newClass.capacity) : undefined,
+      if (editingId) await classesApi.update(schoolId, editingId, payload);
+      else await classesApi.create(schoolId, {
+        name: payload.name,
+        academicYearId: payload.academicYearId,
+        levelId: payload.levelId || undefined,
+        ageGroup: payload.ageGroup || undefined,
+        capacity: payload.capacity ?? undefined,
       });
-      setShowCreate(false);
+      closeForm();
       setNewClass({ name: '', levelId: '', academicYearId: currentAcademicYear?.id ?? '', ageGroup: '', capacity: '' });
       load();
+    } catch (error: any) {
+      const message = error?.message;
+      setFormError(typeof message === 'string' ? message : 'Η αποθήκευση δεν ολοκληρώθηκε');
     } finally {
       setSaving(false);
     }
@@ -143,7 +189,7 @@ export default function ClassesPage() {
         </div>
         {isAdmin && (
           <button
-            onClick={() => { setNewClass(p => ({ ...p, academicYearId: currentAcademicYear?.id ?? '' })); setShowCreate(true); }}
+            onClick={() => { setEditingId(null); setNewClass(p => ({ ...p, academicYearId: currentAcademicYear?.id ?? '' })); setFormError(''); setShowCreate(true); }}
             className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700"
           >
             <Plus className="h-4 w-4" /> Νέα Τάξη
@@ -184,19 +230,32 @@ export default function ClassesPage() {
                     const capacity = cls.capacity;
 
                     return (
-                      <Link
+                      <div
                         key={cls.id}
-                        href={`/school/classes/${cls.id}`}
                         className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 hover:shadow-md transition-all group hover:border-indigo-100"
                       >
                         <div className="flex items-start justify-between mb-4">
-                          <div className={`p-2.5 bg-gradient-to-br ${meta.gradient} rounded-xl shadow-sm`}>
+                          <Link href={`/school/classes/${cls.id}`} className={`p-2.5 bg-gradient-to-br ${meta.gradient} rounded-xl shadow-sm`}>
                             <BookOpen className="h-5 w-5 text-white" />
+                          </Link>
+                          <div className="flex items-center gap-1">
+                            {isAdmin && (
+                              <>
+                                <button type="button" onClick={() => openEdit(cls)} className="rounded-lg p-1.5 text-gray-400 hover:bg-[#faf5fc] hover:text-[#77328D]" aria-label="Επεξεργασία">
+                                  <Pencil className="h-4 w-4" />
+                                </button>
+                                <button type="button" onClick={() => removeClass(cls)} className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600" aria-label="Διαγραφή">
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </>
+                            )}
+                            <Link href={`/school/classes/${cls.id}`} className="rounded-lg p-1.5 text-gray-300 group-hover:text-indigo-500">
+                              <ChevronRight className="h-4 w-4" />
+                            </Link>
                           </div>
-                          <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-indigo-500 transition-colors mt-0.5" />
                         </div>
 
-                        <h3 className="font-semibold text-gray-900 text-base">{cls.name}</h3>
+                        <Link href={`/school/classes/${cls.id}`} className="font-semibold text-gray-900 text-base hover:text-indigo-700">{cls.name}</Link>
                         {cls.ageGroup && (
                           <p className="text-xs text-gray-400 mt-0.5">{cls.ageGroup}</p>
                         )}
@@ -226,7 +285,7 @@ export default function ClassesPage() {
                             <span className="text-xs text-gray-500 truncate">{primaryTeacher.user.fullName}</span>
                           </div>
                         )}
-                      </Link>
+                      </div>
                     );
                   })}
                 </div>
@@ -240,8 +299,8 @@ export default function ClassesPage() {
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
-              <h2 className="font-semibold text-gray-900">Νέα Τάξη</h2>
-              <button onClick={() => setShowCreate(false)} className="p-2 rounded-lg hover:bg-gray-100">
+              <h2 className="font-semibold text-gray-900">{editingId ? 'Επεξεργασία τάξης' : 'Νέα Τάξη'}</h2>
+              <button onClick={closeForm} className="p-2 rounded-lg hover:bg-gray-100">
                 <X className="w-4 h-4 text-gray-500" />
               </button>
             </div>
@@ -306,16 +365,17 @@ export default function ClassesPage() {
                 </div>
               </div>
             </div>
+            {formError && <p className="px-5 text-sm text-red-600">{formError}</p>}
             <div className="p-5 border-t border-gray-100 flex justify-end gap-3">
-              <button onClick={() => setShowCreate(false)} className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50">
+              <button onClick={closeForm} className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50">
                 Ακύρωση
               </button>
               <button
-                onClick={createClass}
+                onClick={saveClass}
                 disabled={saving || !newClass.name.trim() || !newClass.academicYearId}
                 className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
               >
-                {saving ? 'Αποθήκευση...' : 'Δημιουργία'}
+                {saving ? 'Αποθήκευση...' : editingId ? 'Αποθήκευση' : 'Δημιουργία'}
               </button>
             </div>
           </div>
