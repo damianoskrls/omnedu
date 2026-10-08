@@ -78,7 +78,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Text(
-                    'Έκδοση 8 Οκτ 2026',
+                    'Έκδοση 8 Οκτ 2026 · 2',
                     style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
                   ),
                 ),
@@ -424,42 +424,69 @@ class _OtpInputState extends ConsumerState<_OtpInput> {
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        for (var i = 0; i < 6; i++) ...[
-                          if (i > 0) const SizedBox(width: gap),
-                          _DigitBox(
-                            width: box,
-                            digit: i < _controller.text.length ? _controller.text[i] : '',
-                            active: _focus.hasFocus && _controller.text.length == i,
-                          ),
-                        ],
-                      ],
-                    ),
                     Positioned.fill(
-                      child: TextField(
-                      controller: _controller,
-                      focusNode: _focus,
-                      autofocus: true,
-                      keyboardType: TextInputType.number,
-                      textAlign: TextAlign.center,
-                      enableInteractiveSelection: false,
-                      showCursor: false,
-                      style: const TextStyle(color: Colors.transparent, fontSize: 1),
-                      cursorColor: Colors.transparent,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                        LengthLimitingTextInputFormatter(6),
-                      ],
-                      decoration: const InputDecoration(
-                        counterText: '',
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.zero,
-                        isCollapsed: true,
+                      child: Theme(
+                        data: Theme.of(context).copyWith(
+                          inputDecorationTheme: const InputDecorationTheme(
+                            filled: false,
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            disabledBorder: InputBorder.none,
+                            errorBorder: InputBorder.none,
+                            focusedErrorBorder: InputBorder.none,
+                            isCollapsed: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                        child: TextField(
+                          controller: _controller,
+                          focusNode: _focus,
+                          autofocus: true,
+                          keyboardType: TextInputType.number,
+                          textAlign: TextAlign.center,
+                          enableInteractiveSelection: false,
+                          enableSuggestions: false,
+                          autocorrect: false,
+                          showCursor: false,
+                          cursorWidth: 0,
+                          style: const TextStyle(color: Colors.transparent, fontSize: 1, height: 1),
+                          cursorColor: Colors.transparent,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(6),
+                          ],
+                          decoration: const InputDecoration(
+                            counterText: '',
+                            filled: false,
+                            fillColor: Colors.transparent,
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            disabledBorder: InputBorder.none,
+                            errorBorder: InputBorder.none,
+                            focusedErrorBorder: InputBorder.none,
+                            contentPadding: EdgeInsets.zero,
+                            isCollapsed: true,
+                          ),
+                          onChanged: _onChanged,
+                        ),
                       ),
-                      onChanged: _onChanged,
                     ),
+                    IgnorePointer(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          for (var i = 0; i < 6; i++) ...[
+                            if (i > 0) const SizedBox(width: gap),
+                            _DigitBox(
+                              width: box,
+                              digit: i < _controller.text.length ? _controller.text[i] : '',
+                              active: _focus.hasFocus && _controller.text.length == i,
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
