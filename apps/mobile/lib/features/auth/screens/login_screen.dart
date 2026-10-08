@@ -83,7 +83,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Text(
-                    'omnedu v. 1.04',
+                    'omnedu v. 1.05',
                     style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
                   ),
                 ),
@@ -146,7 +146,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   if (showCredit)
                     const Text(
-                      'Design & Development by Sitelad.gr',
+                      'Design & Development by Siteland.gr',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12, fontWeight: FontWeight.w600),
                     ),
