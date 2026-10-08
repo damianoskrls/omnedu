@@ -11,4 +11,4 @@ cmds = [
 ]
 
 [start]
-cmd = "cd apps/api && (node_modules/.bin/prisma migrate deploy || echo 'migration failed, starting api anyway') && cd ../.. && node apps/api/dist/main"
+cmd = "cd apps/api && (node_modules/.bin/prisma migrate deploy || { node_modules/.bin/prisma migrate resolve --rolled-back 20261008160000_conversation_delete || true; node_modules/.bin/prisma migrate resolve --rolled-back 20261008170000_owner_role || true; node_modules/.bin/prisma migrate deploy || echo 'migration failed, starting api anyway'; }) && cd ../.. && node apps/api/dist/main"

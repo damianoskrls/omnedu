@@ -16,7 +16,7 @@ export class MessagesService {
   constructor(private prisma: PrismaService, private notifications: NotificationsService) {}
 
   async getConversations(userId: string, schoolId: string, role?: string | null) {
-    const rows = await this.prisma.conversation.findMany({
+    const rows = await this.withConversationColumns(() => this.prisma.conversation.findMany({
       where: {
         schoolId,
         ...(role === 'owner' ? {} : { participants: { some: { userId } } }),
@@ -42,7 +42,7 @@ export class MessagesService {
         },
         _count: { select: { messages: true } },
       },
-    });
+    }));
 
     const visible = role === 'owner'
       ? rows
@@ -77,7 +77,7 @@ export class MessagesService {
   }
 
   async unreadCount(userId: string, schoolId: string, role?: string | null) {
-    const rows = await this.prisma.conversation.findMany({
+    const rows = await this.withConversationColumns(() => this.prisma.conversation.findMany({
       where: { schoolId, ...(role === 'owner' ? {} : { participants: { some: { userId } } }) },
       select: {
         participants: {
@@ -102,7 +102,7 @@ export class MessagesService {
           select: { sentAt: true },
         },
       },
-    });
+    }));
     const visible = role === 'owner'
       ? rows
       : role === 'school_admin'
@@ -322,13 +322,13 @@ export class MessagesService {
   }
 
   private visibleToTeacher(
-    participants: { userId: string; user: { schoolMemberships: { role: string }[] } }[],
+    participants: { userId: string; user?: { schoolMemberships?: { role: string }[] } | null }[],
     userId: string,
   ) {
     const others = participants.filter((person) => person.userId !== userId);
     if (!others.length) return false;
     return others.every((person) => {
-      const roles = person.user.schoolMemberships.map((row) => row.role);
+      const roles = person.user?.schoolMemberships?.map((row) => row.role) ?? [];
       if (roles.includes('parent') || roles.includes('school_admin')) return true;
       if (!roles.length) return true;
       return !roles.includes('teacher');
@@ -550,16 +550,43 @@ export class MessagesService {
   }
 
   private async assertCanRead(conversationId: string, userId: string) {
-    const participant = await this.prisma.conversationParticipant.findUnique({
+    const participant = await this.withConversationColumns(() => this.prisma.conversationParticipant.findUnique({
       where: { conversationId_userId: { conversationId, userId } },
-    });
+    }));
     if (participant) return participant;
-    const owner = await this.prisma.schoolMember.findFirst({
-      where: { userId, role: 'owner', isActive: true, school: { conversations: { some: { id: conversationId } } } },
-      select: { id: true },
-    });
+    const owner = await this.ownerMembership(conversationId, userId);
     if (!owner) throw new ForbiddenException('Not a participant');
     return { conversationId, userId, lastReadAt: null, hiddenAt: null };
+  }
+
+  // A missing `owner` enum value makes this filter throw. That is not a failed read.
+  private async ownerMembership(conversationId: string, userId: string) {
+    try {
+      return await this.prisma.schoolMember.findFirst({
+        where: { userId, role: 'owner', isActive: true, school: { conversations: { some: { id: conversationId } } } },
+        select: { id: true },
+      });
+    } catch (error) {
+      const message = `${(error as { message?: string })?.message ?? error}`;
+      if (/invalid input value for enum|22P02|"Role"/i.test(message)) return null;
+      throw error;
+    }
+  }
+
+  private async withConversationColumns<T>(run: () => Promise<T>): Promise<T> {
+    try {
+      return await run();
+    } catch (error) {
+      if (!this.missingConversationColumn(error)) throw error;
+      await this.prisma.ensureRuntimeSchema();
+      return run();
+    }
+  }
+
+  private missingConversationColumn(error: unknown) {
+    const code = (error as { code?: string })?.code;
+    const message = `${(error as { message?: string })?.message ?? error}`;
+    return code === 'P2022' || /created_by_id|hidden_at/i.test(message);
   }
 
   private async ensureParticipant(conversationId: string, userId: string) {
