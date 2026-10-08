@@ -6,6 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import { join } from 'path';
 import * as fs from 'fs';
 import { AppModule } from './app.module';
+import { mountSchoolSite } from './school-site';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 
@@ -59,6 +60,7 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document);
 
+  mountSchoolSite(app);
   await app.listen(port);
   console.log(`\n🚀 omnedu API: http://localhost:${port}/api/v1`);
   console.log(`📖 Swagger:    http://localhost:${port}/api/docs\n`);

@@ -15,29 +15,9 @@ cd "$ROOT"
 if [ ! -d "$ROOT/apps/web/.next" ]; then
   echo 'web build missing, starting the API only'
   printf 'web-missing\n' > "$ROOT/apps/api/web-build-status.txt"
-  exec node "$ROOT/apps/api/dist/main"
+else
+  echo 'web build found, the API will open the school site'
 fi
-echo 'web build found, starting the site and the API'
 
-PUBLIC_PORT="${PORT:-${API_PORT:-3001}}"
-export API_PORT=3011
-export PUBLIC_PORT
-export API_UPSTREAM=3011
-export WEB_UPSTREAM=3012
-
-node "$ROOT/apps/api/dist/main" &
-API_PID=$!
-(cd "$ROOT/apps/web" && pnpm exec next start -p 3012 -H 127.0.0.1) &
-WEB_PID=$!
-
-cleanup() {
-  kill "$API_PID" "$WEB_PID" 2>/dev/null || true
-}
-trap cleanup TERM INT
-
-node "$ROOT/scripts/web-front.mjs" &
-FRONT_PID=$!
-wait "$FRONT_PID"
-STATUS=$?
-cleanup
-exit "$STATUS"
+export API_PORT="${PORT:-${API_PORT:-3001}}"
+exec node "$ROOT/apps/api/dist/main"
