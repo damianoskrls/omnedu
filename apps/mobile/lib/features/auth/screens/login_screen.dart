@@ -49,18 +49,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F4FC),
+      resizeToAvoidBottomInset: true,
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
-            child: Column(
-              children: [
-                // Logo
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight - 64),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
                 Image.asset(
                   'assets/images/school_logo.png',
                   width: 160,
                   height: 160,
                   fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const Text(
+                    'ονειροχώρα',
+                    style: TextStyle(color: Color(0xFFE95926), fontSize: 28, fontWeight: FontWeight.w800),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -114,9 +122,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           error: _phoneError ?? authState.error,
                         ),
                 ),
-              ],
-            ),
-          ),
+                  ],
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
@@ -317,80 +327,37 @@ class _OtpInput extends ConsumerStatefulWidget {
 }
 
 class _OtpInputState extends ConsumerState<_OtpInput> {
-  final _controllers = List.generate(6, (_) => TextEditingController());
-  final _focuses = List.generate(6, (_) => FocusNode());
-  bool _syncing = false;
+  final _controller = TextEditingController();
+  final _focus = FocusNode();
 
   @override
   void initState() {
     super.initState();
-    for (var i = 0; i < _focuses.length; i++) {
-      final index = i;
-      _focuses[i].onKeyEvent = (node, event) {
-        if (event is! KeyDownEvent || event.logicalKey != LogicalKeyboardKey.backspace) {
-          return KeyEventResult.ignored;
-        }
-        _onBackspace(index);
-        return KeyEventResult.handled;
-      };
-    }
+    _focus.addListener(() {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
   void dispose() {
-    for (final c in _controllers) {
-      c.dispose();
-    }
-    for (final f in _focuses) {
-      f.dispose();
-    }
+    _controller.dispose();
+    _focus.dispose();
     super.dispose();
   }
 
-  String get _otp => _controllers.map((c) => c.text).join();
+  String get _otp => _controller.text;
 
-  void _fillFrom(int start, String raw) {
+  void _onChanged(String raw) {
     final digits = raw.replaceAll(RegExp(r'\D'), '');
-    if (digits.isEmpty) return;
-    _syncing = true;
-    for (var offset = 0; offset < digits.length && start + offset < 6; offset++) {
-      _controllers[start + offset].text = digits[offset];
+    final clipped = digits.length > 6 ? digits.substring(0, 6) : digits;
+    if (clipped != _controller.text) {
+      _controller.value = TextEditingValue(
+        text: clipped,
+        selection: TextSelection.collapsed(offset: clipped.length),
+      );
     }
-    _syncing = false;
-    final next = (start + digits.length).clamp(0, 5);
-    _focuses[next].requestFocus();
-    if (_otp.length == 6) _submit();
-  }
-
-  void _onChanged(int i, String val) {
-    if (_syncing) return;
-    final digits = val.replaceAll(RegExp(r'\D'), '');
-    if (digits.length > 1) {
-      _fillFrom(i, digits);
-      return;
-    }
-    if (digits.length == 1) {
-      if (_controllers[i].text != digits) {
-        _syncing = true;
-        _controllers[i].text = digits;
-        _controllers[i].selection = const TextSelection.collapsed(offset: 1);
-        _syncing = false;
-      }
-      if (i < 5) _focuses[i + 1].requestFocus();
-      if (_otp.length == 6) _submit();
-    }
-  }
-
-  void _onBackspace(int i) {
-    if (_controllers[i].text.isNotEmpty) {
-      _controllers[i].clear();
-      if (i > 0) _focuses[i - 1].requestFocus();
-      return;
-    }
-    if (i > 0) {
-      _controllers[i - 1].clear();
-      _focuses[i - 1].requestFocus();
-    }
+    setState(() {});
+    if (clipped.length == 6) _submit();
   }
 
   Future<void> _submit() async {
@@ -399,10 +366,9 @@ class _OtpInputState extends ConsumerState<_OtpInput> {
     if (result != null) return;
     final error = ref.read(authProvider).error;
     if (error != null && mounted) {
-      for (final c in _controllers) {
-        c.clear();
-      }
-      _focuses[0].requestFocus();
+      _controller.clear();
+      setState(() {});
+      _focus.requestFocus();
     }
   }
 
@@ -435,20 +401,59 @@ class _OtpInputState extends ConsumerState<_OtpInput> {
           ),
         ),
         const SizedBox(height: 24),
-        Row(
-          children: [
-            for (var i = 0; i < 6; i++) ...[
-              if (i > 0) const SizedBox(width: 8),
-              Expanded(
-                child: _OtpBox(
-                  controller: _controllers[i],
-                  focusNode: _focuses[i],
-                  autofocus: i == 0,
-                  onChanged: (value) => _onChanged(i, value),
+        GestureDetector(
+          onTap: () => _focus.requestFocus(),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              const gap = 8.0;
+              final box = ((constraints.maxWidth - gap * 5) / 6).clamp(0.0, 52.0);
+              return SizedBox(
+                height: 58,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        for (var i = 0; i < 6; i++) ...[
+                          if (i > 0) const SizedBox(width: gap),
+                          _DigitBox(
+                            width: box,
+                            digit: i < _controller.text.length ? _controller.text[i] : '',
+                            active: _focus.hasFocus && _controller.text.length == i,
+                          ),
+                        ],
+                      ],
+                    ),
+                    Positioned.fill(
+                      child: TextField(
+                      controller: _controller,
+                      focusNode: _focus,
+                      autofocus: true,
+                      keyboardType: TextInputType.number,
+                      textAlign: TextAlign.center,
+                      enableInteractiveSelection: false,
+                      showCursor: false,
+                      style: const TextStyle(color: Colors.transparent, fontSize: 1),
+                      cursorColor: Colors.transparent,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(6),
+                      ],
+                      decoration: const InputDecoration(
+                        counterText: '',
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
+                        isCollapsed: true,
+                      ),
+                      onChanged: _onChanged,
+                    ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ],
+              );
+            },
+          ),
         ),
         if (widget.error != null) ...[
           const SizedBox(height: 16),
@@ -492,50 +497,26 @@ class _OtpInputState extends ConsumerState<_OtpInput> {
   }
 }
 
-class _OtpBox extends StatelessWidget {
-  final TextEditingController controller;
-  final FocusNode focusNode;
-  final bool autofocus;
-  final ValueChanged<String> onChanged;
-  const _OtpBox({
-    required this.controller,
-    required this.focusNode,
-    required this.onChanged,
-    this.autofocus = false,
-  });
+class _DigitBox extends StatelessWidget {
+  final double width;
+  final String digit;
+  final bool active;
+  const _DigitBox({required this.width, required this.digit, required this.active});
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
+    return Container(
+      width: width,
       height: 58,
-      child: TextField(
-        controller: controller,
-        focusNode: focusNode,
-        autofocus: autofocus,
-        keyboardType: TextInputType.number,
-        textAlign: TextAlign.center,
-        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9FAFB),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: active ? const Color(0xFF702E8C) : const Color(0xFFE5E7EB), width: active ? 2 : 1.5),
+      ),
+      child: Text(
+        digit,
         style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xFF3D1152), height: 1.1),
-        cursorColor: const Color(0xFF702E8C),
-        decoration: InputDecoration(
-          counterText: '',
-          contentPadding: const EdgeInsets.symmetric(vertical: 14),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0xFFE5E7EB), width: 1.5),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0xFFE5E7EB), width: 1.5),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0xFF702E8C), width: 2),
-          ),
-          fillColor: const Color(0xFFF9FAFB),
-          filled: true,
-        ),
-        onChanged: onChanged,
       ),
     );
   }
