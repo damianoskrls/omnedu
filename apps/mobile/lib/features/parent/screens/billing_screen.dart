@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/widgets/app_image.dart';
+import 'receipts_screen.dart';
 
 final myChargesProvider = FutureProvider.family<List<dynamic>, String>(
   (ref, schoolId) async {
@@ -28,7 +29,10 @@ class BillingScreen extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_outlined),
-            onPressed: () => ref.invalidate(myChargesProvider(schoolId)),
+            onPressed: () {
+              ref.invalidate(myChargesProvider(schoolId));
+              ref.invalidate(myReceiptsProvider(schoolId));
+            },
           ),
         ],
       ),
@@ -45,18 +49,6 @@ class BillingScreen extends ConsumerWidget {
           ),
         ),
         data: (data) {
-          if (data.isEmpty) {
-            return const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.receipt_long_outlined, size: 64, color: Color(0xFFD1D5DB)),
-                  SizedBox(height: 16),
-                  Text('Δεν υπάρχουν χρεώσεις', style: TextStyle(color: Color(0xFF9CA3AF))),
-                ],
-              ),
-            );
-          }
 
           // Global summary across all children
           double grandTotal = 0;
@@ -87,12 +79,22 @@ class BillingScreen extends ConsumerWidget {
           final grandOwed = grandTotal - grandPaid;
 
           return RefreshIndicator(
-            onRefresh: () => ref.refresh(myChargesProvider(schoolId).future),
+            onRefresh: () async {
+              ref.invalidate(myReceiptsProvider(schoolId));
+              await ref.refresh(myChargesProvider(schoolId).future);
+            },
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                ParentReceipts(schoolId: schoolId),
+                const SizedBox(height: 8),
+                if (data.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Center(child: Text('Δεν υπάρχουν χρεώσεις', style: TextStyle(color: Color(0xFF9CA3AF)))),
+                  ),
                 // Grand summary card
-                _SummaryCard(total: grandTotal, paid: grandPaid, owed: grandOwed),
+                if (data.isNotEmpty) _SummaryCard(total: grandTotal, paid: grandPaid, owed: grandOwed),
                 const SizedBox(height: 20),
 
                 // Per-child sections

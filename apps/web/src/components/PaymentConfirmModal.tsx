@@ -44,7 +44,8 @@ export function PaymentConfirmModal({
   const [payerMode, setPayerMode] = useState<'parent' | 'other'>('parent');
   const [addresseeName, setAddresseeName] = useState('');
   const [method, setMethod] = useState('cash');
-  const [sendReceipt, setSendReceipt] = useState(false);
+  const [receiptMode, setReceiptMode] = useState<'none' | 'system' | 'external'>('none');
+  const [externalFile, setExternalFile] = useState<File | null>(null);
   const [receiptAmount, setReceiptAmount] = useState('');
   const [receiptTouched, setReceiptTouched] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -60,7 +61,8 @@ export function PaymentConfirmModal({
     setPayerName(parent);
     setAddresseeName(parent);
     setMethod('cash');
-    setSendReceipt(false);
+    setReceiptMode('none');
+    setExternalFile(null);
     setReceiptAmount(moneyInput(prompt.chargeAmount));
     setReceiptTouched(false);
     setSaving(false);
@@ -73,6 +75,7 @@ export function PaymentConfirmModal({
   const submit = async () => {
     const paid = Number(paidAmount);
     const receipt = Number(receiptAmount);
+    const issueReceipt = receiptMode !== 'none';
     if (!payerName.trim()) {
       setError('Γράψε από ποιον έγινε η πληρωμή.');
       return;
@@ -85,8 +88,12 @@ export function PaymentConfirmModal({
       setError('Το ποσό της πληρωμής πρέπει να είναι μεγαλύτερο από το μηδέν.');
       return;
     }
-    if (sendReceipt && (!Number.isFinite(receipt) || receipt <= 0)) {
+    if (receiptMode === 'system' && (!Number.isFinite(receipt) || receipt <= 0)) {
       setError('Γράψε το ποσό που θα αναγράφει η απόδειξη.');
+      return;
+    }
+    if (receiptMode === 'external' && !externalFile) {
+      setError('Διάλεξε το αρχείο της απόδειξης από το άλλο σύστημα.');
       return;
     }
     const info: PaymentInfo = {
@@ -95,48 +102,50 @@ export function PaymentConfirmModal({
       payerName: payerName.trim(),
       addresseeName: (addresseeName || payerName).trim(),
       method,
-      sendReceipt,
-      receiptAmount: sendReceipt ? receipt : paid,
+      sendReceipt: issueReceipt,
+      receiptAmount: receiptMode === 'system' ? receipt : paid,
     };
     setSaving(true);
     setError('');
     setNotice('');
     try {
       await prompt.run(info);
-      if (sendReceipt) {
+      if (issueReceipt) {
         try {
-          const file = await createReceiptFile({
-            schoolName: prompt.schoolName,
-            logoUrl: prompt.logoUrl,
-            studentName: prompt.studentName,
-            addresseeName: info.addresseeName,
-            payerName: info.payerName,
-            title: prompt.detail ? `${prompt.title} · ${prompt.detail}` : prompt.title,
-            paidAt: info.paidAt,
-            method: info.method,
-            receiptAmount: info.receiptAmount,
+          const title = receiptMode === 'system'
+            ? `Απόδειξη ${info.receiptAmount.toFixed(2)}€ · ${prompt.title}`
+            : `Απόδειξη · ${prompt.title}`;
+          const file = receiptMode === 'system'
+            ? await createReceiptFile({
+                schoolName: prompt.schoolName,
+                logoUrl: prompt.logoUrl,
+                studentName: prompt.studentName,
+                addresseeName: info.addresseeName,
+                payerName: info.payerName,
+                title: prompt.detail ? `${prompt.title} · ${prompt.detail}` : prompt.title,
+                paidAt: info.paidAt,
+                method: info.method,
+                receiptAmount: info.receiptAmount,
+              })
+            : externalFile!;
+          if (receiptMode === 'system') downloadFile(file);
+          await studentsApi.uploadDocument(prompt.schoolId, prompt.studentId, file, {
+            title,
+            category: 'receipt',
+            notes: `Προς ${info.addresseeName}`,
           });
-          downloadFile(file);
-          try {
-            const doc: any = await studentsApi.uploadDocument(prompt.schoolId, prompt.studentId, file, {
-              title: `Απόδειξη ${info.receiptAmount.toFixed(2)}€ · ${prompt.title}`,
-              category: 'receipt',
-              notes: `Προς ${info.addresseeName}`,
-            });
-            const url = doc?.fileUrl ?? '';
-            await broadcastsApi.send(prompt.schoolId, {
-              title: `Απόδειξη · ${prompt.title}`,
-              body: `Εκδόθηκε απόδειξη ${info.receiptAmount.toFixed(2)} € για ${prompt.studentName}, προς ${info.addresseeName}.${url ? ` ${url}` : ''}`,
-              targetType: 'student',
-              targetStudentId: prompt.studentId,
-            });
-          } catch {
-            setNotice('Η πληρωμή καταχωρίστηκε και η απόδειξη κατέβηκε. Η αποστολή στον γονέα δεν ολοκληρώθηκε.');
-            setSaving(false);
-            return;
-          }
+          await broadcastsApi.send(prompt.schoolId, {
+            title: `Απόδειξη · ${prompt.title}`,
+            body: `Η απόδειξη για ${prompt.studentName} είναι έτοιμη. Μπορείς να την κατεβάσεις από τις Αποδείξεις.`,
+            targetType: 'student',
+            targetStudentId: prompt.studentId,
+            appType: 'receipt',
+            appScreen: 'receipts',
+          });
         } catch {
-          setNotice('Η πληρωμή καταχωρίστηκε. Η απόδειξη δεν δημιουργήθηκε.');
+          setNotice(receiptMode === 'system'
+            ? 'Η πληρωμή καταχωρίστηκε. Η απόδειξη δεν στάλθηκε στον γονέα.'
+            : 'Η πληρωμή καταχωρίστηκε. Το αρχείο της απόδειξης δεν ανέβηκε.');
           setSaving(false);
           return;
         }
@@ -227,16 +236,31 @@ export function PaymentConfirmModal({
               ))}
             </select>
           </label>
-          <label className="flex items-start gap-2 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={sendReceipt}
-              onChange={e => setSendReceipt(e.target.checked)}
-              className="mt-1"
-            />
-            <span>Να σταλεί απόδειξη στον γονέα</span>
+          <label className="block">
+            <span className="block text-sm font-medium text-gray-700 mb-1">Απόδειξη</span>
+            <select
+              value={receiptMode}
+              onChange={e => setReceiptMode(e.target.value as 'none' | 'system' | 'external')}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white"
+            >
+              <option value="none">Χωρίς απόδειξη</option>
+              <option value="system">Να την κόψει το σύστημα</option>
+              <option value="external">Ανέβασμα από άλλο σύστημα</option>
+            </select>
           </label>
-          {sendReceipt && (
+          {receiptMode === 'external' && (
+            <label className="block">
+              <span className="block text-sm font-medium text-gray-700 mb-1">Αρχείο απόδειξης</span>
+              <input
+                type="file"
+                accept="application/pdf,image/*"
+                onChange={e => setExternalFile(e.target.files?.[0] ?? null)}
+                className="w-full text-sm"
+              />
+              <span className="block text-xs text-gray-500 mt-1">PDF ή εικόνα που έχει ήδη εκδοθεί από το άλλο σύστημα. Ο γονέας θα μπορεί να την κατεβάσει.</span>
+            </label>
+          )}
+          {receiptMode === 'system' && (
             <div className="rounded-xl border border-[#e6d0ee] bg-[#faf6fb] p-4 space-y-3">
               <label className="block">
                 <span className="block text-sm font-medium text-gray-700 mb-1">Προς</span>

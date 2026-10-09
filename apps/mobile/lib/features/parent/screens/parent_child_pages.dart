@@ -9,6 +9,7 @@ import '../../../core/utils/event_status.dart';
 import '../../../core/widgets/app_image.dart';
 import '../../messages/conversation_ui.dart';
 import 'event_gallery_screen.dart';
+import 'receipts_screen.dart';
 import 'event_instructions.dart';
 import 'events_screen.dart';
 import 'bus_map_screen.dart';
@@ -179,6 +180,8 @@ class ChildBillingScreen extends ConsumerWidget {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              ParentReceipts(schoolId: schoolId, studentId: studentId),
+              const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(color: const Color(0xFF77328D), borderRadius: BorderRadius.circular(16)),

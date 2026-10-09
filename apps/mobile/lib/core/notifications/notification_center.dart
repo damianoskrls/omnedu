@@ -19,6 +19,7 @@ import '../../features/teacher/screens/assignments_screen.dart';
 import '../../features/teacher/screens/teacher_leaves_screen.dart';
 import '../../features/parent/screens/parent_meetings_screen.dart';
 import '../../features/parent/screens/billing_screen.dart';
+import '../../features/parent/screens/receipts_screen.dart';
 import '../../features/parent/screens/bulletin_screen.dart';
 import '../../features/parent/screens/parent_child_pages.dart';
 import '../../features/parent/screens/thematic_screen.dart';
@@ -375,6 +376,11 @@ Future<void> openNotification(BuildContext context, WidgetRef ref, Map<String, d
     return;
   }
 
+  if (type == 'receipt') {
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => ReceiptsScreen(schoolId: schoolId)));
+    return;
+  }
+
   if (type == 'event_post' || type == 'school_event') {
     final eventId = data['eventId']?.toString() ?? '';
     await Navigator.push(
@@ -564,6 +570,7 @@ class InboxScreen extends ConsumerWidget {
     if (type == 'message') return Icons.chat_bubble_rounded;
     if (type == 'daily_report') return Icons.menu_book_rounded;
     if (type == 'payment') return Icons.payments_rounded;
+    if (type == 'receipt') return Icons.receipt_long_rounded;
     if (type == 'celebration') return Icons.celebration_rounded;
     if (type == 'school_event' || type == 'event_post') return Icons.photo_library_rounded;
     if (type == 'bus_closure') return Icons.directions_bus_rounded;

@@ -210,6 +210,11 @@ export class BillingController {
     return this.billing.getMyCharges(user.sub, schoolId);
   }
 
+  @Get('receipts/mine')
+  myReceipts(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
+    return this.billing.myReceipts(user.sub, schoolId);
+  }
+
   @Get('invoices/mine')
   myInvoices(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
     return this.billing.getMyInvoices(user.sub, schoolId);
