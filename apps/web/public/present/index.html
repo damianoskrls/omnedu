@@ -70,6 +70,7 @@
     background: white; border: 1px solid var(--line); box-shadow: var(--shadow);
   }
   .desk { border-radius: 22px; overflow: hidden; display: grid; grid-template-columns: 148px 1fr; min-height: 390px; flex: 1; }
+  #grammateia .desk { grid-template-columns: 168px 1fr; }
   .side { background: #fff; border-right: 1px solid #f3eef5; padding: 16px 12px; }
   .side b { display: block; color: var(--purple); font-size: 13px; margin-bottom: 12px; }
   .side span { display: block; font-size: 12px; color: #8a8088; padding: 7px 8px; border-radius: 8px; }
@@ -177,12 +178,70 @@
     padding: 7px 12px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
   }
   .chap.on { background: var(--orange); }
+  .platforms { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
+  .platforms span {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: white; border: 1px solid var(--line); border-radius: 999px;
+    padding: 7px 12px; font-size: 13px; font-weight: 800;
+  }
+  .platforms i { width: 12px; height: 12px; border-radius: 4px; background: var(--purple); display: inline-block; }
+  .platforms span:nth-child(2) i { background: var(--deep); }
+  .platforms span:nth-child(3) i { background: var(--orange); border-radius: 50%; }
+  .platforms span:nth-child(4) i { background: var(--orange); border-radius: 50% 50% 50% 0; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .kid { background: white; border-radius: 14px; padding: 10px; font-size: 12px; }
+  .kid header { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .kid.ok { box-shadow: inset 0 0 0 2px #b7ebc9; }
+  .kid.bad { box-shadow: inset 0 0 0 2px #f5c2c0; }
+  .twins { display: flex; gap: 12px; align-items: flex-end; justify-content: center; }
+  .twins .phone { width: 210px; margin: 0; flex: 0 0 auto; }
+  .map {
+    height: 300px; margin: 8px; border-radius: 18px; position: relative; overflow: hidden;
+    background: linear-gradient(180deg, #f4eef8, #efe6c8 70%);
+  }
+  .map svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .pin {
+    position: absolute; background: white; border-radius: 999px; padding: 3px 7px;
+    font-size: 10px; font-weight: 800; box-shadow: 0 6px 16px rgba(61,17,82,.15);
+  }
+  .fact { display: flex; gap: 8px; align-items: center; background: white; border-radius: 12px; padding: 8px; margin-top: 8px; font-size: 12px; }
+  .fact b { display: block; }
+  .dot { width: 28px; height: 28px; border-radius: 10px; display: grid; place-items: center; color: white; font-size: 14px; flex: 0 0 auto; }
+  .busban { background: #fff1ea; border: 1px solid #f6c7b8; border-radius: 14px; padding: 10px 12px; margin-bottom: 8px; }
+  .busban b { display: block; color: var(--orange); }
+  .slate { background: #1c1420; border-radius: 28px; padding: 12px; box-shadow: var(--shadow); }
+  .statgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat { background: white; border-radius: 14px; padding: 10px; }
+  .stat b { display: block; font-size: 20px; }
+  .stat em { font-style: normal; color: var(--muted); font-size: 12px; }
+  .bars { display: flex; align-items: flex-end; gap: 6px; height: 64px; margin-top: 8px; }
+  .bars span { flex: 1; border-radius: 7px 7px 3px 3px; background: linear-gradient(180deg, var(--orange), var(--purple)); }
+  .trio { display: grid; grid-template-columns: 220px 1fr; gap: 16px; align-items: center; margin-top: 22px; }
+  .lock {
+    background: linear-gradient(180deg, #241433, #7a4b93); color: white;
+    border-radius: 28px; min-height: 320px; padding: 28px 14px 16px; text-align: center;
+    box-shadow: var(--shadow);
+  }
+  .lock .clockface { font-size: 48px; font-weight: 800; letter-spacing: -1px; }
+  .notice {
+    text-align: left; background: white; color: var(--ink); border-radius: 16px;
+    padding: 10px 12px; margin-top: 22px; font-size: 13px; box-shadow: 0 10px 24px rgba(0,0,0,.12);
+  }
+  .notice b { display: block; }
+  .cards3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .finale { display: flex; gap: 18px; justify-content: space-between; flex-wrap: wrap; margin-top: 28px; }
+  .finale article { text-align: center; width: 120px; }
+  .bubble {
+    width: 74px; height: 74px; border-radius: 50%; margin: 0 auto 8px;
+    display: grid; place-items: center; color: white; font-weight: 800; font-size: 18px;
+  }
   @media (prefers-reduced-motion: reduce) {
     .hero > div:first-child > *, .hero .desk, .hero .phone, .scene.on, .toast { animation: none; }
     .reveal { opacity: 1; transform: none; transition: none; }
   }
   @media (max-width: 900px) {
-    .hero, .grid-3, .grid-2, .roles, .why, .feat, .split, .split.reverse, .desk, .stage, .scene { grid-template-columns: 1fr; }
+    .hero, .grid-3, .grid-2, .roles, .why, .feat, .split, .split.reverse, .desk, .stage, .scene, .pair, .trio, .cards3, .statgrid { grid-template-columns: 1fr; }
+    .twins { flex-direction: column; align-items: center; }
     .split.reverse .copy { order: 0; }
     .phone { position: static; margin: 18px auto 0; }
     .scene .phone { position: relative; margin: 0 auto; }
@@ -215,6 +274,12 @@
     <div class="hero-actions">
       <a class="btn btn-orange" href="#video">Δες τις λειτουργίες</a>
       <a class="btn btn-ghost" href="#roloi">Δες κάθε ρόλο</a>
+    </div>
+    <div class="platforms" aria-label="Πού τρέχει">
+      <span><i></i> Web</span>
+      <span><i></i> iPhone</span>
+      <span><i></i> Android</span>
+      <span><i></i> push ειδοποιήσεις</span>
     </div>
     <div class="pills">
       <span class="pill">Συναίνεση εκδρομής</span>
@@ -249,7 +314,7 @@
           <div>
             <div class="mini"><b>Γραφική ύλη</b><s>Πληρώθηκε · 100,00 €</s></div>
             <div class="mini"><b>Σχολικό</b><s>Ναι</s></div>
-            <div class="mini"><b>Δραστηριότητες</b><s>2</s></div>
+            <div class="mini"><b>Δραστ. · 2</b></div>
           </div>
         </div>
       </div>
@@ -574,7 +639,7 @@
 </section>
 
 <section id="grammateia">
-  <div class="wrap split">
+  <div class="wrap">
     <div class="copy">
       <span class="tag">Διαχειριστής · web</span>
       <h2>Η γραμματεία σταματά να ψάχνει σε φακέλους.</h2>
@@ -590,7 +655,7 @@
         <li>Απόδειξη από το σύστημα ή αρχείο από άλλο πρόγραμμα. Και οι δύο κατεβαίνουν στο κινητό του γονέα.</li>
       </ul>
     </div>
-    <div class="desk" aria-label="Κάρτα μαθητή">
+    <div class="desk" style="margin-top:22px" aria-label="Κάρτα μαθητή">
       <div class="side">
         <b>Μαθητής</b>
         <span class="on">Γενικά</span>
@@ -602,13 +667,21 @@
         <span>Οικονομικά</span>
       </div>
       <div class="main">
-        <div class="who"><div class="ava">ΑΛ</div><div><b>Αλέξης</b><div class="note">Προνήπια</div></div></div>
-        <div class="balance" style="background:#fdeeee">
-          <strong style="color:#b42318">Χρωστάει</strong>
-          <em style="color:#b42318">85,00 €</em>
-          <div class="btn btn-ghost" style="margin-top:8px;padding:6px 10px;font-size:13px">Λεπτομέρειες</div>
-          <div class="mini"><b>Οκτώβριος</b><s>Μηνιαία · 70,00 €</s></div>
-          <div class="mini"><b>Εκδρομή στον Εθνικό Κήπο</b><s>Εκκρεμεί · 15,00 €</s></div>
+        <b>Μαθητές</b>
+        <div class="pair" style="margin-top:8px">
+          <article class="kid ok">
+            <header><div class="ava">ΙΚ</div><div><b>Ιρίδα Καραλή</b><div class="note">Αστεράκια</div></div></header>
+            <div class="balance"><strong>Δεν χρωστάει</strong><em>0,00 €</em></div>
+            <div class="mini"><b>Γραφική ύλη</b><s>Πληρώθηκε</s></div>
+            <div class="mini"><b>Σχολικό</b><s>Ναι</s></div>
+            <div class="mini"><b>Δραστηριότητες</b><s>2</s></div>
+          </article>
+          <article class="kid bad">
+            <header><div class="ava">ΑΛ</div><div><b>Αλέξης</b><div class="note">Προνήπια</div></div></header>
+            <div class="balance" style="background:#fdeeee"><strong style="color:#b42318">Χρωστάει</strong><em style="color:#b42318">85,00 €</em></div>
+            <div class="mini"><b>Οκτώβριος</b><s>Μηνιαία · 70,00 €</s></div>
+            <div class="mini"><b>Εθνικός Κήπος</b><s>Εκκρεμεί · 15,00 €</s></div>
+          </article>
         </div>
       </div>
     </div>
@@ -627,7 +700,7 @@
         <li>Ίδια είσοδος με το προσωπικό, άλλος ρόλος, άλλη οθόνη.</li>
       </ul>
     </div>
-    <div class="phone" style="position:static;margin:0" aria-label="Αναφορές ιδιοκτήτη">
+    <div class="slate" aria-label="Αναφορές ιδιοκτήτη">
       <div class="screen">
         <div class="pad">
           <b>Αναφορές</b>
@@ -635,10 +708,15 @@
             <div class="chip" style="background:#f6eef8">Το σχολείο</div>
             <div class="chip">Οικονομικά</div>
           </div>
-          <div class="card"><b>Παιδιά</b>86 στο τρέχον έτος</div>
-          <div class="card"><b>Τάξεις</b>Αστεράκια, Προνήπια, Νήπια</div>
-          <div class="card"><b>Προσωπικό</b>Παιδαγωγοί, γραμματεία, οδηγοί</div>
-          <p class="note">Παιδιά, τάξεις και προσωπικό για το σχολικό έτος.</p>
+          <p class="note">01/10/2025 – 31/10/2025 · παράδειγμα μήνα</p>
+          <div class="statgrid">
+            <div class="stat"><b>86</b><em>Παιδιά στο έτος</em></div>
+            <div class="stat"><b>3</b><em>Τάξεις</em></div>
+            <div class="stat"><b>18.450 €</b><em>Εισπράχθηκαν</em></div>
+            <div class="stat"><b>2.390 €</b><em>Εκκρεμούν</em></div>
+          </div>
+          <div class="bars" aria-hidden="true"><span style="height:46%"></span><span style="height:62%"></span><span style="height:40%"></span><span style="height:78%"></span><span style="height:70%"></span></div>
+          <p class="note">Αστεράκια, Προνήπια, Νήπια. Ο ιδιοκτήτης βλέπει την κίνηση, χωρίς να αλλάζει κάρτα παιδιού.</p>
         </div>
       </div>
     </div>
@@ -666,13 +744,11 @@
       <div class="screen">
         <div class="pad">
           <b>Αστεράκια · σήμερα</b>
-          <div class="card"><b>Ιρίδα</b>Χαρούμενη · δεκατιανό: τα περισσότερα · ύπνος 40′</div>
-          <div class="card"><b>Αλέξης</b>Ήρεμος · μεσημεριανό: τα μισά</div>
-          <div class="chips">
-            <div class="chip">Γιορτάζει</div>
-            <div class="chip">Εργασίες</div>
-            <div class="chip">Φάρμακα</div>
-          </div>
+          <div class="fact"><span class="dot" style="background:#e95926">☺</span><div><b>Διάθεση</b>Χαρούμενη</div></div>
+          <div class="fact"><span class="dot" style="background:#0f7a4a">◉</span><div><b>Δεκατιανό</b>Τα περισσότερα</div></div>
+          <div class="fact"><span class="dot" style="background:#77328d">☾</span><div><b>Ύπνος</b>40 λεπτά</div></div>
+          <div class="card" style="margin-top:8px"><b>Διαθεματικό Οκτωβρίου</b>Το φθινόπωρο στο πάρκο</div>
+          <div class="card"><b>Εργασία · Ιρίδα</b>Φέρε ένα φύλλο από τη βόλτα</div>
         </div>
       </div>
     </div>
@@ -692,13 +768,29 @@
         <li>Ζωντανή θέση για όσους έχουν σχολικό.</li>
       </ul>
     </div>
-    <div class="phone" style="position:static" aria-label="Οθόνη οδηγού">
-      <div class="screen">
-        <div class="pad">
-          <b>Σχολικό · πρωινό</b>
-          <div class="card"><b>Ιρίδα Καραλή</b>Παραλαβή 07:40 · μαμά<br>Παράδοση σχολείο</div>
-          <div class="card"><b>Αλέξης</b>Παραλαβή 07:55 · γιαγιά</div>
-          <div class="card" style="background:#eefaf3"><b>Ο γονέας βλέπει τον χάρτη</b>Η θέση φεύγει από το κινητό του οδηγού.</div>
+    <div class="twins" aria-label="Λίστα και χάρτης οδηγού">
+      <div class="phone">
+        <div class="screen">
+          <div class="pad">
+            <b>Σχολικό · πρωινό</b>
+            <div class="card"><b>Ιρίδα Καραλή</b>Παραλαβή 07:40 · μαμά<br>Παράδοση στο σχολείο</div>
+            <div class="card"><b>Αλέξης</b>Παραλαβή 07:55 · γιαγιά</div>
+          </div>
+        </div>
+      </div>
+      <div class="phone">
+        <div class="screen">
+          <div class="map">
+            <svg viewBox="0 0 200 280" aria-hidden="true">
+              <path d="M40 40 C 80 80, 30 120, 70 160 S 150 200, 120 250" fill="none" stroke="#77328d" stroke-width="6" stroke-linecap="round"/>
+              <circle cx="40" cy="40" r="7" fill="#e95926"/>
+              <circle cx="70" cy="160" r="7" fill="#e95926"/>
+              <circle cx="120" cy="250" r="7" fill="#3d1152"/>
+            </svg>
+            <span class="pin" style="top:28px;left:48px">07:40</span>
+            <span class="pin" style="top:148px;left:78px">07:55</span>
+            <span class="pin" style="bottom:16px;left:16px">Σχολείο</span>
+          </div>
         </div>
       </div>
     </div>
@@ -733,6 +825,7 @@
       <div class="phone" style="position:static;margin-left:auto" aria-label="Εκδήλωση γονέα">
         <div class="screen">
           <div class="pad">
+            <div class="busban"><b>Σήμερα το σχολικό δεν λειτουργεί</b>Λόγω βλάβης. Η Μαρία το βλέπει πριν φύγει από το σπίτι.</div>
             <b>Εκδρομή στον Εθνικό Κήπο</b>
             <p class="note">Παρασκευή · μέχρι τις 08:30 στο σχολείο · το σχολικό λειτουργεί</p>
             <div class="card"><b>Ιρίδα</b>Αναμονή συναίνεσης</div>
@@ -777,6 +870,35 @@
   </div>
 </section>
 
+<section>
+  <div class="wrap">
+    <p class="kicker">Όταν πρέπει να φανεί</p>
+    <h2>Η ειδοποίηση ανοίγει το σωστό σημείο.</h2>
+    <div class="trio">
+      <div class="lock" aria-label="Οθόνη κλειδώματος">
+        <div class="note" style="color:rgba(255,255,255,.75)">Τρίτη 9 Οκτωβρίου</div>
+        <div class="clockface">13:50</div>
+        <div class="notice"><b>Ονειροχώρα</b>Ιρίδα Καραλή · χαρούμενη, έφαγε τα περισσότερα</div>
+      </div>
+      <div class="cards3">
+        <article class="tile">
+          <h3>Εκδρομή</h3>
+          <p>Εθνικός Κήπος. Παρασκευή, μέχρι τις 08:30. Το σχολικό λειτουργεί. Η Μαρία πατά Συναινώ και βλέπει ότι η πληρωμή γίνεται στη γραμματεία.</p>
+        </article>
+        <article class="tile">
+          <figure class="shot"><img src="../present-art/class-album.jpg" alt="Φωτογραφίες της τάξης"><figcaption>Μετά την εκδήλωση, στην ίδια κάρτα.</figcaption></figure>
+          <h3>Φωτογραφίες</h3>
+          <p>Ο παιδαγωγός τις ανεβάζει. Ο γονέας τις κατεβάζει στο κινητό.</p>
+        </article>
+        <article class="tile">
+          <h3>Υγεία</h3>
+          <p>Σιρόπι, 5 ml, δύο φορές. Συναίνεση: ναι. Το ερωτηματολόγιο κάθεται από κάτω και ανοίγει μόνο του.</p>
+        </article>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section id="giati">
   <div class="wrap">
     <p class="kicker">Γιατί το παίρνει ένα σχολείο</p>
@@ -789,6 +911,13 @@
     <div class="panel" style="margin-top:18px">
       <h3>Και για όποιον έχει δύο ρόλους</h3>
       <p>Ο ίδιος άνθρωπος μπορεί να είναι γονέας και προσωπικό. Μπαίνει με το κινητό του και διαλέγει με ποιον ρόλο συνεχίζει. Δεν μοιράζεται λογαριασμό και δεν βλέπει ξένα παιδιά.</p>
+    </div>
+    <div class="finale">
+      <article><div class="bubble" style="background:#77328d">Γ</div><b>Γραμματεία</b><p class="note">Web</p></article>
+      <article><div class="bubble" style="background:#e95926">Π</div><b>Παιδαγωγός</b><p class="note">Εφαρμογή</p></article>
+      <article><div class="bubble" style="background:#3d1152">Ο</div><b>Οδηγός</b><p class="note">Εφαρμογή</p></article>
+      <article><div class="bubble" style="background:#0f7a4a">Γ</div><b>Γονέας</b><p class="note">Εφαρμογή</p></article>
+      <article><div class="bubble" style="background:#c45b2d">Ι</div><b>Ιδιοκτήτης</b><p class="note">Αναφορές</p></article>
     </div>
   </div>
 </section>
@@ -849,7 +978,7 @@
       if (entry.isIntersecting) entry.target.classList.add('show');
     });
   }, { threshold: 0.16 });
-  document.querySelectorAll('.tile, .role, .split, .day, .panel, .shot.wide, .player').forEach(function (el) {
+  document.querySelectorAll('.tile, .role, .split, .day, .panel, .shot.wide, .player, .twins, .slate, .trio, .finale').forEach(function (el) {
     el.classList.add('reveal');
     io.observe(el);
   });
