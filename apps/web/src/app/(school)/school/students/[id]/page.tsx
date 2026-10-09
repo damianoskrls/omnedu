@@ -102,6 +102,8 @@ export default function StudentProfilePage() {
   const [student, setStudent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('general');
+  const [healthFocus, setHealthFocus] = useState<'all' | 'meds' | 'forms'>('all');
+  const healthAnchor = useRef<HTMLDivElement>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const billingFlight = useRef<Promise<void> | null>(null);
@@ -568,6 +570,16 @@ export default function StudentProfilePage() {
   const pendingQuestionnaires = sentQuestionnaires.length - answeredQuestionnaires;
   const currentClass = student?.enrollments?.[0]?.class;
 
+  const openHealth = (focus: 'meds' | 'forms') => {
+    setHealthFocus(focus);
+    setTab('health');
+  };
+
+  useEffect(() => {
+    if (tab !== 'health' || healthFocus === 'all') return;
+    healthAnchor.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [tab, healthFocus]);
+
   return (
     <div>
       {/* Back */}
@@ -774,8 +786,10 @@ export default function StudentProfilePage() {
 
         {/* Medications */}
         <button
-          onClick={() => setTab('health')}
+          onClick={() => openHealth('meds')}
           className={`flex items-center gap-2 px-3 py-2 bg-white rounded-xl border shadow-sm hover:opacity-80 transition-colors text-sm ${
+            tab === 'health' && healthFocus === 'meds' ? 'ring-2 ring-amber-300' : ''
+          } ${
             medications.length > 0 ? 'border-amber-200' : 'border-gray-100 opacity-50'
           }`}
         >
@@ -787,8 +801,10 @@ export default function StudentProfilePage() {
 
         {/* Questionnaire */}
         <button
-          onClick={() => setTab('health')}
+          onClick={() => openHealth('forms')}
           className={`flex items-center gap-2 px-3 py-2 bg-white rounded-xl border shadow-sm hover:opacity-80 transition-colors text-sm ${
+            tab === 'health' && healthFocus === 'forms' ? 'ring-2 ring-blue-300' : ''
+          } ${
             sentQuestionnaires.length > 0
               ? (pendingQuestionnaires > 0 ? 'border-amber-200' : 'border-blue-200')
               : (questionnaireSubmitted ? 'border-blue-200' : 'border-amber-200')
@@ -818,7 +834,7 @@ export default function StudentProfilePage() {
         {TABS.map((t) => (
           <button
             key={t.key}
-            onClick={() => setTab(t.key)}
+            onClick={() => { setHealthFocus('all'); setTab(t.key); }}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
               tab === t.key
                 ? 'bg-white text-gray-900 shadow-sm'
@@ -893,7 +909,9 @@ export default function StudentProfilePage() {
 
       {/* Tab: Υγεία */}
       {tab === 'health' && (
-        <div className="space-y-6">
+        <div ref={healthAnchor} className="space-y-6">
+          {healthFocus !== 'meds' && (
+          <>
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
             <div className="flex items-center gap-2 px-6 py-4 border-b border-gray-100">
               <ClipboardList className="w-4 h-4 text-indigo-500" />
@@ -1132,8 +1150,10 @@ export default function StudentProfilePage() {
               </div>
             )}
           </div>
+          </>
+          )}
 
-          {/* Medications card */}
+          {healthFocus !== 'forms' && (
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
             <div className="flex items-center gap-2 px-6 py-4 border-b border-gray-100">
               <Pill className="w-4 h-4 text-amber-500" />
@@ -1176,6 +1196,7 @@ export default function StudentProfilePage() {
               </div>
             )}
           </div>
+          )}
         </div>
       )}
 
@@ -3284,6 +3305,7 @@ function StudentSnapshot({
   oneTimeCharges: any[] | null;
   onOpen: (tab: string) => void;
 }) {
+  const [showDebts, setShowDebts] = useState(false);
   const debts: { key: string; tab: string; label: string; detail: string; amount: number }[] = [];
   for (const charge of charges ?? []) {
     const remain = Number(charge.totalDue ?? 0) - Number(charge.paidAmount ?? 0);
@@ -3323,25 +3345,34 @@ function StudentSnapshot({
   const owes = chargesReady && debtTotal > 0.005;
 
   const buses = (student.studentServices ?? []).filter((ss: any) => ss.service?.serviceType === 'bus');
-  const otherServices = (student.studentServices ?? []).filter((ss: any) => ss.service?.serviceType !== 'bus');
   const activities = (student.activityRegistrations ?? []).filter((reg: any) => reg.status !== 'cancelled');
-  const joinedEvents = (student.eventEnrollments ?? []).filter((enrollment: any) => enrollment.status !== 'pending_payment' && enrollment.status !== 'consent_declined');
+  const today = new Date();
+  const startYear = today.getMonth() + 1 >= 9 ? today.getFullYear() : today.getFullYear() - 1;
+  const stationery = findStationeryCharge(oneTimeCharges, startYear);
+  const stationeryPaid = stationery && (stationery.status === 'paid' || Number(stationery.paidAmount ?? 0) + 0.009 >= Number(stationery.amount ?? 0));
+  const stationeryRemain = stationery ? Math.max(0, Number(stationery.amount ?? 0) - Number(stationery.paidAmount ?? 0)) : 0;
 
   return (
     <div className="mt-5 grid gap-3 md:grid-cols-2">
       <div className={`rounded-xl border p-4 ${owes ? 'border-red-100 bg-red-50/60' : chargesReady ? 'border-emerald-100 bg-emerald-50/70' : 'border-gray-100 bg-gray-50'}`}>
-        <div className="flex items-center justify-between gap-3 mb-2">
-          <p className={`text-sm font-semibold ${owes ? 'text-red-800' : chargesReady ? 'text-emerald-800' : 'text-gray-600'}`}>
-            {owes ? 'Χρωστάει' : chargesReady ? 'Δεν χρωστάει' : 'Οφειλές'}
-          </p>
-          {owes && <p className="text-lg font-bold text-red-700">€{debtTotal.toFixed(2)}</p>}
-        </div>
-        {!chargesReady ? (
-          <p className="text-xs text-gray-500">Υπολογισμός οφειλών...</p>
-        ) : !owes ? (
-          <p className="text-sm text-emerald-800">Όλα είναι τακτοποιημένα.</p>
-        ) : (
-          <div className="space-y-1.5">
+        <p className={`text-sm font-semibold ${owes ? 'text-red-800' : chargesReady ? 'text-emerald-800' : 'text-gray-600'}`}>
+          {owes ? 'Χρωστάει' : chargesReady ? 'Δεν χρωστάει' : 'Οφειλές'}
+        </p>
+        <p className={`mt-1 text-2xl font-bold ${owes ? 'text-red-700' : chargesReady ? 'text-emerald-700' : 'text-gray-400'}`}>
+          {chargesReady ? `€${debtTotal.toFixed(2)}` : '—'}
+        </p>
+        {owes && (
+          <button
+            type="button"
+            onClick={() => setShowDebts((open) => !open)}
+            className="mt-3 inline-flex items-center gap-1 rounded-lg bg-white px-3 py-1.5 text-sm font-medium text-red-700 shadow-sm hover:bg-red-50"
+          >
+            Λεπτομέρειες
+            {showDebts ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+        )}
+        {owes && showDebts && (
+          <div className="mt-3 space-y-1.5">
             {debts.map((item) => (
               <button
                 key={item.key}
@@ -3360,58 +3391,29 @@ function StudentSnapshot({
       </div>
 
       <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-        <p className="text-sm font-semibold text-gray-800 mb-2">Έχει</p>
         <div className="space-y-1.5">
-          {(() => {
-            const today = new Date();
-            const startYear = today.getMonth() + 1 >= 9 ? today.getFullYear() : today.getFullYear() - 1;
-            const stationery = findStationeryCharge(oneTimeCharges, startYear);
-            const paid = stationery && (stationery.status === 'paid' || Number(stationery.paidAmount ?? 0) + 0.009 >= Number(stationery.amount ?? 0));
-            if (!paid) return null;
-            return (
-              <button onClick={() => onOpen('billing')} className="w-full rounded-lg bg-white px-3 py-2 text-left hover:bg-emerald-50">
-                <span className="block text-sm font-medium text-gray-900">Γραφική ύλη</span>
-                <span className="block text-xs text-emerald-700">Πληρώθηκε · €{Number(stationery.amount).toFixed(2)}</span>
-              </button>
-            );
-          })()}
-          {buses.length === 0 ? (
-            <button onClick={() => onOpen('bus')} className="w-full rounded-lg bg-white px-3 py-2 text-left text-sm text-gray-500 hover:bg-emerald-50">
-              Χωρίς σχολικό
-            </button>
-          ) : buses.map((ss: any) => (
-            <button key={ss.id} onClick={() => onOpen('bus')} className="w-full flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-left hover:bg-emerald-50">
-              <Bus className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span className="flex-1 min-w-0">
-                <span className="block text-sm font-medium text-gray-900 truncate">Σχολικό · {ss.service?.name}</span>
-                <span className="block text-xs text-gray-500 truncate">
-                  {ss.route?.name || 'Χωρίς διαδρομή'}{ss.stop?.name ? ` · ${ss.stop.name}` : ''}
-                </span>
-              </span>
-            </button>
-          ))}
-          {otherServices.map((ss: any) => (
-            <button key={ss.id} onClick={() => onOpen('bus')} className="w-full rounded-lg bg-white px-3 py-2 text-left hover:bg-indigo-50">
-              <span className="block text-sm font-medium text-gray-900">{SERVICE_TYPES[ss.service?.serviceType] ?? ss.service?.name}</span>
-              <span className="block text-xs text-gray-500">{ss.service?.name}</span>
-            </button>
-          ))}
-          {activities.map((reg: any) => (
-            <button key={reg.id} onClick={() => onOpen('activities')} className="w-full flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-left hover:bg-violet-50">
-              <span className="flex-1 min-w-0">
-                <span className="block text-sm font-medium text-gray-900 truncate">{reg.activity?.title}</span>
-                <span className="block text-xs text-gray-500">{ACTIVITY_TYPES[reg.activity?.activityType] ?? 'Δραστηριότητα'} · {ACT_STATUS[reg.status]?.label ?? reg.status}</span>
-              </span>
-            </button>
-          ))}
-          {joinedEvents.map((enrollment: any) => (
-            <button key={enrollment.id} onClick={() => onOpen('events')} className="w-full flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-left hover:bg-violet-50">
-              <span className="flex-1 min-w-0">
-                <span className="block text-sm font-medium text-gray-900 truncate">{enrollment.event?.title}</span>
-                <span className="block text-xs text-gray-500">{EVENT_TYPES_GR[enrollment.event?.eventType] ?? 'Εκδήλωση'} · {ENROLLMENT_STATUS_META[enrollment.status]?.label ?? enrollment.status}</span>
-              </span>
-            </button>
-          ))}
+          <button onClick={() => onOpen('billing')} className="w-full rounded-lg bg-white px-3 py-2 text-left hover:bg-emerald-50">
+            <span className="block text-sm font-medium text-gray-900">Γραφική ύλη</span>
+            <span className={`block text-xs ${stationeryPaid ? 'text-emerald-700' : stationery ? 'text-red-700' : 'text-gray-500'}`}>
+              {!stationery
+                ? 'Δεν έχει χρεωθεί'
+                : stationeryPaid
+                  ? `Πληρώθηκε · €${Number(stationery.amount).toFixed(2)}`
+                  : `Εκκρεμεί · €${stationeryRemain.toFixed(2)}`}
+            </span>
+          </button>
+          <button onClick={() => onOpen('bus')} className="w-full rounded-lg bg-white px-3 py-2 text-left hover:bg-emerald-50">
+            <span className="block text-sm font-medium text-gray-900">Σχολικό</span>
+            <span className={`block text-xs ${buses.length > 0 ? 'text-emerald-700' : 'text-gray-500'}`}>
+              {buses.length > 0 ? 'Ναι' : 'Όχι'}
+            </span>
+          </button>
+          <button onClick={() => onOpen('activities')} className="w-full rounded-lg bg-white px-3 py-2 text-left hover:bg-violet-50">
+            <span className="block text-sm font-medium text-gray-900">Δραστηριότητες</span>
+            <span className={`block text-xs ${activities.length > 0 ? 'text-violet-700' : 'text-gray-500'}`}>
+              {activities.length}
+            </span>
+          </button>
         </div>
       </div>
     </div>
