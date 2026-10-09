@@ -88,6 +88,7 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
       },
       onOpened: (data) {
         if (!mounted) return;
+        if (_driverSkips(ref, data)) return;
         openNotification(context, ref, {
           'type': data['type'] ?? 'broadcast',
           'title': data['title'] ?? 'Ονειροχώρα',
@@ -95,6 +96,7 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
         });
       },
       onForeground: (title, body, data) {
+        if (_driverSkips(ref, data)) return;
         if (_viewingMessage(data)) {
           final conv = data['conversationId']?.toString() ?? '';
           if (conv.isNotEmpty) {
@@ -192,6 +194,8 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
         final notice = Map<String, dynamic>.from(item);
         final id = notice['id'] as String? ?? '';
         if (id.isEmpty || notice['isRead'] == true || _shown.contains(id)) continue;
+        if (ref.read(authProvider).user?.isDriver == true && notice['type']?.toString() != 'message') continue;
+        if (notice['type']?.toString() == 'message') ref.invalidate(conversationsProvider(widget.schoolId));
         if (_viewingMessage(notice)) {
           _shown.add(id);
           dio.post('/schools/${widget.schoolId}/notifications/inbox/$id/read').then((_) {}, onError: (_) {});
@@ -262,6 +266,12 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
 
   @override
   Widget build(BuildContext context) => const SizedBox.shrink();
+}
+
+bool _driverSkips(WidgetRef ref, Object? data) {
+  if (ref.read(authProvider).user?.isDriver != true) return false;
+  final type = data is Map ? data['type']?.toString() ?? '' : '';
+  return type != 'message' && type != 'new_message';
 }
 
 bool _viewingMessage(Map<dynamic, dynamic> notice) {

@@ -179,16 +179,30 @@ export class MessagesService {
     }
 
     if (kind === 'driver') {
-      if (role !== 'parent' || !withUserId) throw new ForbiddenException();
-      const linked = await this.prisma.studentService.findFirst({
-        where: {
-          isActive: true,
-          student: { schoolId, parents: { some: { userId } } },
-          service: { schoolId, serviceType: 'bus', isActive: true, driverUserId: withUserId },
-        },
-      });
-      if (!linked) throw new ForbiddenException('Μπορείς να στείλεις μόνο στον οδηγό του παιδιού');
-      return this.findOrCreate(schoolId, [userId, withUserId], userId);
+      if (!withUserId) throw new ForbiddenException();
+      if (role === 'parent') {
+        const linked = await this.prisma.studentService.findFirst({
+          where: {
+            isActive: true,
+            student: { schoolId, parents: { some: { userId } } },
+            service: { schoolId, serviceType: 'bus', isActive: true, driverUserId: withUserId },
+          },
+        });
+        if (!linked) throw new ForbiddenException('Μπορείς να στείλεις μόνο στον οδηγό του παιδιού');
+        return this.findOrCreate(schoolId, [userId, withUserId], userId);
+      }
+      if (role === 'driver') {
+        const linked = await this.prisma.studentService.findFirst({
+          where: {
+            isActive: true,
+            student: { schoolId, parents: { some: { userId: withUserId } } },
+            service: { schoolId, serviceType: 'bus', isActive: true, driverUserId: userId },
+          },
+        });
+        if (!linked) throw new ForbiddenException('Μπορείς να στείλεις μόνο σε γονέα παιδιού του σχολικού');
+        return this.findOrCreate(schoolId, [userId, withUserId], userId);
+      }
+      throw new ForbiddenException();
     }
 
     throw new ForbiddenException();

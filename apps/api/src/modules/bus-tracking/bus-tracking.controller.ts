@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -32,6 +32,24 @@ export class BusTrackingController {
     @Body() body: { serviceId?: string; latitude?: number; longitude?: number; heading?: number; speed?: number },
   ) {
     return this.service.ping(schoolId, user.sub, user.role, body);
+  }
+
+  @Get('route')
+  route(
+    @Param('schoolId') schoolId: string,
+    @CurrentUser() user: JwtPayload,
+    @Query('serviceId') serviceId?: string,
+  ) {
+    return this.service.route(schoolId, user.sub, user.role, serviceId);
+  }
+
+  @Post('pickup')
+  pickup(
+    @Param('schoolId') schoolId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { serviceId?: string; studentId?: string },
+  ) {
+    return this.service.pickup(schoolId, user.sub, user.role, body);
   }
 
   @Get('student/:studentId')

@@ -33,7 +33,7 @@ export class NotificationsController {
 
   @Get('inbox')
   inbox(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
-    return this.svc.inbox(user.sub, schoolId);
+    return this.svc.inbox(user.sub, schoolId, user.role);
   }
 
   @Get('unread-count')

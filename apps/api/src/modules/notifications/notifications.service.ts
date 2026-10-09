@@ -248,9 +248,13 @@ export class NotificationsService implements OnModuleInit {
     return row;
   }
 
-  async inbox(userId: string, schoolId: string) {
+  async inbox(userId: string, schoolId: string, role?: string | null) {
     return this.prisma.notification.findMany({
-      where: { userId, schoolId },
+      where: {
+        userId,
+        schoolId,
+        ...(role === 'driver' ? { type: 'message' } : {}),
+      },
       orderBy: { sentAt: 'desc' },
       take: 50,
     });

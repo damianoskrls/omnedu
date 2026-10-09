@@ -64,6 +64,92 @@ export class BusTrackingService {
     return { ok: true, serviceId, updatedAt: saved.updatedAt };
   }
 
+  async route(schoolId: string, userId: string, role: string | null | undefined, serviceId?: string) {
+    const id = await this.driverServiceId(schoolId, userId, role, serviceId);
+    if (!id) return { serviceId: null, riders: [] };
+    const day = schoolDay();
+    const dayKey = schoolDayKey();
+    const [rows, pickups] = await Promise.all([
+      this.prisma.studentService.findMany({
+        where: { serviceId: id, isActive: true, student: { schoolId, isActive: true } },
+        include: {
+          student: {
+            select: {
+              id: true,
+              fullName: true,
+              avatarUrl: true,
+              parents: { include: { user: { select: { id: true, fullName: true } } } },
+            },
+          },
+          stop: true,
+        },
+      }),
+      this.prisma.busPickup.findMany({ where: { serviceId: id, day } }),
+    ]);
+    const picked = new Map(pickups.map((row) => [row.studentId, row.pickedUpAt]));
+    const riders = rows.map((row) => {
+      const point = riderPoint(row);
+      const mode = row.serviceMode || 'both';
+      const parent = row.student.parents[0]?.user;
+      return {
+        studentId: row.student.id,
+        name: row.student.fullName,
+        avatarUrl: row.student.avatarUrl,
+        serviceMode: mode,
+        pickupTime: clockOf(row, 'pickup', dayKey),
+        dropoffTime: clockOf(row, 'dropoff', dayKey),
+        pickupContact: row.pickupContact,
+        dropoffContact: row.dropoffContact,
+        address: row.homeAddress || row.stop?.address || row.stop?.name || null,
+        latitude: point?.latitude ?? null,
+        longitude: point?.longitude ?? null,
+        parentId: parent?.id ?? null,
+        parentName: parent?.fullName ?? null,
+        canPickup: mode !== 'dropoff',
+        pickedUp: picked.has(row.student.id),
+        pickedUpAt: picked.get(row.student.id) ?? null,
+      };
+    }).sort((a, b) => {
+      const left = minutesOf(a.pickupTime) ?? 24 * 60;
+      const right = minutesOf(b.pickupTime) ?? 24 * 60;
+      if (left !== right) return left - right;
+      return a.name.localeCompare(b.name, 'el');
+    });
+    return { serviceId: id, riders };
+  }
+
+  async pickup(
+    schoolId: string,
+    userId: string,
+    role: string | null | undefined,
+    data: { serviceId?: string; studentId?: string },
+  ) {
+    const serviceId = await this.driverServiceId(schoolId, userId, role, data.serviceId);
+    const studentId = data.studentId?.trim() ?? '';
+    if (!serviceId || !studentId) throw new BadRequestException('Διάλεξε παιδί από το δρομολόγιο.');
+    const rider = await this.prisma.studentService.findFirst({
+      where: { serviceId, studentId, isActive: true, student: { schoolId, isActive: true } },
+    });
+    if (!rider) throw new NotFoundException('Αυτό το παιδί δεν είναι στο σχολικό σου.');
+    if (rider.serviceMode === 'dropoff') throw new BadRequestException('Αυτό το παιδί έχει μόνο παράδοση.');
+    const day = schoolDay();
+    const saved = await this.prisma.busPickup.upsert({
+      where: { serviceId_studentId_day: { serviceId, studentId, day } },
+      create: { schoolId, serviceId, studentId, driverUserId: userId, day },
+      update: {},
+    });
+    return { ok: true, studentId, pickedUpAt: saved.pickedUpAt };
+  }
+
+  private async driverServiceId(schoolId: string, userId: string, role: string | null | undefined, serviceId?: string) {
+    if (role !== 'driver') throw new ForbiddenException('Μόνο ο οδηγός βλέπει το δρομολόγιο.');
+    const buses = await this.prisma.extraService.findMany({
+      where: { schoolId, serviceType: 'bus', isActive: true, driverUserId: userId },
+      select: { id: true },
+    });
+    return serviceId && buses.some((bus) => bus.id === serviceId) ? serviceId : buses[0]?.id ?? null;
+  }
+
   async forStudent(schoolId: string, parentId: string, role: string | null | undefined, studentId: string) {
     if (role !== 'parent') throw new ForbiddenException('Ο χάρτης είναι για τον γονέα.');
     const link = await this.prisma.studentParent.findFirst({
@@ -110,6 +196,65 @@ export class BusTrackingService {
       }),
     };
   }
+}
+
+function schoolDay(now = new Date()) {
+  const label = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Athens', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+  return new Date(`${label}T00:00:00.000Z`);
+}
+
+function schoolDayKey(now = new Date()) {
+  const name = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Athens', weekday: 'short' }).format(now);
+  const keys: Record<string, string> = { Sun: 'sun', Mon: 'mon', Tue: 'tue', Wed: 'wed', Thu: 'thu', Fri: 'fri', Sat: 'sat' };
+  return keys[name] ?? 'mon';
+}
+
+function clockOf(
+  row: {
+    dailyTimes: unknown;
+    pickupTime: string | null;
+    dropoffTime: string | null;
+    stop: { pickupTime: string | null; dropoffTime: string | null } | null;
+  },
+  kind: 'pickup' | 'dropoff',
+  dayKey: string,
+) {
+  const daily = row.dailyTimes;
+  if (daily && typeof daily === 'object' && !Array.isArray(daily)) {
+    const day = (daily as Record<string, unknown>)[dayKey];
+    if (day && typeof day === 'object' && !Array.isArray(day)) {
+      const value = (day as Record<string, unknown>)[kind];
+      if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+  }
+  const own = kind === 'pickup' ? row.pickupTime : row.dropoffTime;
+  if (own?.trim()) return own.trim();
+  const stop = kind === 'pickup' ? row.stop?.pickupTime : row.stop?.dropoffTime;
+  return stop?.trim() || null;
+}
+
+function minutesOf(value?: string | null) {
+  if (!value) return null;
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+function riderPoint(row: {
+  homeLat: { toNumber?: () => number } | number | null;
+  homeLng: { toNumber?: () => number } | number | null;
+  stop: { latitude: { toNumber?: () => number } | number | null; longitude: { toNumber?: () => number } | number | null } | null;
+}) {
+  const homeLat = asNumber(row.homeLat);
+  const homeLng = asNumber(row.homeLng);
+  if (homeLat != null && homeLng != null) return { latitude: homeLat, longitude: homeLng };
+  const stopLat = asNumber(row.stop?.latitude);
+  const stopLng = asNumber(row.stop?.longitude);
+  if (stopLat != null && stopLng != null) return { latitude: stopLat, longitude: stopLng };
+  return null;
 }
 
 function numberOrNull(value: unknown) {
