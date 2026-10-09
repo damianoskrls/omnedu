@@ -48,6 +48,9 @@ Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
 }
 
 bool _phonePushListening = false;
+bool _phoneTokenSent = false;
+bool _phoneTokenBusy = false;
+Timer? _phoneTokenRetry;
 Future<void> Function(String token)? _phonePushToken;
 void Function(Map<String, dynamic> data)? _phonePushOpened;
 void Function(String title, String body, Map<String, dynamic> data)? _phonePushForeground;
@@ -69,7 +72,6 @@ Future<void> startPhonePush({
     return;
   }
   _phonePushListening = true;
-  FirebaseMessaging.onBackgroundMessage(firebaseBackgroundHandler);
   try {
     await FirebaseMessaging.instance.requestPermission(alert: true, badge: true, sound: true);
     if (Platform.isIOS) {
@@ -77,6 +79,7 @@ Future<void> startPhonePush({
     }
   } catch (_) {}
   FirebaseMessaging.onMessage.listen((message) {
+    if (Platform.isIOS && message.notification != null) return;
     final title = message.notification?.title ?? message.data['title']?.toString() ?? 'Ονειροχώρα';
     final body = message.notification?.body ?? message.data['body']?.toString() ?? '';
     if (title.isEmpty && body.isEmpty) return;
@@ -96,16 +99,48 @@ Future<void> startPhonePush({
   unawaited(_publishPhoneToken(onToken));
 }
 
+Future<void> refreshPhonePushToken() async {
+  final deliver = _phonePushToken;
+  if (deliver == null || !PhonePushConfig.ready) return;
+  await _publishPhoneToken(deliver);
+}
+
 Future<void> _publishPhoneToken(Future<void> Function(String token) onToken) async {
+  if (_phoneTokenBusy) return;
+  _phoneTokenBusy = true;
   try {
     if (Platform.isIOS) {
-      for (var attempt = 0; attempt < 8; attempt++) {
+      final settings = await FirebaseMessaging.instance.getNotificationSettings();
+      if (settings.authorizationStatus == AuthorizationStatus.notDetermined) {
+        await FirebaseMessaging.instance.requestPermission(alert: true, badge: true, sound: true);
+      }
+      for (var attempt = 0; attempt < 12; attempt++) {
         final apns = await FirebaseMessaging.instance.getAPNSToken();
         if (apns != null && apns.isNotEmpty) break;
         await Future<void>.delayed(const Duration(seconds: 1));
       }
     }
     final token = await FirebaseMessaging.instance.getToken();
-    if (token != null && token.isNotEmpty) await onToken(token);
-  } catch (_) {}
+    if (token != null && token.isNotEmpty) {
+      await onToken(token);
+      _phoneTokenSent = true;
+      _phoneTokenRetry?.cancel();
+      _phoneTokenRetry = null;
+    }
+  } catch (_) {
+  } finally {
+    _phoneTokenBusy = false;
+  }
+  if (_phoneTokenSent || !Platform.isIOS || _phoneTokenRetry != null) return;
+  var tries = 0;
+  _phoneTokenRetry = Timer.periodic(const Duration(seconds: 8), (_) {
+    tries += 1;
+    if (_phoneTokenSent || tries > 12) {
+      _phoneTokenRetry?.cancel();
+      _phoneTokenRetry = null;
+      return;
+    }
+    final deliver = _phonePushToken;
+    if (deliver != null) unawaited(_publishPhoneToken(deliver));
+  });
 }

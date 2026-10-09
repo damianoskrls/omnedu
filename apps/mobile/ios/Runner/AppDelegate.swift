@@ -16,7 +16,6 @@ private let noticeTaskId = "com.omnedu.omnedu.notices"
     if FirebaseApp.app() == nil {
       FirebaseApp.configure()
     }
-    application.registerForRemoteNotifications()
     BGTaskScheduler.shared.register(forTaskWithIdentifier: noticeTaskId, using: nil) { task in
       guard let refresh = task as? BGAppRefreshTask else {
         task.setTaskCompleted(success: false)
@@ -25,7 +24,23 @@ private let noticeTaskId = "com.omnedu.omnedu.notices"
       IosNotices.handle(refresh)
     }
     application.setMinimumBackgroundFetchInterval(UIApplication.backgroundFetchIntervalMinimum)
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    let ready = super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    let center = UNUserNotificationCenter.current()
+    center.delegate = self
+    center.requestAuthorization(options: [.alert, .badge, .sound]) { _, _ in }
+    return ready
+  }
+
+  override func userNotificationCenter(
+    _ center: UNUserNotificationCenter,
+    willPresent notification: UNNotification,
+    withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+  ) {
+    if #available(iOS 14.0, *) {
+      completionHandler([.banner, .list, .sound, .badge])
+    } else {
+      completionHandler([.alert, .sound, .badge])
+    }
   }
 
   override func application(
@@ -169,8 +184,9 @@ enum IosNotices {
           DispatchQueue.main.async { completion(false) }
           return
         }
-        let found = postNew(rows)
-        DispatchQueue.main.async { completion(found) }
+        postNew(rows) { found in
+          DispatchQueue.main.async { completion(found) }
+        }
       }.resume()
     }
   }
@@ -231,11 +247,20 @@ enum IosNotices {
     return list.compactMap { $0 as? [String: Any] }
   }
 
-  private static func postNew(_ rows: [[String: Any]]) -> Bool {
-    var shown = defaults.stringArray(forKey: shownKey) ?? []
-    var found = false
+  private static func postNew(_ rows: [[String: Any]], completion: @escaping (Bool) -> Void) {
     let center = UNUserNotificationCenter.current()
-    for row in rows {
+    center.getNotificationSettings { settings in
+      let allowed = settings.authorizationStatus == .authorized
+        || settings.authorizationStatus == .provisional
+        || settings.authorizationStatus == .ephemeral
+      guard allowed else {
+        completion(false)
+        return
+      }
+      var shown = defaults.stringArray(forKey: shownKey) ?? []
+      var found = false
+      let group = DispatchGroup()
+      for row in rows {
       guard let id = row["id"] as? String, !id.isEmpty, !shown.contains(id) else { continue }
       if row["isRead"] as? Bool == true { continue }
       if let sent = row["sentAt"] as? String, let date = isoDate(sent), Date().timeIntervalSince(date) > 12 * 60 * 60 {
@@ -269,13 +294,23 @@ enum IosNotices {
         "payload": payloadText,
       ]
       let request = UNNotificationRequest(identifier: "omnedu-\(id)", content: content, trigger: nil)
-      center.add(request)
-      shown.append(id)
-      found = true
+      group.enter()
+      center.add(request) { error in
+        DispatchQueue.main.async {
+          if error == nil {
+            shown.append(id)
+            found = true
+          }
+          group.leave()
+        }
+      }
     }
-    if shown.count > 200 { shown = Array(shown.suffix(200)) }
-    defaults.set(shown, forKey: shownKey)
-    return found
+      group.notify(queue: .main) {
+        if shown.count > 200 { shown = Array(shown.suffix(200)) }
+        defaults.set(shown, forKey: shownKey)
+        completion(found)
+      }
+    }
   }
 
   private static func noticeBody(_ row: [String: Any]) -> String {

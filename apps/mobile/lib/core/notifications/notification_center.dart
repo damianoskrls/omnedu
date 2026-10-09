@@ -155,7 +155,10 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _poll();
+    if (state == AppLifecycleState.resumed) {
+      _poll();
+      unawaited(refreshPhonePushToken());
+    }
     if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
       _rememberIosSession();
       checkIosNotices();
