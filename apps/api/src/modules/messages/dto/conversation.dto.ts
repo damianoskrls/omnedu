@@ -7,8 +7,8 @@ export class OpenConversationDto {
   participantIds?: string[];
 
   @IsOptional()
-  @IsIn(['admin', 'teacher'])
-  kind?: 'admin' | 'teacher';
+  @IsIn(['admin', 'teacher', 'driver'])
+  kind?: 'admin' | 'teacher' | 'driver';
 
   @IsOptional()
   @IsString()

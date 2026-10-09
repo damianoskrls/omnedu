@@ -53,7 +53,7 @@ export class MessagesController {
     @CurrentUser() user: JwtPayload,
     @Body() body: OpenConversationDto,
   ) {
-    if (body.kind === 'admin' || body.kind === 'teacher') {
+    if (body.kind === 'admin' || body.kind === 'teacher' || body.kind === 'driver') {
       return this.messages.openScoped(schoolId, user.sub, user.role, body.kind, body.withUserId);
     }
     if (!isSchoolLead(user.role)) {

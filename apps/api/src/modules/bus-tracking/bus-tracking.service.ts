@@ -73,7 +73,12 @@ export class BusTrackingService {
     const services = await this.prisma.studentService.findMany({
       where: { studentId, isActive: true, service: { schoolId, serviceType: 'bus', isActive: true } },
       include: {
-        service: { include: { busPosition: true } },
+        service: {
+          include: {
+            busPosition: true,
+            driverUser: { select: { id: true, fullName: true, phone: true } },
+          },
+        },
         stop: true,
       },
     });
@@ -90,7 +95,9 @@ export class BusTrackingService {
           serviceId: row.service.id,
           name: row.service.name,
           busNumber: row.service.busNumber,
-          driverName: row.service.driverName,
+          driverName: row.service.driverUser?.fullName || row.service.driverName,
+          driverUserId: row.service.driverUser?.id ?? null,
+          driverPhone: row.service.driverUser?.phone ?? null,
           live,
           updatedAt: position?.updatedAt ?? null,
           latitude: position?.latitude ?? null,

@@ -178,6 +178,19 @@ export class MessagesService {
       return this.findOrCreate(schoolId, [parentId, teacherId], userId);
     }
 
+    if (kind === 'driver') {
+      if (role !== 'parent' || !withUserId) throw new ForbiddenException();
+      const linked = await this.prisma.studentService.findFirst({
+        where: {
+          isActive: true,
+          student: { schoolId, parents: { some: { userId } } },
+          service: { schoolId, serviceType: 'bus', isActive: true, driverUserId: withUserId },
+        },
+      });
+      if (!linked) throw new ForbiddenException('Μπορείς να στείλεις μόνο στον οδηγό του παιδιού');
+      return this.findOrCreate(schoolId, [userId, withUserId], userId);
+    }
+
     throw new ForbiddenException();
   }
 
