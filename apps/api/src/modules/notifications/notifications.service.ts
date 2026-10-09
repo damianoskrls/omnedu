@@ -256,7 +256,7 @@ export class NotificationsService implements OnModuleInit {
         ...(role === 'driver' ? { type: 'message' } : {}),
       },
       orderBy: { sentAt: 'desc' },
-      take: 50,
+      take: 300,
     });
   }
 

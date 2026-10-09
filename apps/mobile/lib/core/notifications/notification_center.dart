@@ -25,6 +25,8 @@ import '../../features/parent/screens/thematic_screen.dart';
 import '../../features/teacher/screens/teacher_meetings_screen.dart';
 import '../../features/teacher/screens/teacher_thematic_screen.dart';
 import '../api/api_client.dart';
+import '../utils/system_insets.dart';
+import '../widgets/app_image.dart';
 import '../providers/auth_provider.dart';
 import '../storage/secure_storage.dart';
 import 'ios_notices.dart';
@@ -251,6 +253,8 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
         'id': id,
         'type': notice['type'],
         'title': title,
+        'body': notice['body'],
+        'sentAt': notice['sentAt'],
         'data': notice['data'] ?? {},
       }),
     );
@@ -300,7 +304,7 @@ String _noticeBody(Map<String, dynamic> notice) {
   return 'Ανέβηκε κανονισμός. Πάτα για να τον διαβάσεις.';
 }
 
-Future<void> openNotification(BuildContext context, WidgetRef ref, Map<String, dynamic> notice, {bool fromList = false}) async {
+Future<void> openNotification(BuildContext context, WidgetRef ref, Map<String, dynamic> notice) async {
   final id = notice['id'] as String?;
   final schoolId = ref.read(authProvider).user?.schoolId ?? '';
   final userId = ref.read(authProvider).user?.id ?? '';
@@ -510,8 +514,7 @@ Future<void> openNotification(BuildContext context, WidgetRef ref, Map<String, d
     return;
   }
 
-  if (fromList) return;
-  await Navigator.push(context, MaterialPageRoute(builder: (_) => InboxScreen(schoolId: schoolId)));
+  await Navigator.push(context, MaterialPageRoute(builder: (_) => NoticeDetailScreen(notice: notice)));
 }
 
 class InboxScreen extends ConsumerWidget {
@@ -546,57 +549,8 @@ class InboxScreen extends ConsumerWidget {
               ),
             );
           }
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: list.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (_, index) {
-              final notice = Map<String, dynamic>.from(list[index] as Map);
-              final unread = notice['isRead'] != true;
-              final rawData = notice['data'];
-              final imageUrl = rawData is Map ? rawData['imageUrl']?.toString() : null;
-              return Material(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(16),
-                  onTap: () => openNotification(context, ref, notice, fromList: true),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        CircleAvatar(
-                          backgroundColor: unread ? const Color(0xFFF3E8F7) : const Color(0xFFF3F4F6),
-                          child: Icon(_icon(notice), color: const Color(0xFF77328D)),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(notice['title'] as String? ?? 'Ειδοποίηση', style: const TextStyle(fontWeight: FontWeight.w800)),
-                              const SizedBox(height: 2),
-                              Text(_noticeBody(notice)),
-                              if (imageUrl != null && imageUrl.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 8),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(10),
-                                    child: Image.network(imageUrl, height: 140, width: double.infinity, fit: BoxFit.cover),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                        if (unread) const Padding(padding: EdgeInsets.only(left: 8, top: 6), child: Icon(Icons.circle, size: 10, color: Color(0xFFE95926))),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
-          );
+          final notices = list.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+          return _NoticeList(notices: notices, iconFor: _icon, onOpen: (notice) => openNotification(context, ref, notice));
         },
       ),
     );
@@ -624,4 +578,159 @@ class InboxScreen extends ConsumerWidget {
     }
     return Icons.notifications_rounded;
   }
+}
+
+class _NoticeList extends StatefulWidget {
+  final List<Map<String, dynamic>> notices;
+  final IconData Function(Map<String, dynamic> notice) iconFor;
+  final void Function(Map<String, dynamic> notice) onOpen;
+  const _NoticeList({required this.notices, required this.iconFor, required this.onOpen});
+
+  @override
+  State<_NoticeList> createState() => _NoticeListState();
+}
+
+class _NoticeListState extends State<_NoticeList> {
+  static const _preview = 8;
+  bool _all = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = _all ? widget.notices : widget.notices.take(_preview).toList();
+    final hidden = widget.notices.length - shown.length;
+    return ListView.separated(
+      padding: EdgeInsets.fromLTRB(16, 16, 16, 24 + systemBottomInset(context)),
+      itemCount: shown.length + (hidden > 0 ? 1 : 0),
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (_, index) {
+        if (index >= shown.length) {
+          return FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF77328D),
+              minimumSize: const Size.fromHeight(52),
+            ),
+            onPressed: () => setState(() => _all = true),
+            child: Text('Εμφάνιση όλων των ειδοποιήσεων ($hidden ακόμα)'),
+          );
+        }
+        final notice = shown[index];
+        final unread = notice['isRead'] != true;
+        final when = _noticeWhen(notice);
+        return Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => widget.onOpen(notice),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    backgroundColor: unread ? const Color(0xFFF3E8F7) : const Color(0xFFF3F4F6),
+                    child: Icon(widget.iconFor(notice), color: const Color(0xFF77328D)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(notice['title'] as String? ?? 'Ειδοποίηση', style: const TextStyle(fontWeight: FontWeight.w800)),
+                        if (when.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(when, style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF), height: 1.2)),
+                        ],
+                        const SizedBox(height: 4),
+                        Text(_noticeBody(notice), maxLines: 2, overflow: TextOverflow.ellipsis),
+                      ],
+                    ),
+                  ),
+                  if (unread) const Padding(padding: EdgeInsets.only(left: 8, top: 6), child: Icon(Icons.circle, size: 10, color: Color(0xFFE95926))),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class NoticeDetailScreen extends StatelessWidget {
+  final Map<String, dynamic> notice;
+  const NoticeDetailScreen({super.key, required this.notice});
+
+  @override
+  Widget build(BuildContext context) {
+    final raw = notice['data'];
+    final data = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+    final title = notice['title']?.toString().trim() ?? '';
+    final body = (notice['body']?.toString().trim().isNotEmpty == true ? notice['body']?.toString() : data['body']?.toString())?.trim() ?? '';
+    final imageUrl = data['imageUrl']?.toString() ?? '';
+    final when = _noticeWhen(notice);
+    return Scaffold(
+      backgroundColor: const Color(0xFFF6F3FA),
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        title: const Text('Ειδοποίηση'),
+        actions: [
+          IconButton(
+            tooltip: 'Κλείσιμο',
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.close_rounded),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+              children: [
+                if (when.isNotEmpty)
+                  Text(when, style: const TextStyle(fontSize: 13, color: Color(0xFF9CA3AF))),
+                if (title.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF2C2422), height: 1.25)),
+                ],
+                if (imageUrl.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: AppImage(imageUrl, width: double.infinity, fit: BoxFit.contain),
+                  ),
+                ],
+                if (body.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Text(body, style: const TextStyle(fontSize: 16, height: 1.45, color: Color(0xFF2C2422))),
+                ],
+              ],
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(16, 8, 16, 12 + systemBottomInset(context)),
+            child: SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: const Color(0xFF77328D)),
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Κλείσιμο', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _noticeWhen(Map<String, dynamic> notice) {
+  final parsed = DateTime.tryParse(notice['sentAt']?.toString() ?? '');
+  if (parsed == null) return '';
+  final time = parsed.toLocal();
+  final date = '${time.day.toString().padLeft(2, '0')}/${time.month.toString().padLeft(2, '0')}/${time.year}';
+  final clock = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+  return '$date · $clock';
 }

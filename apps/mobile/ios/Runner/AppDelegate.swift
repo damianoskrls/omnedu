@@ -252,6 +252,8 @@ enum IosNotices {
         "id": id,
         "type": row["type"] as? String ?? "broadcast",
         "title": content.title,
+        "body": body,
+        "sentAt": row["sentAt"] as? String ?? "",
         "data": row["data"] as? [String: Any] ?? [:],
       ]
       let payloadData = try? JSONSerialization.data(withJSONObject: payload)
