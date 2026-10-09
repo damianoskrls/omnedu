@@ -563,7 +563,8 @@ class _EventsBlock extends StatelessWidget {
     final eventEnrollments = child['eventEnrollments'] as List<dynamic>? ?? [];
     if (eventEnrollments.isEmpty) return const SizedBox.shrink();
     final pending = childPendingEvents(child);
-    final cards = eventEnrollments.take(5).map((enr) {
+    final ordered = [...eventEnrollments]..sort((a, b) => _eventRank(a).compareTo(_eventRank(b)));
+    final cards = ordered.take(5).map((enr) {
             final e = enr as Map<String, dynamic>;
             final event = e['event'] as Map<String, dynamic>? ?? {};
             final status = e['status'] as String? ?? '';
@@ -608,7 +609,12 @@ class _EventsBlock extends StatelessWidget {
                   if (status == 'pending_consent')
                     const Padding(
                       padding: EdgeInsets.only(top: 4),
-                      child: Text('Πάτα για λεπτομέρειες και συναίνεση', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFE95926))),
+                      child: Text('Άνοιξε για συναίνεση', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFE95926))),
+                    ),
+                  if (status == 'pending_payment')
+                    const Padding(
+                      padding: EdgeInsets.only(top: 6),
+                      child: Text(paymentAtSecretary, style: TextStyle(fontSize: 13, height: 1.35, fontWeight: FontWeight.w700, color: Color(0xFF111827))),
                     ),
                   EventDayFacts(arriveBy: event['arriveBy']?.toString(), busOperates: event['busOperates']),
                 ])),
@@ -642,6 +648,13 @@ class _EventsBlock extends StatelessWidget {
         list,
       ],
     );
+  }
+
+  int _eventRank(dynamic row) {
+    final status = row is Map ? row['status']?.toString() : null;
+    if (status == 'pending_consent') return 0;
+    if (status == 'pending_payment') return 1;
+    return 2;
   }
 
   String _formatEventDate(String iso) {

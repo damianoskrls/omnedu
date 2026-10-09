@@ -52,6 +52,13 @@ void main() {
     expect(find.text('Όχι'), findsOneWidget);
   });
 
+  testWidgets('consent that needs payment tells the parent to visit the secretary', (tester) async {
+    await pump(tester, 'pending_payment');
+
+    expect(find.text('Εκκρεμεί η πληρωμή. Επισκέψου τη γραμματεία για να την τακτοποιήσεις.'), findsOneWidget);
+    expect(find.text('Συναινώ'), findsNothing);
+  });
+
   testWidgets('an answered event keeps the details and hides the consent buttons', (tester) async {
     await pump(tester, 'consent_given');
 

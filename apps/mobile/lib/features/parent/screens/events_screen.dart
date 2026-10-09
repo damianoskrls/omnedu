@@ -37,6 +37,8 @@ const _statusMeta = {
   'paid': ('Εξοφλημένο ✓', Color(0xFF059669), Color(0xFFECFDF5)),
 };
 
+const paymentAtSecretary = 'Εκκρεμεί η πληρωμή. Επισκέψου τη γραμματεία για να την τακτοποιήσεις.';
+
 const _eventTypeGr = {
   'excursion': 'Εκδρομή',
   'theater': 'Θεατρικό',
@@ -60,12 +62,13 @@ class _ParentEventsScreenState extends ConsumerState<ParentEventsScreen> {
     setState(() => _giving.add(enrollmentId));
     try {
       final dio = ref.read(dioProvider);
-      await dio.put(
+      final resp = await dio.put(
         '/schools/${widget.schoolId}/events/enrollments/$enrollmentId/consent',
         data: {'consent': consent},
       );
       ref.invalidate(parentEventsProvider(widget.schoolId));
       ref.invalidate(myChildrenProvider(widget.schoolId));
+      if (mounted) await explainConsentResult(context, consent: consent, data: resp.data);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -625,6 +628,25 @@ class _EventCard extends StatelessWidget {
   }
 }
 
+Future<void> explainConsentResult(BuildContext context, {required bool consent, required dynamic data}) async {
+  final status = data is Map ? data['status']?.toString() ?? '' : '';
+  if (!consent || status != 'pending_payment' || !context.mounted) return;
+  await showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Εκκρεμεί η πληρωμή', style: TextStyle(fontWeight: FontWeight.w800)),
+      content: const Text(paymentAtSecretary),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.pop(context),
+          style: FilledButton.styleFrom(backgroundColor: const Color(0xFF77328D), foregroundColor: Colors.white),
+          child: const Text('Εντάξει'),
+        ),
+      ],
+    ),
+  );
+}
+
 void openParentEvent(BuildContext context, String schoolId, String eventId) {
   if (schoolId.isEmpty || eventId.isEmpty) return;
   Navigator.push(
@@ -658,12 +680,13 @@ class _ParentEventScreenState extends ConsumerState<ParentEventScreen> {
     setState(() => _giving.add(enrollmentId));
     try {
       final dio = ref.read(dioProvider);
-      await dio.put(
+      final resp = await dio.put(
         '/schools/${widget.schoolId}/events/enrollments/$enrollmentId/consent',
         data: {'consent': consent},
       );
       ref.invalidate(parentEventsProvider(widget.schoolId));
       ref.invalidate(myChildrenProvider(widget.schoolId));
+      if (mounted) await explainConsentResult(context, consent: consent, data: resp.data);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -875,6 +898,10 @@ class _ConsentBlock extends StatelessWidget {
           if (meta != null) ...[
             const SizedBox(height: 6),
             Text(meta.$1, style: TextStyle(color: meta.$2, fontWeight: FontWeight.w700)),
+          ],
+          if (status == 'pending_payment') ...[
+            const SizedBox(height: 10),
+            const Text(paymentAtSecretary, style: TextStyle(fontSize: 15, height: 1.4, fontWeight: FontWeight.w700, color: Color(0xFF111827))),
           ],
           if (pending) ...[
             const SizedBox(height: 8),

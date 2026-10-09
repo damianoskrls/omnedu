@@ -1,7 +1,7 @@
 name: omnedu
 description: omnedu — School management app for Parents & Teachers
 publish_to: none
-version: 1.0.31+2026100933
+version: 1.0.32+2026100934
 
 environment:
   sdk: '>=3.4.0 <4.0.0'

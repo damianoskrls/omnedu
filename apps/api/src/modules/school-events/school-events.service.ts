@@ -374,8 +374,8 @@ export class SchoolEventsService implements OnModuleInit, OnModuleDestroy {
       await this.notifications.notifyStudentParents(schoolId, updated.studentId, {
         event: 'payment_overdue',
         type: 'payment',
-        title: 'Εκκρεμεί πληρωμή',
-        body: `${updated.student.fullName}: ${updated.event.title}`,
+        title: 'Εκκρεμεί η πληρωμή',
+        body: `${updated.student.fullName}: ${updated.event.title}. Επισκέψου τη γραμματεία για να την τακτοποιήσεις.`,
         data: { screen: 'payments', studentId: updated.studentId },
       });
     }
@@ -455,8 +455,8 @@ export class SchoolEventsService implements OnModuleInit, OnModuleDestroy {
         await this.notifications.notifyStudentParents(event.schoolId, enrollment.studentId, {
           event: 'payment_overdue',
           type: 'payment',
-          title: 'Εκκρεμεί πληρωμή',
-          body: `${enrollment.student.fullName}: ${event.title}`,
+        title: 'Εκκρεμεί η πληρωμή',
+        body: `${enrollment.student.fullName}: ${event.title}. Επισκέψου τη γραμματεία για να την τακτοποιήσεις.`,
           data: { screen: 'payments', studentId: enrollment.studentId },
         });
       }
