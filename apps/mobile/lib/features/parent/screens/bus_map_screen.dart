@@ -285,8 +285,8 @@ class _BusMapScreenState extends ConsumerState<BusMapScreen> {
                   if (here != null)
                     Marker(
                       point: here,
-                      width: 74,
-                      height: 58,
+                      width: 78,
+                      height: 86,
                       alignment: Alignment.topCenter,
                       child: Image.asset('assets/images/school_bus.png', fit: BoxFit.contain),
                     ),
