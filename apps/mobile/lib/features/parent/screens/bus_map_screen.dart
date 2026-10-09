@@ -151,50 +151,25 @@ class _BusMapScreenState extends ConsumerState<BusMapScreen> {
     return 'Το σχολικό κινείται. Δεν υπάρχει αποθηκευμένη θέση για εκτίμηση άφιξης.';
   }
 
-  Future<void> _contact(Map<String, dynamic> bus) async {
+  Future<void> _call(Map<String, dynamic> bus) async {
     final phone = bus['driverPhone']?.toString().trim() ?? '';
-    final driverId = bus['driverUserId']?.toString() ?? '';
-    final name = _mister(bus);
-    if (phone.isEmpty && driverId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Δεν υπάρχει τηλέφωνο ή λογαριασμός οδηγού.')));
+    if (phone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Δεν υπάρχει τηλέφωνο οδηγού.')));
       return;
     }
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheet) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (phone.isNotEmpty)
-                ListTile(
-                  leading: const Icon(Icons.phone_rounded, color: Color(0xFFE95926)),
-                  title: Text('Κλήση στον $name'),
-                  onTap: () async {
-                    Navigator.pop(sheet);
-                    final uri = Uri.parse('tel:${phone.replaceAll(' ', '')}');
-                    if (!await launchUrl(uri)) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Η κλήση δεν άνοιξε.')));
-                      }
-                    }
-                  },
-                ),
-              if (driverId.isNotEmpty)
-                ListTile(
-                  leading: const Icon(Icons.chat_bubble_rounded, color: Color(0xFF77328D)),
-                  title: Text('Μήνυμα στον $name'),
-                  onTap: () {
-                    Navigator.pop(sheet);
-                    _message(driverId, name);
-                  },
-                ),
-            ],
-          ),
-        );
-      },
-    );
+    final uri = Uri.parse('tel:${phone.replaceAll(' ', '')}');
+    if (!await launchUrl(uri) && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Η κλήση δεν άνοιξε.')));
+    }
+  }
+
+  Future<void> _openMessage(Map<String, dynamic> bus) async {
+    final driverId = bus['driverUserId']?.toString() ?? '';
+    if (driverId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Δεν υπάρχει λογαριασμός οδηγού για μήνυμα.')));
+      return;
+    }
+    await _message(driverId, _mister(bus));
   }
 
   Future<void> _message(String driverId, String name) async {
@@ -300,38 +275,51 @@ class _BusMapScreenState extends ConsumerState<BusMapScreen> {
             padding: EdgeInsets.fromLTRB(20, 16, 16, 16 + bottom),
             child: _error != null
                 ? Text(_error!, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, height: 1.35))
-                : Row(
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: minutes == null
-                            ? Text(
-                                _fallback(bus),
-                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, height: 1.35, color: Color(0xFF2C2422)),
-                              )
-                            : Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('$who φτάνει σε', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF2C2422))),
-                                  const SizedBox(height: 4),
-                                  Text(minutes, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Color(0xFFE95926))),
-                                  if (distance != null && distance.isNotEmpty)
-                                    Text('$distance χλμ', style: const TextStyle(color: Color(0xFF6B7280), fontWeight: FontWeight.w600)),
-                                ],
+                      minutes == null
+                          ? Text(
+                              _fallback(bus),
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, height: 1.35, color: Color(0xFF2C2422)),
+                            )
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('$who φτάνει σε', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF2C2422))),
+                                const SizedBox(height: 4),
+                                Text(minutes, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Color(0xFFE95926))),
+                                if (distance != null && distance.isNotEmpty)
+                                  Text('$distance χλμ', style: const TextStyle(color: Color(0xFF6B7280), fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFFE95926),
+                                minimumSize: const Size.fromHeight(52),
                               ),
-                      ),
-                      const SizedBox(width: 12),
-                      Material(
-                        color: const Color(0xFFFFF1EC),
-                        shape: const CircleBorder(),
-                        child: InkWell(
-                          customBorder: const CircleBorder(),
-                          onTap: bus == null ? null : () => _contact(bus),
-                          child: const SizedBox(
-                            width: 64,
-                            height: 64,
-                            child: Icon(Icons.phone_rounded, color: Color(0xFFE95926), size: 30),
+                              onPressed: bus == null ? null : () => _call(bus),
+                              icon: const Icon(Icons.phone_rounded),
+                              label: const Text('Τηλέφωνο'),
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF77328D),
+                                minimumSize: const Size.fromHeight(52),
+                              ),
+                              onPressed: bus == null ? null : () => _openMessage(bus),
+                              icon: const Icon(Icons.chat_bubble_rounded),
+                              label: const Text('Μήνυμα'),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),

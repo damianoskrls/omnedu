@@ -7,6 +7,7 @@ import '../../medications/medications_screen.dart';
 import 'bulletin_screen.dart';
 import 'school_posts_screen.dart';
 import 'child_detail_screen.dart';
+import 'bus_map_screen.dart';
 import 'parent_child_pages.dart';
 import 'parent_meetings_screen.dart';
 import 'thematic_screen.dart';
@@ -161,6 +162,7 @@ class ChildHubScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
+          _BusWhereButton(schoolId: schoolId, child: child),
           Material(
             color: Colors.white,
             borderRadius: BorderRadius.circular(18),
@@ -213,6 +215,74 @@ class ChildHubScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _BusWhereButton extends StatelessWidget {
+  final String schoolId;
+  final Map<String, dynamic> child;
+  const _BusWhereButton({required this.schoolId, required this.child});
+
+  Map<String, dynamic>? _bus(Map<String, dynamic> data) {
+    final services = data['studentServices'];
+    if (services is! List) return null;
+    for (final raw in services) {
+      if (raw is! Map) continue;
+      final row = Map<String, dynamic>.from(raw);
+      final catalog = row['service'];
+      final service = catalog is Map ? Map<String, dynamic>.from(catalog) : const <String, dynamic>{};
+      final type = service['serviceType']?.toString() ?? '';
+      final name = service['name']?.toString() ?? '';
+      if (type == 'bus' || name.toLowerCase().contains('σχολ')) return row;
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final studentId = child['id']?.toString() ?? '';
+    final bus = _bus(child);
+    if (bus == null) return const SizedBox.shrink();
+    final catalog = bus['service'];
+    final name = catalog is Map ? catalog['name']?.toString().trim() ?? '' : '';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: const Color(0xFFE95926),
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => BusMapScreen(
+                  schoolId: schoolId,
+                  studentId: studentId,
+                  busName: name.isEmpty ? 'Σχολικό' : name,
+                ),
+              ),
+            );
+          },
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            child: Row(
+              children: [
+                Icon(Icons.directions_bus_rounded, color: Colors.white, size: 28),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Δες πού είναι το σχολικό',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 17),
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, color: Colors.white),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

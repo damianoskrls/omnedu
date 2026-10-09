@@ -61,6 +61,7 @@ void main() {
     final back = tester.getCenter(find.byIcon(Icons.arrow_back_rounded));
     expect(back.dx, lessThan(40));
     expect(back.dx, lessThan(width / 2 - 80));
+    expect(find.text('Δες πού είναι το σχολικό'), findsNothing);
 
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -500));
     await tester.pump();
@@ -68,5 +69,32 @@ void main() {
     final collapsedName = find.byWidgetPredicate((widget) => widget is Text && widget.data == 'Σοφία Γεωργίου' && widget.style?.fontSize == 16);
     expectCentered(find.ancestor(of: collapsedName, matching: find.byType(Row)));
     expect(tester.getCenter(find.byIcon(Icons.arrow_back_rounded)).dx, lessThan(40));
+  });
+
+  testWidgets('a child with a school bus shows the map shortcut above the regulations', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: ChildHubScreen(
+            schoolId: 'school-1',
+            child: {
+              'id': 'child-1',
+              'fullName': 'Σοφία Γεωργίου',
+              'studentServices': [
+                {
+                  'service': {'name': 'Πρωινό σχολικό', 'serviceType': 'bus'},
+                },
+              ],
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Δες πού είναι το σχολικό'), findsOneWidget);
+    final bus = tester.getTopLeft(find.text('Δες πού είναι το σχολικό'));
+    final rules = tester.getTopLeft(find.text('Κανονισμοί'));
+    expect(bus.dy, lessThan(rules.dy));
   });
 }

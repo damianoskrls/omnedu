@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/providers/auth_provider.dart';
+import '../../../core/utils/system_insets.dart';
 
 class DriverScreen extends ConsumerStatefulWidget {
   final String schoolId;
@@ -160,9 +161,10 @@ class _DriverScreenState extends ConsumerState<DriverScreen> {
                   MarkerLayer(markers: [
                     Marker(
                       point: _here!,
-                      width: 52,
-                      height: 52,
-                      child: const Icon(Icons.directions_bus_rounded, color: Color(0xFFE95926), size: 42),
+                      width: 78,
+                      height: 86,
+                      alignment: Alignment.topCenter,
+                      child: Image.asset('assets/images/school_bus.png', fit: BoxFit.contain),
                     ),
                   ]),
               ],
@@ -171,7 +173,7 @@ class _DriverScreenState extends ConsumerState<DriverScreen> {
           Container(
             width: double.infinity,
             color: Colors.white,
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+            padding: EdgeInsets.fromLTRB(16, 14, 16, 16 + systemBottomInset(context)),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
