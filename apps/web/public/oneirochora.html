@@ -131,10 +131,61 @@
   .yes { color: var(--green); font-weight: 800; }
   footer { padding: 28px 0 48px; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   .note { font-size: 13px; color: var(--muted); }
+  .how { margin: 8px 0 0; font-size: 14px; }
+  .hero > div:first-child > * { animation: rise .7s ease both; }
+  .hero > div:first-child > *:nth-child(2) { animation-delay: .06s; }
+  .hero > div:first-child > *:nth-child(3) { animation-delay: .12s; }
+  .hero > div:first-child > *:nth-child(4) { animation-delay: .18s; }
+  .hero > div:first-child > *:nth-child(5) { animation-delay: .24s; }
+  .hero .phone { animation: float 5.6s ease-in-out infinite; }
+  .hero .desk { animation: rise .8s ease .1s both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+  @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+  .reveal { opacity: 0; transform: translateY(22px); transition: opacity .65s ease, transform .65s ease; }
+  .reveal.show { opacity: 1; transform: none; }
+  .shot { margin: 0 0 14px; border-radius: 18px; overflow: hidden; border: 1px solid var(--line); background: white; }
+  .shot img { display: block; width: 100%; height: 210px; object-fit: cover; }
+  .shot.wide img { height: min(420px, 52vw); }
+  .shot figcaption { padding: 10px 14px 12px; font-size: 13px; color: var(--muted); }
+  .player {
+    margin-top: 26px; background: #1c1420; color: white; border-radius: 28px;
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  .player-top { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: #140e18; }
+  .player-top .btn { padding: 8px 14px; font-size: 14px; }
+  .track { flex: 1; height: 6px; border-radius: 99px; background: rgba(255,255,255,.16); overflow: hidden; }
+  .track i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--orange), #ffb08a); }
+  .player-body { padding: 22px; min-height: 360px; }
+  .scene { display: none; grid-template-columns: 1.15fr .85fr; gap: 22px; align-items: center; }
+  .scene.on { display: grid; animation: rise .4s ease; }
+  .scene h3 { font-size: 30px; }
+  .scene p { color: rgba(255,255,255,.82); }
+  .scene .tag { background: rgba(255,255,255,.12); color: white; }
+  .scene .phone, .scene .desk { animation: none; }
+  .scene .phone { box-shadow: 0 0 0 1px rgba(255,255,255,.18), var(--shadow); }
+  .toast {
+    position: absolute; left: 16px; right: 16px; top: 14px; z-index: 2;
+    background: white; color: var(--ink); border-radius: 16px; padding: 10px 12px;
+    box-shadow: 0 12px 30px rgba(0,0,0,.18); font-size: 12px;
+    animation: drop .6s ease both;
+  }
+  .toast b { display: block; }
+  @keyframes drop { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: none; } }
+  .chapters { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 16px 16px; }
+  .chap {
+    border: 0; background: rgba(255,255,255,.08); color: white; border-radius: 999px;
+    padding: 7px 12px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+  }
+  .chap.on { background: var(--orange); }
+  @media (prefers-reduced-motion: reduce) {
+    .hero > div:first-child > *, .hero .desk, .hero .phone, .scene.on, .toast { animation: none; }
+    .reveal { opacity: 1; transform: none; transition: none; }
+  }
   @media (max-width: 900px) {
-    .hero, .grid-3, .grid-2, .roles, .why, .feat, .split, .split.reverse, .desk, .stage { grid-template-columns: 1fr; }
+    .hero, .grid-3, .grid-2, .roles, .why, .feat, .split, .split.reverse, .desk, .stage, .scene { grid-template-columns: 1fr; }
     .split.reverse .copy { order: 0; }
     .phone { position: static; margin: 18px auto 0; }
+    .scene .phone { position: relative; margin: 0 auto; }
     .nav-links { display: none; }
   }
 </style>
@@ -144,6 +195,7 @@
   <div class="wrap nav-in">
     <a class="brand" href="#top"><img src="oneirochora-logo.png" alt="Ονειροχώρα"></a>
     <div class="nav-links">
+      <a href="#video">Δες το</a>
       <a href="#ola">Όλα</a>
       <a href="#roloi">Ρόλοι</a>
       <a href="#grammateia">Γραμματεία</a>
@@ -161,8 +213,8 @@
     <h1>Όλο το σχολείο, σε ένα μέρος.</h1>
     <p class="lede">Η Ονειροχώρα κρατά τη μέρα του παιδιού, το διατροφολόγιο, το διαθεματικό, τις εργασίες, τις εκδρομές, το σχολικό και τα οικονομικά. Η γραμματεία δουλεύει στο web. Γονείς, παιδαγωγοί και οδηγός έχουν εφαρμογή σε iPhone και Android, με push ειδοποίηση όταν κάτι τους αφορά.</p>
     <div class="hero-actions">
-      <a class="btn btn-orange" href="#roloi">Δες κάθε ρόλο</a>
-      <a class="btn btn-ghost" href="#mera">Μία μέρα στο σχολείο</a>
+      <a class="btn btn-orange" href="#video">Δες τις λειτουργίες</a>
+      <a class="btn btn-ghost" href="#roloi">Δες κάθε ρόλο</a>
     </div>
     <div class="pills">
       <span class="pill">Συναίνεση εκδρομής</span>
@@ -219,6 +271,153 @@
   </div>
 </header>
 
+<section id="video">
+  <div class="wrap">
+    <p class="kicker">Explainer</p>
+    <h2>Δες τις λειτουργίες, όπως τις ζει το σχολείο.</h2>
+    <p class="lede">Εννέα σύντομες σκηνές. Πατάς παύση ή πηγαίνεις κατευθείαν στο κεφάλαιο που σε νοιάζει.</p>
+    <div class="player" id="player">
+      <div class="player-top">
+        <button type="button" class="btn btn-orange" id="play">Παύση</button>
+        <div class="track" aria-hidden="true"><i id="bar"></i></div>
+        <span class="note" id="clock" style="color:rgba(255,255,255,.7)">0:00</span>
+      </div>
+      <div class="player-body">
+        <article class="scene on">
+          <div>
+            <span class="tag">Γονέας · 07:30</span>
+            <h3>Η αρχική λέει μόνο ό,τι χρειάζεται σήμερα.</h3>
+            <p>Πρώτα τα παιδιά και η επερχόμενη συνάντηση. Μετά η ενημέρωση της ημέρας και το διατροφολόγιο. Από τις παλιές ενημερώσεις μένει η τελευταία ανά παιδί. Από τις εκδηλώσεις μένει μία κάρτα και το κουμπί «Εμφάνιση όλων».</p>
+          </div>
+          <figure class="shot" style="margin:0"><img src="present-art/parent-phone.jpg" alt="Γονέας που κοιτάζει την εφαρμογή στο κινητό, στο τραπέζι της κουζίνας"><figcaption>Το πρωί ανοίγει την εφαρμογή, όχι το Viber.</figcaption></figure>
+        </article>
+        <article class="scene">
+          <div>
+            <span class="tag">Παιδαγωγός · 13:40</span>
+            <h3>Η ενημέρωση της ημέρας φτάνει ως push.</h3>
+            <p>Ο παιδαγωγός γράφει διάθεση, δεκατιανό, μεσημεριανό και ύπνο για το συγκεκριμένο παιδί. Ο γονέας παίρνει ειδοποίηση στο iPhone ή στο Android. Αν την ανοίξει, πέφτει πάνω στην ενημέρωση. Αν τη χάσει, μένει και στο ιστορικό της εφαρμογής.</p>
+          </div>
+          <div class="phone" style="position:relative;margin:0 auto">
+            <div class="toast"><b>Ονειροχώρα</b>Ιρίδα: χαρούμενη, έφαγε τα περισσότερα</div>
+            <div class="screen">
+              <div class="pad">
+                <b>Αστεράκια · σήμερα</b>
+                <div class="card"><b>Ιρίδα</b>Χαρούμενη · δεκατιανό: τα περισσότερα · ύπνος 40′</div>
+                <div class="card"><b>Αλέξης</b>Ήρεμος · μεσημεριανό: τα μισά</div>
+              </div>
+            </div>
+          </div>
+        </article>
+        <article class="scene">
+          <div>
+            <span class="tag">Γραμματεία → γονέας</span>
+            <h3>Το διατροφολόγιο ανεβαίνει μία φορά.</h3>
+            <p>Η γραμματεία βάζει το μενού της ημέρας στο web. Στην αρχική του γονέα εμφανίζεται κάτω από την ενημέρωση, μία φορά για όλα τα παιδιά. Δεν ξαναστέλνεται ως μήνυμα σε κάθε οικογένεια.</p>
+          </div>
+          <figure class="shot" style="margin:0"><img src="present-art/lunch-tray.jpg" alt="Δίσκος με ρύζι, λαχανικά και φρούτο"><figcaption>Ρύζι, λαχανικά, φρούτο. Ο γονέας το βλέπει πριν ρωτήσει τι έφαγε.</figcaption></figure>
+        </article>
+        <article class="scene">
+          <div>
+            <span class="tag">Εκδρομή · μία μέρα πριν</span>
+            <h3>Συναίνεση, ώρα, σχολικό και πληρωμή.</h3>
+            <p>Η κάρτα γράφει μέχρι τι ώρα πρέπει να είναι στο σχολείο και αν εκείνη τη μέρα βγαίνει το σχολικό. Ο γονέας πατά Συναινώ ή Όχι. Αν η εκδρομή έχει κόστος, αμέσως μετά βλέπει ότι η πληρωμή τακτοποιείται στη γραμματεία. Την προηγούμενη μέρα έρχεται υπενθύμιση.</p>
+          </div>
+          <div class="phone" style="margin:0 auto">
+            <div class="screen">
+              <div class="pad">
+                <b>Εθνικός Κήπος</b>
+                <p class="note">Παρασκευή · μέχρι 08:30 · το σχολικό λειτουργεί</p>
+                <div style="display:flex;gap:8px">
+                  <div class="btn btn-orange" style="flex:1">Συναινώ</div>
+                  <div class="btn btn-ghost" style="flex:1">Όχι</div>
+                </div>
+                <div class="card meet" style="margin-top:10px"><b>Μετά τη συναίνεση</b>Εκκρεμεί η πληρωμή στη γραμματεία.</div>
+              </div>
+            </div>
+          </div>
+        </article>
+        <article class="scene">
+          <div>
+            <span class="tag">Παιδαγωγός · μετά την εκδήλωση</span>
+            <h3>Το φωτογραφικό ανεβαίνει στην ίδια εκδήλωση.</h3>
+            <p>Ο εκπαιδευτικός προσθέτει τις φωτογραφίες στην εκδρομή ή στη γιορτή. Ο γονέας ανοίγει το άλμπουμ από την κάρτα της εκδήλωσης και τις κατεβάζει στο κινητό. Δεν ψάχνει σύνδεσμο σε ομαδική συνομιλία.</p>
+          </div>
+          <figure class="shot" style="margin:0"><img src="present-art/class-album.jpg" alt="Τάμπλετ με πλέγμα φωτογραφιών από κατασκευές της τάξης"><figcaption>Κατασκευές, αυλή, βόλτα. Το άλμπουμ μένει πάνω στην εκδήλωση.</figcaption></figure>
+        </article>
+        <article class="scene">
+          <div>
+            <span class="tag">Οδηγός · πρωί</span>
+            <h3>Το σχολικό έχει λίστα και ζωντανή θέση.</h3>
+            <p>Ο οδηγός βλέπει ποιο παιδί παραλαμβάνει, σε ποια στάση και ποιος το παραδίδει. Η θέση του λεωφορείου φεύγει από το κινητό του και φαίνεται στον γονέα που έχει σχολικό. Αν η γραμματεία κλείσει το δρομολόγιο, και οι δύο βλέπουν τον ίδιο λόγο.</p>
+          </div>
+          <figure class="shot" style="margin:0"><img src="present-art/bus-route.jpg" alt="Πορτοκαλί σχολικό σε μωβ διαδρομή με καρφίτσες στάσεων"><figcaption>Διαδρομή, στάσεις και θέση. Ο γονέας δεν τηλεφωνεί στον οδηγό.</figcaption></figure>
+        </article>
+        <article class="scene">
+          <div>
+            <span class="tag">Υγεία</span>
+            <h3>Φάρμακο και ερωτηματολόγιο μένουν χωριστά.</h3>
+            <p>Το φάρμακο έχει δόση, συχνότητα και ημερομηνίες. Ο γονέας δίνει ή αρνείται τη συναίνεση. Ο παιδαγωγός βλέπει μόνο ό,τι είναι ενεργό. Στην κάρτα του παιδιού, το κουμπί Φάρμακο ανοίγει μόνο τα φάρμακα και το Ερωτηματολόγιο μόνο τις φόρμες.</p>
+          </div>
+          <div class="phone" style="margin:0 auto">
+            <div class="screen">
+              <div class="pad">
+                <b>Υγεία · Ιρίδα</b>
+                <div class="card"><b>Σιρόπι</b>5 ml · δύο φορές · συναίνεση: ναι</div>
+                <div class="card"><b>Ερωτηματολόγιο εισαγωγής</b>Συμπληρωμένο</div>
+              </div>
+            </div>
+          </div>
+        </article>
+        <article class="scene">
+          <div>
+            <span class="tag">Τάξη · μήνας</span>
+            <h3>Εργασία στο παιδί, διαθεματικό στην τάξη.</h3>
+            <p>Ο παιδαγωγός αναθέτει εργασία σε συγκεκριμένα παιδιά. Ο γονέας τη βλέπει μόνο αν αφορά το δικό του και παίρνει ειδοποίηση. Το διαθεματικό του μήνα γράφεται μία φορά για την τάξη και εμφανίζεται ως τίτλος στην αρχική.</p>
+          </div>
+          <div class="phone" style="margin:0 auto">
+            <div class="screen">
+              <div class="pad">
+                <b>Αστεράκια</b>
+                <div class="card"><b>Διαθεματικό Οκτωβρίου</b>Το φθινόπωρο στο πάρκο</div>
+                <div class="card"><b>Εργασία · Ιρίδα</b>Φέρε ένα φύλλο από βόλτα</div>
+              </div>
+            </div>
+          </div>
+        </article>
+        <article class="scene">
+          <div>
+            <span class="tag">Γραμματεία · οικονομικά</span>
+            <h3>Χρωστάει, λεπτομέρειες, απόδειξη.</h3>
+            <p>Στην κάρτα γράφει Χρωστάει ή Δεν χρωστάει και από κάτω το σύνολο. Το κουμπί Λεπτομέρειες ανοίγει τι εκκρεμεί: μηνιαία, γραφική ύλη, εκδρομή. Ο γονέας κατεβάζει την απόδειξη του συστήματος ή το αρχείο που ανέβασε η γραμματεία από άλλο πρόγραμμα.</p>
+          </div>
+          <div class="desk" style="min-height:0">
+            <div class="side"><b>Μαθητής</b><span class="on">Οικονομικά</span><span>Γενικά</span></div>
+            <div class="main">
+              <div class="balance" style="background:#fdeeee">
+                <strong style="color:#b42318">Χρωστάει</strong>
+                <em style="color:#b42318">85,00 €</em>
+              </div>
+              <div class="mini"><b>Οκτώβριος</b><s>70,00 €</s></div>
+              <div class="mini"><b>Απόδειξη</b><s>Λήψη PDF</s></div>
+            </div>
+          </div>
+        </article>
+      </div>
+      <div class="chapters">
+        <button type="button" class="chap on">Αρχική</button>
+        <button type="button" class="chap">Ενημέρωση</button>
+        <button type="button" class="chap">Μενού</button>
+        <button type="button" class="chap">Εκδρομή</button>
+        <button type="button" class="chap">Φωτογραφίες</button>
+        <button type="button" class="chap">Σχολικό</button>
+        <button type="button" class="chap">Υγεία</button>
+        <button type="button" class="chap">Εργασίες</button>
+        <button type="button" class="chap">Οφειλή</button>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section>
   <div class="wrap">
     <p class="kicker">Τρία πρόσωπα, ένα αρχείο</p>
@@ -249,18 +448,22 @@
     <h2>Κάθε κομμάτι της χρονιάς μένει πάνω στο παιδί και φτάνει στον σωστό ρόλο.</h2>
     <div class="feat" style="margin-top:28px">
       <article class="tile">
+        <figure class="shot"><img src="present-art/lunch-tray.jpg" alt="Δίσκος φαγητού με ρύζι, λαχανικά και φρούτο"><figcaption>Το μενού της ημέρας, όπως το βλέπει ο γονέας.</figcaption></figure>
         <h3>Διατροφολόγιο</h3>
         <p>Η γραμματεία ανεβάζει το μενού της ημέρας. Ο γονέας το βλέπει στην αρχική, μία φορά για όλα τα παιδιά, χωρίς να το ψάχνει σε μήνυμα.</p>
+        <p class="how">Αν το μενού αλλάξει το πρωί, η αλλαγή φαίνεται αμέσως. Δεν μένει παλιά φωτογραφία σε παλιά συνομιλία.</p>
         <div class="whochips"><span>Γραμματεία</span><span>Γονέας</span></div>
       </article>
       <article class="tile">
         <h3>Διαθεματικό κάθε μήνα</h3>
         <p>Κάθε τάξη έχει το θέμα του μήνα. Ο παιδαγωγός το γράφει, ο γονέας βλέπει τον τίτλο στην αρχική, και η γραμματεία το κρατά στο αρχείο της τάξης.</p>
+        <p class="how">Παράδειγμα: «Οκτώβριος · το φθινόπωρο στο πάρκο». Αλλάζει τον επόμενο μήνα, χωρίς νέα ανακοίνωση για κάθε οικογένεια.</p>
         <div class="whochips"><span>Παιδαγωγός</span><span>Γονέας</span><span>Γραμματεία</span></div>
       </article>
       <article class="tile">
         <h3>Εργασίες για κάθε μαθητή</h3>
         <p>Ο παιδαγωγός αναθέτει εργασία σε συγκεκριμένα παιδιά. Ο γονέας τη βλέπει στο παιδί του και παίρνει ειδοποίηση. Δεν είναι μία γενική ανακοίνωση για όλη την τάξη, αν δεν το θέλει ο εκπαιδευτικός.</p>
+        <p class="how">Η ειδοποίηση γράφει το όνομα του παιδιού και τον τίτλο της εργασίας. Ανοίγοντάς την, ο γονέας πέφτει στην κάρτα του παιδιού.</p>
         <div class="whochips"><span>Παιδαγωγός</span><span>Γονέας</span><span>Γραμματεία</span></div>
       </article>
       <article class="tile">
@@ -271,16 +474,20 @@
       <article class="tile">
         <h3>Ευρήματα</h3>
         <p>Όταν βρεθεί μπουφάν ή μπουκάλι, η γραμματεία ή ο παιδαγωγός ανεβάζει φωτογραφία και μήνυμα. Ο γονέας το βλέπει στις ενημερώσεις της αρχικής.</p>
+        <p class="how">Κάθεται δίπλα στην τελευταία ενημέρωση ημέρας, όχι σε ξεχωριστό τοίχο που πρέπει να τον ψάξει.</p>
         <div class="whochips"><span>Γραμματεία</span><span>Παιδαγωγός</span><span>Γονέας</span></div>
       </article>
       <article class="tile">
         <h3>Εκδρομές και εκδηλώσεις</h3>
         <p>Η γραμματεία ορίζει ώρα προσέλευσης και αν εκείνη τη μέρα θα βγει το σχολικό. Ο γονέας πατά Συναινώ ή Όχι. Αν υπάρχει κόστος, του λέει να περάσει από τη γραμματεία. Μία μέρα πριν έρχεται υπενθύμιση.</p>
+        <p class="how">Η υπενθύμιση λέει «Αύριο η Ιρίδα έχει εκδρομή», με την ώρα προσέλευσης. Η γραμματεία βλέπει ποιος συναίνεσε και ποιος όχι.</p>
         <div class="whochips"><span>Γραμματεία</span><span>Παιδαγωγός</span><span>Γονέας</span></div>
       </article>
       <article class="tile">
+        <figure class="shot"><img src="present-art/class-album.jpg" alt="Πλέγμα φωτογραφιών από την τάξη σε τάμπλετ"><figcaption>Ο εκπαιδευτικός ανεβάζει το άλμπουμ μετά την εκδήλωση.</figcaption></figure>
         <h3>Φωτογραφικό μετά την εκδήλωση</h3>
         <p>Μετά την εκδρομή ή τη γιορτή, ο εκπαιδευτικός ανεβάζει τις φωτογραφίες. Ο γονέας ανοίγει το άλμπουμ από την εκδήλωση και τις κατεβάζει στο κινητό του.</p>
+        <p class="how">Οι φωτογραφίες μένουν στην εκδήλωση, όχι σε προσωπικό άλμπουμ του παιδαγωγού. Η γραμματεία τις βλέπει στο ίδιο σημείο.</p>
         <div class="whochips"><span>Παιδαγωγός</span><span>Γονέας</span><span>Γραμματεία</span></div>
       </article>
       <article class="tile">
@@ -299,8 +506,10 @@
         <div class="whochips"><span>Γονέας</span><span>Παιδαγωγός</span><span>Οδηγός</span><span>Γραμματεία</span></div>
       </article>
       <article class="tile">
+        <figure class="shot"><img src="present-art/bus-route.jpg" alt="Πορτοκαλί σχολικό πάνω σε μωβ διαδρομή"><figcaption>Διαδρομή και στάσεις. Η θέση φεύγει από το κινητό του οδηγού.</figcaption></figure>
         <h3>Σχολικό με live tracking</h3>
         <p>Ο οδηγός έχει τη λίστα παραλαβής και παράδοσης. Η θέση του λεωφορείου φαίνεται ζωντανά στον γονέα που έχει σχολικό. Αν μια μέρα δεν κινείται, η γραμματεία δηλώνει τον λόγο και ο γονέας το βλέπει πριν φύγει από το σπίτι.</p>
+        <p class="how">Στην κάρτα του παιδιού το σχολικό είναι ένα Ναι ή Όχι. Τη διαδρομή τη βλέπει μόνο ο γονέας που έχει σχολικό.</p>
         <div class="whochips"><span>Οδηγός</span><span>Γονέας</span><span>Γραμματεία</span></div>
       </article>
       <article class="tile">
@@ -321,6 +530,7 @@
       <article class="tile">
         <h3>Push σε iPhone και Android</h3>
         <p>Οι εφαρμογές είναι για iPhone και Android. Ενημέρωση ημέρας, μήνυμα, εκδρομή, φάρμακο, εργασία ή απόδειξη φτάνουν ως push, ακόμη και όταν η εφαρμογή είναι κλειστή. Μέσα στην εφαρμογή μένει και το ιστορικό, για να το ξανανοίξει όποιος το έχασε.</p>
+        <p class="how">Η ειδοποίηση ανοίγει το σωστό σημείο: την εκδρομή, το μήνυμα, τον κανονισμό ή την ενημέρωση. Δεν πετάει τον γονέα σε άδεια αρχική.</p>
         <div class="whochips"><span>Γονέας</span><span>Παιδαγωγός</span><span>Οδηγός</span><span>Ιδιοκτήτης</span></div>
       </article>
     </div>
@@ -499,6 +709,10 @@
   <div class="wrap">
     <span class="tag">Γονέας · εφαρμογή</span>
     <h2>Ο γονέας καταλαβαίνει τη μέρα χωρίς να ανοίξει δέκα συνομιλίες.</h2>
+    <figure class="shot wide" style="margin-top:22px">
+      <img src="present-art/parent-phone.jpg" alt="Γονέας στο τραπέζι της κουζίνας με το κινητό της εφαρμογής">
+      <figcaption>Πρωί, πριν φύγει από το σπίτι: συνάντηση, ενημέρωση, μενού και αν σήμερα κινείται το σχολικό.</figcaption>
+    </figure>
     <div class="grid-2" style="margin-top:28px">
       <div>
         <p>Η αρχική ξεκινά με τα παιδιά και, αν υπάρχει, την επερχόμενη συνάντηση. Μετά έρχεται η ενημέρωση της σημερινής μέρας και το διατροφολόγιο. Οι παλιές ενημερώσεις δεν γεμίζουν τη σελίδα: μένει η τελευταία ανά παιδί, και οι ανακοινώσεις της γραμματείας κάθονται στο ίδιο σημείο.</p>
@@ -544,6 +758,8 @@
         <div class="day"><div class="time">09:10</div><div>Η γραμματεία κοιτάζει ποιος χρωστάει γραφική ύλη και ποια εκδρομή περιμένει συναίνεση.</div></div>
         <div class="day"><div class="time">13:40</div><div>Ο παιδαγωγός γράφει διάθεση και φαγητό. Ο γονέας τα βρίσκει στην ενημέρωση της ημέρας.</div></div>
         <div class="day"><div class="time">16:05</div><div>Ο γονέας πατά Συναινώ για την αυριανή εκδρομή και βλέπει ότι η πληρωμή γίνεται στη γραμματεία.</div></div>
+        <div class="day"><div class="time">16:20</div><div>Ο γονέας κατεβάζει την απόδειξη. Αν η γραμματεία την έβγαλε από άλλο πρόγραμμα, κατεβαίνει και εκείνο το αρχείο.</div></div>
+        <div class="day"><div class="time">17:00</div><div>Μετά την εκδρομή, ο παιδαγωγός ανεβάζει τις φωτογραφίες. Ο γονέας τις βρίσκει πάνω στην ίδια εκδήλωση.</div></div>
         <div class="day"><div class="time">18:30</div><div>Ο ιδιοκτήτης ανοίγει τα οικονομικά του μήνα, χωρίς να πειράξει την κάρτα κανενός παιδιού.</div></div>
       </div>
     </div>
@@ -583,5 +799,61 @@
     <div class="note">Οι οθόνες σε αυτή τη σελίδα δείχνουν τις πραγματικές ροές του συστήματος.</div>
   </footer>
 </div>
+<script>
+(function () {
+  var root = document.getElementById('player');
+  if (!root) return;
+  var scenes = root.querySelectorAll('.scene');
+  var chapters = root.querySelectorAll('.chap');
+  var bar = document.getElementById('bar');
+  var clock = document.getElementById('clock');
+  var btn = document.getElementById('play');
+  var i = 0;
+  var dur = 8000;
+  var started = performance.now();
+  var playing = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function fmt(s) {
+    s = Math.max(0, Math.floor(s));
+    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  }
+  function show(n) {
+    i = (n + scenes.length) % scenes.length;
+    scenes.forEach(function (el, k) { el.classList.toggle('on', k === i); });
+    chapters.forEach(function (el, k) { el.classList.toggle('on', k === i); });
+    started = performance.now();
+  }
+  function tick(now) {
+    var p = playing ? (now - started) / dur : 0;
+    if (playing && p >= 1) { show(i + 1); p = 0; }
+    if (playing) bar.style.width = (Math.min(p, 1) * 100) + '%';
+    var sec = i * dur / 1000 + (playing ? p * dur / 1000 : 0);
+    clock.textContent = fmt(sec) + ' / ' + fmt(scenes.length * dur / 1000);
+    requestAnimationFrame(tick);
+  }
+  btn.textContent = playing ? 'Παύση' : 'Αναπαραγωγή';
+  btn.addEventListener('click', function () {
+    playing = !playing;
+    btn.textContent = playing ? 'Παύση' : 'Αναπαραγωγή';
+    if (playing) started = performance.now();
+  });
+  chapters.forEach(function (el, k) {
+    el.addEventListener('click', function () {
+      show(k);
+      playing = true;
+      btn.textContent = 'Παύση';
+    });
+  });
+  requestAnimationFrame(tick);
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) entry.target.classList.add('show');
+    });
+  }, { threshold: 0.16 });
+  document.querySelectorAll('.tile, .role, .split, .day, .panel, .shot.wide, .player').forEach(function (el) {
+    el.classList.add('reveal');
+    io.observe(el);
+  });
+})();
+</script>
 </body>
 </html>
