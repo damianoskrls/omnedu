@@ -9,6 +9,7 @@ import '../../../core/utils/event_status.dart';
 import '../../../core/widgets/app_image.dart';
 import '../../messages/conversation_ui.dart';
 import 'event_gallery_screen.dart';
+import 'event_instructions.dart';
 import 'bus_map_screen.dart';
 
 String _iso(DateTime d) =>
@@ -636,6 +637,7 @@ class _ChildEventCard extends StatelessWidget {
     const types = {'excursion': 'Εκδρομή', 'theater': 'Θεατρικό', 'sport': 'Αθλητική', 'cultural': 'Πολιτιστική'};
     final date = DateTime.tryParse(event['eventDate'] as String? ?? '');
     final description = (event['description'] as String?)?.trim() ?? '';
+    final dayInstructions = event['dayInstructions'] as String?;
     final recap = (event['recap'] as String?)?.trim() ?? '';
     final cost = event['costPerChild'];
     final teachers = event['teachers'] as List<dynamic>? ?? [];
@@ -671,7 +673,13 @@ class _ChildEventCard extends StatelessWidget {
                 Text(recap, maxLines: 4, overflow: TextOverflow.ellipsis, style: const TextStyle(height: 1.4)),
               ] else if (description.isNotEmpty) ...[
                 const SizedBox(height: 8),
+                const Text('Περιγραφή', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF77328D))),
+                const SizedBox(height: 4),
                 Text(description, style: const TextStyle(height: 1.4)),
+              ],
+              if (instructionLines(dayInstructions).isNotEmpty) ...[
+                const SizedBox(height: 10),
+                UsefulInstructions(text: dayInstructions),
               ],
               const SizedBox(height: 12),
               Row(

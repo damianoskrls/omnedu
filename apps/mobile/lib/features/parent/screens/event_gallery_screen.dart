@@ -10,6 +10,7 @@ import '../../../core/api/api_client.dart';
 import '../../../core/utils/event_status.dart';
 import '../../../core/utils/system_insets.dart';
 import '../../../core/widgets/app_image.dart';
+import 'event_instructions.dart';
 
 List<Map<String, dynamic>> eventMediaList(dynamic raw) {
   if (raw is! List) return [];
@@ -28,6 +29,7 @@ void openEventGallery(BuildContext context, Map event) {
         eventDate: event['eventDate'] as String?,
         status: event['status'] as String?,
         description: event['description'] as String?,
+        dayInstructions: event['dayInstructions'] as String?,
         recap: event['recap'] as String?,
         media: eventMediaList(event['postMedia']),
       ),
@@ -40,6 +42,7 @@ class EventGalleryScreen extends StatelessWidget {
   final String? eventDate;
   final String? status;
   final String? description;
+  final String? dayInstructions;
   final String? recap;
   final String? detailsLine;
   final List<Map<String, dynamic>> media;
@@ -51,11 +54,17 @@ class EventGalleryScreen extends StatelessWidget {
     this.eventDate,
     this.status,
     this.description,
+    this.dayInstructions,
     this.recap,
     this.detailsLine,
   });
 
-  bool get _hasPost => media.isNotEmpty || (recap ?? '').trim().isNotEmpty || (description ?? '').trim().isNotEmpty || (detailsLine ?? '').trim().isNotEmpty;
+  bool get _hasPost =>
+      media.isNotEmpty ||
+      (recap ?? '').trim().isNotEmpty ||
+      (description ?? '').trim().isNotEmpty ||
+      instructionLines(dayInstructions).isNotEmpty ||
+      (detailsLine ?? '').trim().isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -90,8 +99,15 @@ class EventGalleryScreen extends StatelessWidget {
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Text(detailsLine!.trim(), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF77328D))),
                     ),
-                  if ((description ?? '').trim().isNotEmpty)
+                  if ((description ?? '').trim().isNotEmpty) ...[
+                    const Text('Περιγραφή', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF77328D))),
+                    const SizedBox(height: 6),
                     Text(description!.trim(), style: const TextStyle(fontSize: 15, height: 1.45, color: Color(0xFF374151))),
+                  ],
+                  if (instructionLines(dayInstructions).isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    UsefulInstructions(text: dayInstructions),
+                  ],
                   if ((recap ?? '').trim().isNotEmpty) ...[
                     if ((description ?? '').trim().isNotEmpty) const SizedBox(height: 10),
                     Text(recap!.trim(), style: const TextStyle(fontSize: 16, height: 1.45, color: Color(0xFF2C2422))),

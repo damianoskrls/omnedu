@@ -86,6 +86,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       )`,
       `CREATE UNIQUE INDEX IF NOT EXISTS "bus_pickups_service_id_student_id_day_key" ON "bus_pickups"("service_id", "student_id", "day")`,
       `CREATE INDEX IF NOT EXISTS "bus_pickups_school_id_day_idx" ON "bus_pickups"("school_id", "day")`,
+      `ALTER TABLE "school_events" ADD COLUMN IF NOT EXISTS "day_instructions" TEXT`,
     ];
     for (const sql of statements) {
       try {

@@ -52,7 +52,7 @@ export class SchoolEventsService implements OnModuleInit {
   }
 
   async create(schoolId: string, userId: string, dto: any) {
-    const { title, description, eventType, eventDate, costPerChild, classIds, mediaUrls, teacherIds, status, audienceType, audienceIds } = dto;
+    const { title, description, dayInstructions, eventType, eventDate, costPerChild, classIds, mediaUrls, teacherIds, status, audienceType, audienceIds } = dto;
 
     const resolvedClassIds = await this.resolveAudienceToClassIds(schoolId, audienceType, audienceIds, classIds);
 
@@ -62,6 +62,7 @@ export class SchoolEventsService implements OnModuleInit {
         createdById: userId,
         title,
         description,
+        dayInstructions: emptyToNull(dayInstructions),
         eventType: eventType ?? 'general',
         eventDate: eventDate ? new Date(eventDate) : null,
         costPerChild: costPerChild != null ? costPerChild : null,
@@ -90,7 +91,7 @@ export class SchoolEventsService implements OnModuleInit {
     const existing = await this.prisma.schoolEvent.findFirst({ where: { id: eventId, schoolId } });
     if (!existing) throw new NotFoundException('Event not found');
 
-    const { title, description, eventType, eventDate, costPerChild, classIds, mediaUrls, teacherIds, status, audienceType, audienceIds } = dto;
+    const { title, description, dayInstructions, eventType, eventDate, costPerChild, classIds, mediaUrls, teacherIds, status, audienceType, audienceIds } = dto;
 
     const nextDate = eventDate !== undefined ? (eventDate ? new Date(eventDate) : null) : existing.eventDate;
     const nextStatus = resolveEventStatus(status, nextDate, existing.status);
@@ -106,6 +107,7 @@ export class SchoolEventsService implements OnModuleInit {
       data: {
         ...(title !== undefined && { title }),
         ...(description !== undefined && { description }),
+        ...(dayInstructions !== undefined && { dayInstructions: emptyToNull(dayInstructions) }),
         ...(eventType !== undefined && { eventType }),
         ...(eventDate !== undefined && { eventDate: eventDate ? new Date(eventDate) : null }),
         ...(costPerChild !== undefined && { costPerChild }),
@@ -199,7 +201,7 @@ export class SchoolEventsService implements OnModuleInit {
   private async notifyPublished(schoolId: string, eventId: string) {
     const event = await this.prisma.schoolEvent.findFirst({
       where: { id: eventId, schoolId },
-      select: { title: true, description: true, eventDate: true, eventType: true, costPerChild: true },
+      select: { title: true, description: true, dayInstructions: true, eventDate: true, eventType: true, costPerChild: true },
     });
     if (!event) return;
     const rows = await this.prisma.schoolEventEnrollment.findMany({
@@ -213,7 +215,8 @@ export class SchoolEventsService implements OnModuleInit {
       : '';
     const cost = event.costPerChild != null && Number(event.costPerChild) > 0 ? `${Number(event.costPerChild).toFixed(2)} €` : '';
     const details = (event.description ?? '').replace(/\s+/g, ' ').trim();
-    const body = [kind, when, cost, details].filter(Boolean).join(' · ').slice(0, 180);
+    const instructions = (event.dayInstructions ?? '').trim() ? 'Υπάρχουν χρήσιμες οδηγίες για την ημέρα.' : '';
+    const body = [kind, when, cost, details, instructions].filter(Boolean).join(' · ').slice(0, 180);
     await this.notifications.notifyUsers(schoolId, parents, {
       event: 'school_event',
       type: 'school_event',
@@ -477,4 +480,10 @@ export class SchoolEventsService implements OnModuleInit {
     await this.prisma.schoolEventMedia.delete({ where: { id: mediaId } });
     return { success: true };
   }
+}
+
+function emptyToNull(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const text = value.trim();
+  return text.length ? value : null;
 }

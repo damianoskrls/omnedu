@@ -5,6 +5,7 @@ import '../../../core/utils/event_status.dart';
 import '../../../core/widgets/app_image.dart';
 import '../../../core/widgets/person_face.dart';
 import 'event_post_screen.dart';
+import '../../parent/screens/event_instructions.dart';
 
 final _teacherEventsProvider = FutureProvider.family<List<dynamic>, String>(
   (ref, schoolId) async {
@@ -132,6 +133,7 @@ class _TeacherEventCardState extends State<_TeacherEventCard> {
     final eventType = event['eventType'] as String? ?? '';
     final eventDate = event['eventDate'] as String?;
     final description = event['description'] as String?;
+    final dayInstructions = event['dayInstructions'] as String?;
     final cost = double.tryParse(event['costPerChild']?.toString() ?? '0') ?? 0;
     final enrollments = event['enrollments'] as List<dynamic>? ?? [];
     final media = event['postMedia'] as List<dynamic>? ?? [];
@@ -221,7 +223,19 @@ class _TeacherEventCardState extends State<_TeacherEventCard> {
           if (description != null && description.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: Text(description, style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280))),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Περιγραφή', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF77328D))),
+                  const SizedBox(height: 4),
+                  Text(description, style: const TextStyle(fontSize: 14, height: 1.4, color: Color(0xFF374151))),
+                ],
+              ),
+            ),
+          if (instructionLines(dayInstructions).isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: UsefulInstructions(text: dayInstructions),
             ),
 
           // Stats row

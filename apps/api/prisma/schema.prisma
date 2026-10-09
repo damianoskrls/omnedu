@@ -1357,9 +1357,10 @@ model SchoolEvent {
   id           String    @id @default(uuid())
   schoolId     String    @map("school_id")
   createdById  String    @map("created_by_id")
-  title        String
-  description  String?
-  eventType    String    @default("general") @map("event_type") // excursion | theater | event | general
+  title           String
+  description     String?
+  dayInstructions String?   @map("day_instructions") @db.Text
+  eventType       String    @default("general") @map("event_type") // excursion | theater | event | general
   eventDate    DateTime? @map("event_date")
   costPerChild Decimal?  @map("cost_per_child") @db.Decimal(10, 2)
   classIds     String[]  @map("class_ids")      // kept for backward compat / enrollment resolution

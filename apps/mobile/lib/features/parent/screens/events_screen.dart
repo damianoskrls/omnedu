@@ -8,6 +8,7 @@ import '../../../core/widgets/app_image.dart';
 import '../../../core/widgets/person_face.dart';
 import 'celebration_detail_screen.dart';
 import 'event_gallery_screen.dart';
+import 'event_instructions.dart';
 
 // Returns list of enrollments (each has `event` + `student` + status)
 final _parentEventsProvider = FutureProvider.family<List<dynamic>, String>(
@@ -368,6 +369,7 @@ class _EventCard extends StatelessWidget {
     final eventDate = event['eventDate'] as String?;
     final cost = double.tryParse(event['costPerChild']?.toString() ?? '0') ?? 0;
     final description = event['description'] as String?;
+    final dayInstructions = event['dayInstructions'] as String?;
     final recap = (event['recap'] as String?)?.trim() ?? '';
     final media = eventMediaList(event['postMedia']);
     final completed = eventDisplayStatus(event['status'] as String?, eventDate) == 'completed';
@@ -446,7 +448,19 @@ class _EventCard extends StatelessWidget {
           else if (description != null && description.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Text(description, style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280))),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Περιγραφή', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF77328D))),
+                  const SizedBox(height: 4),
+                  Text(description, style: const TextStyle(fontSize: 14, height: 1.4, color: Color(0xFF374151))),
+                ],
+              ),
+            ),
+          if (instructionLines(dayInstructions).isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: UsefulInstructions(text: dayInstructions),
             ),
 
           // Cost row
@@ -639,6 +653,7 @@ class ParentEventScreen extends ConsumerWidget {
           eventDate: date,
           status: event['status'] as String?,
           description: event['description'] as String?,
+          dayInstructions: event['dayInstructions'] as String?,
           recap: event['recap'] as String?,
           media: eventMediaList(event['postMedia']),
           detailsLine: details,

@@ -51,7 +51,7 @@ export default function EventsPage() {
   const [modal, setModal] = useState<'create' | 'edit' | null>(null);
   const [editingEvent, setEditingEvent] = useState<any>(null);
   const [form, setForm] = useState<any>({
-    title: '', description: '', eventType: 'excursion', eventDate: '',
+    title: '', description: '', dayInstructions: '', eventType: 'excursion', eventDate: '',
     costPerChild: '', classIds: [], audienceType: 'all', audienceIds: [],
     teacherIds: [], mediaUrls: [], status: 'draft',
   });
@@ -81,7 +81,7 @@ export default function EventsPage() {
   }, [schoolId]);
 
   const resetForm = () => setForm({
-    title: '', description: '', eventType: 'excursion', eventDate: '',
+    title: '', description: '', dayInstructions: '', eventType: 'excursion', eventDate: '',
     costPerChild: '', classIds: [], audienceType: 'all', audienceIds: [],
     teacherIds: [], mediaUrls: [], status: 'draft',
   });
@@ -93,6 +93,7 @@ export default function EventsPage() {
     setForm({
       title: ev.title,
       description: ev.description ?? '',
+      dayInstructions: ev.dayInstructions ?? '',
       eventType: ev.eventType,
       eventDate: ev.eventDate ? ev.eventDate.slice(0, 10) : '',
       costPerChild: ev.costPerChild ?? '',
@@ -480,8 +481,16 @@ export default function EventsPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Περιγραφή</label>
                 <textarea rows={3} value={form.description} onChange={e => setForm((p: any) => ({ ...p, description: e.target.value }))}
-                  placeholder="Λεπτομέρειες εκδήλωσης, τι χρειάζεται να φέρει το παιδί, κτλ."
+                  placeholder="Σύντομη περιγραφή της εκδρομής ή του θεάτρου."
                   className={`${inputCls} resize-none`} />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Χρήσιμες οδηγίες για εκείνη την ημέρα</label>
+                <textarea rows={8} value={form.dayInstructions ?? ''} onChange={e => setForm((p: any) => ({ ...p, dayInstructions: e.target.value }))}
+                  placeholder={'❖ τα παιδιά θα μεταφερθούν στο χώρο με πούλμαν.\n❖ Τα παιδιά εκείνη την ημέρα θα πρέπει να είναι στο σχολείο το αργότερο έως τις 8:00 π.μ.\n❖ θα πρέπει να έχουν μαζί τους μια τσάντα εκδρομής.'}
+                  className={`${inputCls} resize-y`} />
+                <p className="text-xs text-gray-400 mt-1">Κάθε γραμμή εμφανίζεται ως οδηγία στον γονέα.</p>
               </div>
 
               {/* Audience */}
