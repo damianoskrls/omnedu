@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ονειροχώρα — το σύστημα του παιδικού σταθμού</title>
+<meta name="description" content="Τι κάνει η Ονειροχώρα για τη γραμματεία, τον ιδιοκτήτη, τον παιδαγωγό, τον οδηγό και τον γονέα. Web και εφαρμογές, σε μία εικόνα.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Source+Serif+4:opsz,wght@8..60,520;8..60,680&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --purple: #77328d;
+    --deep: #3d1152;
+    --orange: #e95926;
+    --ink: #2c2422;
+    --muted: #6b625e;
+    --paper: #fbf7f4;
+    --card: #ffffff;
+    --line: #f0e6f4;
+    --green: #0f7a4a;
+    --shadow: 0 24px 60px rgba(61, 17, 82, .12);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    color: var(--ink);
+    background:
+      radial-gradient(900px 420px at 90% -10%, rgba(233, 89, 38, .16), transparent 60%),
+      radial-gradient(800px 480px at -10% 8%, rgba(119, 50, 141, .16), transparent 55%),
+      var(--paper);
+    font-family: Manrope, "Segoe UI", sans-serif;
+    line-height: 1.55;
+  }
+  img { max-width: 100%; }
+  a { color: inherit; }
+  .wrap { width: min(1120px, calc(100% - 40px)); margin: 0 auto; }
+  nav {
+    position: sticky; top: 0; z-index: 20;
+    backdrop-filter: blur(16px);
+    background: rgba(251, 247, 244, .86);
+    border-bottom: 1px solid rgba(119, 50, 141, .08);
+  }
+  .nav-in { display: flex; align-items: center; gap: 18px; min-height: 68px; }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 800; }
+  .owl {
+    width: 36px; height: 36px; border-radius: 12px;
+    background: linear-gradient(135deg, var(--purple), var(--orange));
+    display: grid; place-items: center; color: white; font-size: 18px;
+  }
+  .nav-links { display: flex; gap: 16px; margin-left: auto; font-size: 14px; font-weight: 650; }
+  .nav-links a { text-decoration: none; color: var(--muted); }
+  .nav-links a:hover { color: var(--purple); }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    text-decoration: none; border-radius: 999px; padding: 12px 18px; font-weight: 750;
+  }
+  .btn-orange { background: var(--orange); color: white; }
+  .btn-ghost { background: white; color: var(--deep); border: 1px solid var(--line); }
+  h1, h2, h3 { font-family: "Source Serif 4", Georgia, serif; font-weight: 680; letter-spacing: -.03em; line-height: 1.08; margin: 0; }
+  h1 { font-size: clamp(42px, 6vw, 76px); }
+  h2 { font-size: clamp(32px, 4vw, 48px); }
+  h3 { font-size: 28px; }
+  .lede { font-size: 18px; color: var(--muted); max-width: 46ch; }
+  .kicker { color: var(--orange); font-weight: 800; letter-spacing: .08em; text-transform: uppercase; font-size: 12px; }
+  .hero { display: grid; grid-template-columns: .92fr 1.08fr; gap: 28px; align-items: center; padding: 54px 0 24px; }
+  .hero-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 22px; }
+  .pills { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 22px; }
+  .pill { background: white; border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; font-size: 13px; font-weight: 700; }
+  section { padding: 72px 0; }
+  .stage { display: grid; grid-template-columns: minmax(0, 1fr) 230px; gap: 14px; align-items: end; }
+  .desk, .phone {
+    background: white; border: 1px solid var(--line); box-shadow: var(--shadow);
+  }
+  .desk { border-radius: 22px; overflow: hidden; display: grid; grid-template-columns: 148px 1fr; min-height: 390px; flex: 1; }
+  .side { background: #fff; border-right: 1px solid #f3eef5; padding: 16px 12px; }
+  .side b { display: block; color: var(--purple); font-size: 13px; margin-bottom: 12px; }
+  .side span { display: block; font-size: 12px; color: #8a8088; padding: 7px 8px; border-radius: 8px; }
+  .side span.on { background: #f6eef8; color: var(--deep); font-weight: 800; }
+  .main { padding: 16px; background: #fbf8fc; }
+  .who { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
+  .ava { width: 42px; height: 42px; border-radius: 14px; background: #f3d5c8; display: grid; place-items: center; font-weight: 800; color: var(--deep); }
+  .row2 { display: grid; grid-template-columns: 1.1fr .9fr; gap: 10px; }
+  .balance { background: #eefaf3; border-radius: 14px; padding: 12px; }
+  .balance strong { display: block; color: var(--green); }
+  .balance em { font-style: normal; font-size: 22px; font-weight: 800; color: var(--green); white-space: nowrap; }
+  .mini { background: white; border-radius: 12px; padding: 10px; margin-top: 8px; font-size: 13px; }
+  .mini b { display: block; }
+  .mini s { text-decoration: none; color: var(--muted); font-size: 12px; }
+  .phone {
+    width: 230px; border-radius: 32px; padding: 10px; position: relative;
+    margin: 0; background: #1c1420;
+  }
+  .screen { background: #f6f3fa; border-radius: 24px; overflow: hidden; min-height: 420px; color: var(--ink); }
+  .topg {
+    background: linear-gradient(135deg, var(--purple), var(--orange));
+    color: white; padding: 16px 14px 18px; border-radius: 0 0 18px 18px;
+  }
+  .topg small { opacity: .8; }
+  .pad { padding: 12px; }
+  .card { background: white; border-radius: 14px; padding: 10px; margin-bottom: 8px; font-size: 12px; }
+  .card b { display: block; }
+  .meet { background: #fff7f4; border: 1px solid #f6c7b8; }
+  .chips { display: flex; gap: 6px; }
+  .chip { flex: 1; background: white; border-radius: 12px; padding: 8px; font-size: 11px; font-weight: 800; }
+  .grid-3, .grid-2, .roles, .why { display: grid; gap: 16px; }
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid-2 { grid-template-columns: 1fr 1fr; align-items: center; }
+  .roles { grid-template-columns: repeat(5, 1fr); }
+  .why { grid-template-columns: 1.1fr .9fr; }
+  .tile, .role, .panel {
+    background: white; border: 1px solid var(--line); border-radius: 22px; padding: 20px;
+  }
+  .role { text-decoration: none; min-height: 150px; }
+  .role:hover { border-color: #e3c7ea; }
+  .role i { display: block; font-style: normal; font-weight: 800; color: var(--purple); font-size: 13px; margin-bottom: 8px; }
+  .num { font-family: "Source Serif 4", Georgia, serif; font-size: 34px; color: var(--orange); }
+  .split { display: grid; grid-template-columns: .9fr 1.1fr; gap: 36px; align-items: center; }
+  .split.reverse { grid-template-columns: 1.1fr .9fr; }
+  .split.reverse .copy { order: 2; }
+  ul.clean { margin: 14px 0 0; padding: 0; list-style: none; }
+  ul.clean li { padding: 8px 0 8px 22px; position: relative; }
+  ul.clean li:before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--orange); position: absolute; left: 0; top: 15px; }
+  .tag { display: inline-block; background: #f6eef8; color: var(--deep); border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 800; margin-bottom: 10px; }
+  .day { display: grid; grid-template-columns: 90px 1fr; gap: 14px; }
+  .day + .day { margin-top: 14px; }
+  .time { font-weight: 800; color: var(--purple); }
+  .compare { width: 100%; border-collapse: collapse; background: white; border-radius: 22px; overflow: hidden; }
+  .compare th, .compare td { text-align: left; padding: 14px 16px; border-bottom: 1px solid #f6f1f4; vertical-align: top; }
+  .compare th { font-size: 13px; color: var(--muted); font-weight: 700; }
+  .yes { color: var(--green); font-weight: 800; }
+  footer { padding: 28px 0 48px; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .note { font-size: 13px; color: var(--muted); }
+  @media (max-width: 900px) {
+    .hero, .grid-3, .grid-2, .roles, .why, .split, .split.reverse, .desk, .stage { grid-template-columns: 1fr; }
+    .split.reverse .copy { order: 0; }
+    .phone { position: static; margin: 18px auto 0; }
+    .nav-links { display: none; }
+  }
+</style>
+</head>
+<body>
+<nav>
+  <div class="wrap nav-in">
+    <a class="brand" href="#top"><span class="owl">🦉</span> Ονειροχώρα</a>
+    <div class="nav-links">
+      <a href="#roloi">Ρόλοι</a>
+      <a href="#grammateia">Γραμματεία</a>
+      <a href="#goneas">Γονέας</a>
+      <a href="#prosopiko">Προσωπικό</a>
+      <a href="#giati">Γιατί</a>
+    </div>
+    <a class="btn btn-orange" href="#giati">Γιατί να το πάρεις</a>
+  </div>
+</nav>
+
+<header class="wrap hero" id="top">
+  <div>
+    <p class="kicker">Web · εφαρμογή γονέα · εφαρμογή προσωπικού</p>
+    <h1>Όλος ο σταθμός, σε ένα μέρος.</h1>
+    <p class="lede">Η Ονειροχώρα κρατά το παιδί, τη μέρα του, το σχολικό, τις εκδρομές, τις οφειλές και τα μηνύματα. Η γραμματεία δουλεύει στο web. Γονείς, παιδαγωγοί και οδηγός δουλεύουν από το κινητό.</p>
+    <div class="hero-actions">
+      <a class="btn btn-orange" href="#roloi">Δες κάθε ρόλο</a>
+      <a class="btn btn-ghost" href="#mera">Μία μέρα στον σταθμό</a>
+    </div>
+    <div class="pills">
+      <span class="pill">Συναίνεση εκδρομής</span>
+      <span class="pill">Οφειλή με λεπτομέρειες</span>
+      <span class="pill">Αποδείξεις στο κινητό</span>
+      <span class="pill">Σχολικό και χάρτης</span>
+      <span class="pill">Ενημέρωση ημέρας</span>
+    </div>
+  </div>
+  <div class="stage">
+    <div class="desk" aria-label="Οθόνη γραμματείας">
+      <div class="side">
+        <b>Ονειροχώρα</b>
+        <span class="on">Μαθητές</span>
+        <span>Γονείς</span>
+        <span>Τάξεις</span>
+        <span>Σχολικό</span>
+        <span>Οικονομικά</span>
+        <span>Εκδρομές</span>
+        <span>Μηνύματα</span>
+      </div>
+      <div class="main">
+        <div class="who">
+          <div class="ava">ΙΚ</div>
+          <div><b>Ιρίδα Καραλή</b><div class="note">10/12/2021 · Αστεράκια</div></div>
+        </div>
+        <div class="row2">
+          <div class="balance">
+            <strong>Δεν χρωστάει</strong>
+            <em>0,00 €</em>
+          </div>
+          <div>
+            <div class="mini"><b>Γραφική ύλη</b><s>Πληρώθηκε · 100,00 €</s></div>
+            <div class="mini"><b>Σχολικό</b><s>Ναι</s></div>
+            <div class="mini"><b>Δραστηριότητες</b><s>2</s></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="phone" aria-label="Οθόνη γονέα">
+      <div class="screen">
+        <div class="topg"><small>Καλημέρα</small><div style="font-weight:800">Μαρία</div></div>
+        <div class="pad">
+          <div class="card meet"><b>Επερχόμενη συνάντηση</b>Τρίτη στις 17:10</div>
+          <div class="card"><b>Ενημέρωση σήμερα</b>Χαρούμενη · έφαγε τα περισσότερα</div>
+          <div class="card"><b>Πρόσφατη ενημέρωση</b>Μία, η τελευταία, για κάθε παιδί</div>
+          <div class="chips">
+            <div class="chip">Εκδήλωση<br>1</div>
+            <div class="chip">Σχολικό<br>Ναι</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <p class="kicker">Τρία πρόσωπα, ένα αρχείο</p>
+    <h2>Το web κρατά το γραφείο. Οι εφαρμογές κρατούν τη μέρα.</h2>
+    <div class="grid-3" style="margin-top:28px">
+      <article class="tile">
+        <p class="num">01</p>
+        <h3>Web γραμματείας</h3>
+        <p>Μαθητές, γονείς, τάξεις, προσωπικό, διατροφολόγιο, εκδηλώσεις, σχολικό, οικονομικά, κανονισμοί και ειδοποιήσεις. Η κάρτα του παιδιού δείχνει με μία ματιά αν χρωστάει, αν έχει σχολικό και πόσες δραστηριότητες έχει.</p>
+      </article>
+      <article class="tile">
+        <p class="num">02</p>
+        <h3>Εφαρμογή γονέα</h3>
+        <p>Αρχική χωρίς ατέλειωτο σκρολ: συνάντηση, ενημέρωση σήμερα, τελευταία ενημέρωση ανά παιδί, μία εκδήλωση ανά παιδί. Από κάτω πληρωμές, αποδείξεις, μηνύματα και το σχολικό.</p>
+      </article>
+      <article class="tile">
+        <p class="num">03</p>
+        <h3>Εφαρμογή προσωπικού</h3>
+        <p>Ο παιδαγωγός γράφει την ημέρα και τις γιορτές της τάξης. Ο οδηγός βλέπει το δρομολόγιο και στέλνει τη θέση του. Ο ιδιοκτήτης ανοίγει μόνο αναφορές.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="roloi" style="padding-top:10px">
+  <div class="wrap">
+    <p class="kicker">Πέντε ρόλοι</p>
+    <h2>Ο καθένας βλέπει τη δουλειά του, όχι όλο το σχολείο.</h2>
+    <div class="roles" style="margin-top:28px">
+      <a class="role" href="#grammateia"><i>Web</i><b>Διαχειριστής</b><p class="note">Γραμματεία και καθημερινή λειτουργία.</p></a>
+      <a class="role" href="#idioktitis"><i>Εφαρμογή</i><b>Ιδιοκτήτης</b><p class="note">Εικόνα σχολείου και οικονομικών.</p></a>
+      <a class="role" href="#paidagogos"><i>Εφαρμογή</i><b>Παιδαγωγός</b><p class="note">Τάξη, ενημέρωση, γιορτές.</p></a>
+      <a class="role" href="#odigos"><i>Εφαρμογή</i><b>Οδηγός</b><p class="note">Δρομολόγιο, παραλαβές, χάρτης.</p></a>
+      <a class="role" href="#goneas"><i>Εφαρμογή</i><b>Γονέας</b><p class="note">Παιδί, συναίνεση, πληρωμές.</p></a>
+    </div>
+  </div>
+</section>
+
+<section id="grammateia">
+  <div class="wrap split">
+    <div class="copy">
+      <span class="tag">Διαχειριστής · web</span>
+      <h2>Η γραμματεία σταματά να ψάχνει σε φακέλους.</h2>
+      <p>Ανοίγει τον μαθητή και βλέπει αμέσως την κατάσταση. Αν χρωστάει, γράφει «Χρωστάει» και από κάτω το σύνολο. Το κουμπί Λεπτομέρειες ανοίγει τι ακριβώς εκκρεμεί. Δίπλα μένουν τρεις γραμμές: γραφική ύλη, σχολικό ναι ή όχι, και ο αριθμός των δραστηριοτήτων. Οι εκδηλώσεις δεν ξαναγράφονται μία προς μία, γιατί υπάρχουν στην καρτέλα τους.</p>
+      <ul class="clean">
+        <li>Μαθητές, γονείς, τάξεις, βαθμίδες, προσωπικό.</li>
+        <li>Φάρμακο και ερωτηματολόγιο ανοίγουν μόνο το δικό τους τμήμα.</li>
+        <li>Διατροφολόγιο, διαθεματικό και εργασίες της τάξης.</li>
+        <li>Εκδρομή με συναίνεση, ώρα προσέλευσης και αν θα λειτουργήσει το σχολικό εκείνη τη μέρα.</li>
+        <li>Ημέρες χωρίς σχολικό, με λόγο, που φτάνουν στους γονείς.</li>
+        <li>Γιορτές, νέα, ευρήματα, μηνύματα και ειδοποιήσεις.</li>
+        <li>Οικονομικά, κανονισμοί και σχολικές αργίες.</li>
+        <li>Απόδειξη από το σύστημα ή αρχείο από άλλο πρόγραμμα. Και οι δύο κατεβαίνουν στο κινητό του γονέα.</li>
+      </ul>
+    </div>
+    <div class="desk" aria-label="Κάρτα μαθητή">
+      <div class="side">
+        <b>Μαθητής</b>
+        <span class="on">Γενικά</span>
+        <span>Υγεία</span>
+        <span>Γονείς</span>
+        <span>Σχολικό</span>
+        <span>Δραστηριότητες</span>
+        <span>Εκδηλώσεις</span>
+        <span>Οικονομικά</span>
+      </div>
+      <div class="main">
+        <div class="who"><div class="ava">ΑΛ</div><div><b>Αλέξης</b><div class="note">Προνήπια</div></div></div>
+        <div class="balance" style="background:#fdeeee">
+          <strong style="color:#b42318">Χρωστάει</strong>
+          <em style="color:#b42318">85,00 €</em>
+          <div class="btn btn-ghost" style="margin-top:8px;padding:6px 10px;font-size:13px">Λεπτομέρειες</div>
+          <div class="mini"><b>Οκτώβριος</b><s>Μηνιαία · 70,00 €</s></div>
+          <div class="mini"><b>Εκδρομή στον Εθνικό Κήπο</b><s>Εκκρεμεί · 15,00 €</s></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="idioktitis">
+  <div class="wrap split reverse">
+    <div class="copy">
+      <span class="tag">Ιδιοκτήτης · εφαρμογή</span>
+      <h2>Βλέπει το σχολείο, χωρίς να μπαίνει στη ροή της τάξης.</h2>
+      <p>Ο ιδιοκτήτης δεν χρειάζεται τα κουμπιά της γραμματείας. Ανοίγει αναφορές: το σχολείο από τη μία, τα οικονομικά από την άλλη. Διαλέγει σχολικό έτος και εύρος και βλέπει παιδιά, τάξεις, προσωπικό και την κίνηση των πληρωμών.</p>
+      <ul class="clean">
+        <li>Καρτέλα «Το σχολείο»: παιδιά, τάξεις, προσωπικό.</li>
+        <li>Καρτέλα «Οικονομικά»: τι έχει εισπραχθεί και τι εκκρεμεί.</li>
+        <li>Ίδια είσοδος με το προσωπικό, άλλος ρόλος, άλλη οθόνη.</li>
+      </ul>
+    </div>
+    <div class="phone" style="position:static;margin:0" aria-label="Αναφορές ιδιοκτήτη">
+      <div class="screen">
+        <div class="pad">
+          <b>Αναφορές</b>
+          <div class="chips" style="margin:10px 0">
+            <div class="chip" style="background:#f6eef8">Το σχολείο</div>
+            <div class="chip">Οικονομικά</div>
+          </div>
+          <div class="card"><b>Παιδιά</b>86 στο τρέχον έτος</div>
+          <div class="card"><b>Τάξεις</b>Αστεράκια, Προνήπια, Νήπια</div>
+          <div class="card"><b>Προσωπικό</b>Παιδαγωγοί, γραμματεία, οδηγοί</div>
+          <p class="note">Παιδιά, τάξεις και προσωπικό για το σχολικό έτος.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="paidagogos">
+  <div class="wrap split">
+    <div class="copy">
+      <span class="tag">Παιδαγωγός · εφαρμογή</span>
+      <h2>Η τάξη γράφεται εκεί που στέκεται ο παιδαγωγός.</h2>
+      <p>Στο τέλος της μέρας δεν μαζεύει χαρτάκια. Ανοίγει την τάξη, γράφει διάθεση, φαγητό, ύπνο και ό,τι άλλο χρειάζεται ο γονέας, και η ενημέρωση εμφανίζεται στην αρχική του γονέα.</p>
+      <ul class="clean">
+        <li>Ενημέρωση ημέρας για κάθε παιδί.</li>
+        <li>Γιορτάζει: γενέθλια και ονομαστικές της τάξης.</li>
+        <li>Εργασίες, διαθεματικό, φάρμακα, ευρήματα.</li>
+        <li>Συναντήσεις γονέων με ώρες που κλείνει ο γονέας.</li>
+        <li>Εκδηλώσεις της τάξης και μηνύματα.</li>
+        <li>Άδειες προσωπικού, χωρίς να φεύγουν από την εφαρμογή.</li>
+      </ul>
+    </div>
+    <div class="phone" style="position:static" aria-label="Ενημέρωση παιδαγωγού">
+      <div class="screen">
+        <div class="pad">
+          <b>Αστεράκια · σήμερα</b>
+          <div class="card"><b>Ιρίδα</b>Χαρούμενη · δεκατιανό: τα περισσότερα · ύπνος 40′</div>
+          <div class="card"><b>Αλέξης</b>Ήρεμος · μεσημεριανό: τα μισά</div>
+          <div class="chips">
+            <div class="chip">Γιορτάζει</div>
+            <div class="chip">Εργασίες</div>
+            <div class="chip">Φάρμακα</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="odigos">
+  <div class="wrap split reverse">
+    <div class="copy">
+      <span class="tag">Οδηγός · εφαρμογή</span>
+      <h2>Το σχολικό έχει λίστα, όχι τηλεφωνήματα.</h2>
+      <p>Ο οδηγός βλέπει ποια παιδιά είναι στο δρομολόγιο, ποιος τα παραλαμβάνει το πρωί και ποιος τα παραδίδει το απόγευμα. Η θέση του λεωφορείου φαίνεται στον γονέα. Αν μια μέρα το σχολικό δεν κινείται, η γραμματεία το δηλώνει και ο γονέας το βλέπει στην αρχική.</p>
+      <ul class="clean">
+        <li>Πρόγραμμα σχολικού και στάσεις.</li>
+        <li>Παραλαβή και παράδοση με το όνομα του προσώπου.</li>
+        <li>Μήνυμα στον γονέα από τη λίστα του δρομολογίου.</li>
+        <li>Ζωντανή θέση για όσους έχουν σχολικό.</li>
+      </ul>
+    </div>
+    <div class="phone" style="position:static" aria-label="Οθόνη οδηγού">
+      <div class="screen">
+        <div class="pad">
+          <b>Σχολικό · πρωινό</b>
+          <div class="card"><b>Ιρίδα Καραλή</b>Παραλαβή 07:40 · μαμά<br>Παράδοση σχολείο</div>
+          <div class="card"><b>Αλέξης</b>Παραλαβή 07:55 · γιαγιά</div>
+          <div class="card" style="background:#eefaf3"><b>Ο γονέας βλέπει τον χάρτη</b>Η θέση φεύγει από το κινητό του οδηγού.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="goneas">
+  <div class="wrap">
+    <span class="tag">Γονέας · εφαρμογή</span>
+    <h2>Ο γονέας καταλαβαίνει τη μέρα χωρίς να ανοίξει δέκα συνομιλίες.</h2>
+    <div class="grid-2" style="margin-top:28px">
+      <div>
+        <p>Η αρχική ξεκινά με τα παιδιά και, αν υπάρχει, την επερχόμενη συνάντηση. Μετά έρχεται η ενημέρωση της σημερινής μέρας και το διατροφολόγιο. Οι παλιές ενημερώσεις δεν γεμίζουν τη σελίδα: μένει η τελευταία ανά παιδί, και οι ανακοινώσεις της γραμματείας κάθονται στο ίδιο σημείο.</p>
+        <ul class="clean">
+          <li>Μία εκδήλωση ανά παιδί και κουμπί «Εμφάνιση όλων».</li>
+          <li>Τα νέα του σχολείου κάθονται μαζί με τις εκδηλώσεις.</li>
+          <li>Συναίνεση ή άρνηση για εκδρομή, από την ειδοποίηση ή από την κάρτα.</li>
+          <li>Μετά τη συναίνεση, αν υπάρχει κόστος: η πληρωμή τακτοποιείται στη γραμματεία.</li>
+          <li>Υπενθύμιση μία μέρα πριν: «Αύριο η Ιρίδα έχει εκδρομή».</li>
+          <li>Πληρωμές, υπόλοιπο και λήψη απόδειξης.</li>
+          <li>Κανονισμοί, ερωτηματολόγια, φάρμακα και μηνύματα προς τους παιδαγωγούς.</li>
+          <li>Αν σήμερα δεν έχει σχολικό, φαίνεται ο λόγος πριν φύγει από το σπίτι.</li>
+        </ul>
+      </div>
+      <div class="phone" style="position:static;margin-left:auto" aria-label="Εκδήλωση γονέα">
+        <div class="screen">
+          <div class="pad">
+            <b>Εκδρομή στον Εθνικό Κήπο</b>
+            <p class="note">Παρασκευή · μέχρι τις 08:30 στο σχολείο · το σχολικό λειτουργεί</p>
+            <div class="card"><b>Ιρίδα</b>Αναμονή συναίνεσης</div>
+            <div style="display:flex;gap:8px">
+              <div class="btn btn-orange" style="flex:1">Συναινώ</div>
+              <div class="btn btn-ghost" style="flex:1">Όχι</div>
+            </div>
+            <div class="card meet" style="margin-top:10px"><b>Μετά τη συναίνεση</b>Εκκρεμεί η πληρωμή. Επισκέψου τη γραμματεία για να την τακτοποιήσεις.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="mera">
+  <div class="wrap why">
+    <div>
+      <p class="kicker">Μία μέρα</p>
+      <h2>Πώς δένουν οι ρόλοι μεταξύ τους.</h2>
+      <div style="margin-top:22px">
+        <div class="day"><div class="time">07:20</div><div>Ο οδηγός ανοίγει το δρομολόγιο. Ο γονέας, αν το σχολικό δεν κινείται σήμερα, το έχει ήδη δει στην αρχική.</div></div>
+        <div class="day"><div class="time">09:10</div><div>Η γραμματεία κοιτάζει ποιος χρωστάει γραφική ύλη και ποια εκδρομή περιμένει συναίνεση.</div></div>
+        <div class="day"><div class="time">13:40</div><div>Ο παιδαγωγός γράφει διάθεση και φαγητό. Ο γονέας τα βρίσκει στην ενημέρωση της ημέρας.</div></div>
+        <div class="day"><div class="time">16:05</div><div>Ο γονέας πατά Συναινώ για την αυριανή εκδρομή και βλέπει ότι η πληρωμή γίνεται στη γραμματεία.</div></div>
+        <div class="day"><div class="time">18:30</div><div>Ο ιδιοκτήτης ανοίγει τα οικονομικά του μήνα, χωρίς να πειράξει την κάρτα κανενός παιδιού.</div></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Τι αντικαθιστά</h3>
+      <table class="compare">
+        <tr><th>Πριν</th><th>Με την Ονειροχώρα</th></tr>
+        <tr><td>Viber για τη μέρα, την εκδρομή και το σχολικό</td><td class="yes">Μία αρχική και μία ειδοποίηση</td></tr>
+        <tr><td>Excel για το ποιος χρωστάει</td><td class="yes">Κάρτα παιδιού με σύνολο και λεπτομέρειες</td></tr>
+        <tr><td>Χαρτί συναίνεσης που χάνεται</td><td class="yes">Συναινώ ή Όχι, με ώρα προσέλευσης</td></tr>
+        <tr><td>Απόδειξη στο email ή στο συρτάρι</td><td class="yes">Λήψη στο κινητό, από το σύστημα ή από αρχείο</td></tr>
+        <tr><td>Τηλέφωνο στον οδηγό</td><td class="yes">Λίστα παραλαβής και χάρτης</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="giati">
+  <div class="wrap">
+    <p class="kicker">Γιατί το παίρνει ένας σταθμός</p>
+    <h2>Λιγότερες ερωτήσεις στο τηλέφωνο. Πιο καθαρή εικόνα για το παιδί.</h2>
+    <div class="grid-3" style="margin-top:28px">
+      <article class="tile"><h3>Ο γονέας ησυχάζει</h3><p>Βλέπει τη μέρα, την εκδρομή, το σχολικό και την οφειλή χωρίς να ρωτάει τρεις ανθρώπους. Όταν πρέπει να αποφασίσει, το κουμπί είναι μπροστά του.</p></article>
+      <article class="tile"><h3>Η γραμματεία κερδίζει ώρα</h3><p>Συναίνεση, πληρωμή, απόδειξη, φάρμακο και ερωτηματολόγιο μένουν πάνω στο παιδί. Δεν τα ξαναγράφει σε άλλο τετράδιο.</p></article>
+      <article class="tile"><h3>Ο ιδιοκτήτης βλέπει νούμερα</h3><p>Παιδιά, τάξεις και οικονομικά σε ξεχωριστή οθόνη. Η καθημερινή δουλειά δεν μπλέκεται με την εικόνα του μήνα.</p></article>
+    </div>
+    <div class="panel" style="margin-top:18px">
+      <h3>Και για όποιον έχει δύο ρόλους</h3>
+      <p>Ο ίδιος άνθρωπος μπορεί να είναι γονέας και προσωπικό. Μπαίνει με το κινητό του και διαλέγει με ποιον ρόλο συνεχίζει. Δεν μοιράζεται λογαριασμό και δεν βλέπει ξένα παιδιά.</p>
+    </div>
+  </div>
+</section>
+
+<div class="wrap">
+  <footer>
+    <div><b style="color:var(--ink)">Ονειροχώρα</b><div>Το λειτουργικό του παιδικού σταθμού: web γραφείου και εφαρμογές για γονείς και προσωπικό.</div></div>
+    <div class="note">Οι οθόνες σε αυτή τη σελίδα δείχνουν τις πραγματικές ροές του συστήματος.</div>
+  </footer>
+</div>
+</body>
+</html>
