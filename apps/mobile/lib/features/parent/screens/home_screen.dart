@@ -5,8 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/widgets/app_image.dart';
+import '../../../core/widgets/app_top_bar.dart';
 import '../../../core/widgets/person_face.dart';
-import '../../medications/medications_screen.dart';
 import '../parent_children.dart';
 import 'bus_closure.dart';
 import 'child_hub_screen.dart';
@@ -71,7 +71,6 @@ class HomeScreen extends ConsumerWidget {
           ref.invalidate(monthThematicProvider(schoolId));
           ref.invalidate(parentMeetingsProvider(schoolId));
           ref.invalidate(teacherAbsencesProvider(schoolId));
-          ref.invalidate(medicationsProvider(schoolId));
         },
         child: CustomScrollView(
           slivers: [
@@ -147,6 +146,10 @@ class HomeScreen extends ConsumerWidget {
                   }
                   final plans = thematicAsync.asData?.value ?? const [];
                   final meetings = meetingsAsync.asData?.value ?? const [];
+                  final posts = (postsAsync.asData?.value ?? const [])
+                      .whereType<Map>()
+                      .map((row) => Map<String, dynamic>.from(row))
+                      .toList();
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -171,6 +174,7 @@ class HomeScreen extends ConsumerWidget {
                         ),
                       ),
                       if (cards.any(childHasBus)) BusClosedNotice(schoolId: schoolId),
+                      _UpcomingMeetings(children: cards, meetings: meetings),
                       daySectionTitle(Icons.today_rounded, 'Ενημέρωση Σήμερα', dayHistoryColors),
                       for (final child in cards)
                         Padding(
@@ -186,13 +190,14 @@ class HomeScreen extends ConsumerWidget {
                       for (final child in cards)
                         Padding(
                           padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                          child: ChildRecentUpdates(schoolId: schoolId, child: child),
+                          child: ChildRecentUpdates(schoolId: schoolId, child: child, latestOnly: true),
                         ),
+                      _FoundNoticesHome(schoolId: schoolId, embedded: true),
                       if (cards.any(childHasInstructions)) ...[
                         daySectionTitle(Icons.assignment_rounded, 'Οδηγίες από το Σχολείο', dayHistoryColors),
                         for (final child in cards) ChildInstructionCards(child: child),
                       ],
-                      if (cards.any(childHasEvents)) ...[
+                      if (cards.any(childHasEvents) || posts.isNotEmpty) ...[
                         daySectionTitle(
                           Icons.event_rounded,
                           'Εκδηλώσεις',
@@ -202,60 +207,51 @@ class HomeScreen extends ConsumerWidget {
                             return pending > 0 ? '$pending εκκρεμεί' : null;
                           }(),
                         ),
-                        for (final child in cards) ChildEventCards(schoolId: schoolId, child: child),
+                        for (final child in cards)
+                          if (childHasEvents(child))
+                            ChildEventCards(schoolId: schoolId, child: child, maxItems: 1),
+                        if (cards.any(childHasEvents))
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                            child: SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton(
+                                onPressed: () => ref.read(shellTabProvider.notifier).state = 2,
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: const Color(0xFF77328D),
+                                  side: const BorderSide(color: Color(0xFF77328D)),
+                                  minimumSize: const Size.fromHeight(44),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                ),
+                                child: const Text('Εμφάνιση όλων', style: TextStyle(fontWeight: FontWeight.w700)),
+                              ),
+                            ),
+                          ),
+                        if (posts.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                            child: Column(
+                              children: [
+                                for (final post in posts)
+                                  _PostMini(
+                                    post: post,
+                                    schoolId: schoolId,
+                                    children: _childrenForPost(cards, post),
+                                  ),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: TextButton(
+                                    onPressed: () => Navigator.push(context, MaterialPageRoute(
+                                      builder: (_) => SchoolPostsScreen(schoolId: schoolId),
+                                    )),
+                                    child: const Text('Όλα τα νέα', style: TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w700)),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                       ],
-                      ParentMedicationSection(schoolId: schoolId),
-                      _GroupedExtras(children: cards, plans: plans, meetings: meetings),
-                    ],
-                  );
-                },
-              ),
-            ),
-
-            SliverToBoxAdapter(child: _FoundNoticesHome(schoolId: schoolId)),
-
-            // Recent school posts section
-            SliverToBoxAdapter(
-              child: postsAsync.when(
-                loading: () => const SizedBox.shrink(),
-                error: (_, __) => const SizedBox.shrink(),
-                data: (posts) {
-                  if (posts.isEmpty) return const SizedBox.shrink();
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 28, 20, 12),
-                        child: Row(
-                          children: [
-                            const Text(
-                              'Νέα & Εκδηλώσεις',
-                              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF2C2422)),
-                            ),
-                            const Spacer(),
-                            GestureDetector(
-                              onTap: () => Navigator.push(context, MaterialPageRoute(
-                                builder: (_) => SchoolPostsScreen(schoolId: schoolId),
-                              )),
-                              child: const Text('Όλα',
-                                  style: TextStyle(fontSize: 13, color: Color(0xFF77328D), fontWeight: FontWeight.w600)),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Column(
-                          children: posts.map((p) {
-                            final post = Map<String, dynamic>.from(p as Map);
-                            return _PostMini(
-                              post: post,
-                              schoolId: schoolId,
-                              children: _childrenForPost(cards, post),
-                            );
-                          }).toList(),
-                        ),
-                      ),
+                      _GroupedExtras(children: cards, plans: plans),
                     ],
                   );
                 },
@@ -377,34 +373,47 @@ class _ChildEntryCard extends StatelessWidget {
   }
 }
 
+class _UpcomingMeetings extends StatelessWidget {
+  final List<Map<String, dynamic>> children;
+  final List<dynamic> meetings;
+  const _UpcomingMeetings({required this.children, required this.meetings});
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = <MapEntry<Map<String, dynamic>, Map<String, dynamic>>>[];
+    for (final child in children) {
+      final meeting = acceptedMeetingFor(meetings, child['id']?.toString());
+      if (meeting != null) rows.add(MapEntry(child, meeting));
+    }
+    if (rows.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        daySectionTitle(Icons.event_available_rounded, 'Επερχόμενη συνάντηση', dayHistoryColors),
+        for (final row in rows)
+          _HomeChildLine(
+            row.key,
+            '${meetingDay(row.value['meetingDate'])} στις ${row.value['acceptedSlot'] ?? ''}',
+          ),
+      ],
+    );
+  }
+}
+
 class _GroupedExtras extends StatelessWidget {
   final List<Map<String, dynamic>> children;
   final List<dynamic> plans;
-  final List<dynamic> meetings;
-  const _GroupedExtras({required this.children, required this.plans, required this.meetings});
+  const _GroupedExtras({required this.children, required this.plans});
 
   @override
   Widget build(BuildContext context) {
     final month = thematicMonthLabel(thematicMonthKey(DateTime.now()));
-    final meetingRows = <MapEntry<Map<String, dynamic>, Map<String, dynamic>>>[];
-    for (final child in children) {
-      final meeting = acceptedMeetingFor(meetings, child['id']?.toString());
-      if (meeting != null) meetingRows.add(MapEntry(child, meeting));
-    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (meetingRows.isNotEmpty) ...[
-          daySectionTitle(Icons.event_available_rounded, 'Επερχόμενη συνάντηση', dayHistoryColors),
-          for (final row in meetingRows)
-            _childLine(
-              row.key,
-              '${meetingDay(row.value['meetingDate'])} στις ${row.value['acceptedSlot'] ?? ''}',
-            ),
-        ],
         daySectionTitle(Icons.auto_stories_rounded, 'Διαθεματικό $month', dayHistoryColors),
         for (final child in children)
-          _childLine(child, _thematicTitle(_thematicFor(plans, child))),
+          _HomeChildLine(child, _thematicTitle(_thematicFor(plans, child))),
       ],
     );
   }
@@ -414,8 +423,15 @@ class _GroupedExtras extends StatelessWidget {
     final title = thematic['title']?.toString().trim() ?? '';
     return title.isNotEmpty ? title : 'Διαθεματικό';
   }
+}
 
-  Widget _childLine(Map<String, dynamic> child, String value) {
+class _HomeChildLine extends StatelessWidget {
+  final Map<String, dynamic> child;
+  final String value;
+  const _HomeChildLine(this.child, this.value);
+
+  @override
+  Widget build(BuildContext context) {
     final mention = ChildMention.fromMap(child);
     return Container(
       width: double.infinity,
@@ -442,7 +458,8 @@ class _GroupedExtras extends StatelessWidget {
 
 class _FoundNoticesHome extends ConsumerWidget {
   final String schoolId;
-  const _FoundNoticesHome({required this.schoolId});
+  final bool embedded;
+  const _FoundNoticesHome({required this.schoolId, this.embedded = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -450,23 +467,24 @@ class _FoundNoticesHome extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 28, 20, 12),
-          child: Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'Ενημερώσεις',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF2C2422)),
+        if (!embedded)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 28, 20, 12),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Ενημερώσεις',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF2C2422)),
+                  ),
                 ),
-              ),
-              GestureDetector(
-                onTap: () => _openAll(context),
-                child: const Text('Όλες', style: TextStyle(fontSize: 13, color: Color(0xFF77328D), fontWeight: FontWeight.w600)),
-              ),
-            ],
+                GestureDetector(
+                  onTap: () => _openAll(context),
+                  child: const Text('Όλες', style: TextStyle(fontSize: 13, color: Color(0xFF77328D), fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ),
           ),
-        ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: notices.when(
@@ -474,6 +492,7 @@ class _FoundNoticesHome extends ConsumerWidget {
             error: (_, __) => const Text('Οι ενημερώσεις δεν φορτώθηκαν.', style: TextStyle(color: Color(0xFF6B7280))),
             data: (posts) {
               if (posts.isEmpty) {
+                if (embedded) return const SizedBox.shrink();
                 return const Text(
                   'Όταν βρεθεί κάτι στο σχολείο, η φωτογραφία και το μήνυμα της γραμματείας εμφανίζονται εδώ.',
                   style: TextStyle(color: Color(0xFF6B7280), height: 1.4),
@@ -481,6 +500,14 @@ class _FoundNoticesHome extends ConsumerWidget {
               }
               return Column(
                 children: [
+                  if (embedded)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: () => _openAll(context),
+                        child: const Text('Όλες οι ενημερώσεις', style: TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w700)),
+                      ),
+                    ),
                   for (final raw in posts.take(3))
                     if (raw is Map)
                       _FoundNoticeCard(

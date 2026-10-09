@@ -194,7 +194,14 @@ class ChildRecentUpdates extends ConsumerWidget {
   final String schoolId;
   final Map<String, dynamic> child;
   final bool archive;
-  const ChildRecentUpdates({super.key, required this.schoolId, required this.child, this.archive = false});
+  final bool latestOnly;
+  const ChildRecentUpdates({
+    super.key,
+    required this.schoolId,
+    required this.child,
+    this.archive = false,
+    this.latestOnly = false,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -211,13 +218,21 @@ class ChildRecentUpdates extends ConsumerWidget {
         final earlier = reports.where((raw) {
           final day = reportCalendarDay(raw);
           return day != null && day.isBefore(todayDay);
-        }).toList();
-        final recent = archive
-            ? earlier.take(7).toList()
-            : earlier.where((raw) {
-                final day = reportCalendarDay(raw);
-                return day != null && !day.isBefore(weekStart);
-              }).toList();
+        }).toList()
+          ..sort((a, b) {
+            final left = reportCalendarDay(a);
+            final right = reportCalendarDay(b);
+            if (left == null || right == null) return 0;
+            return right.compareTo(left);
+          });
+        final recent = latestOnly
+            ? earlier.take(1).toList()
+            : archive
+                ? earlier.take(7).toList()
+                : earlier.where((raw) {
+                    final day = reportCalendarDay(raw);
+                    return day != null && !day.isBefore(weekStart);
+                  }).toList();
         if (recent.isEmpty && !archive) {
           return DayHistoryEmptyCard('Δεν υπάρχουν ενημερώσεις της τελευταίας εβδομάδας', child: child);
         }
@@ -427,11 +442,18 @@ class ChildInstructionCards extends StatelessWidget {
 class ChildEventCards extends StatelessWidget {
   final String schoolId;
   final Map<String, dynamic> child;
-  const ChildEventCards({super.key, required this.schoolId, required this.child});
+  final int? maxItems;
+  const ChildEventCards({super.key, required this.schoolId, required this.child, this.maxItems});
 
   @override
   Widget build(BuildContext context) {
-    return _EventsBlock(schoolId: schoolId, child: child, colors: dayHistoryColors, showTitle: false);
+    return _EventsBlock(
+      schoolId: schoolId,
+      child: child,
+      colors: dayHistoryColors,
+      showTitle: false,
+      maxItems: maxItems,
+    );
   }
 }
 
@@ -556,7 +578,14 @@ class _EventsBlock extends StatelessWidget {
   final Map<String, dynamic> child;
   final List<Color> colors;
   final bool showTitle;
-  const _EventsBlock({required this.schoolId, required this.child, required this.colors, this.showTitle = true});
+  final int? maxItems;
+  const _EventsBlock({
+    required this.schoolId,
+    required this.child,
+    required this.colors,
+    this.showTitle = true,
+    this.maxItems,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -564,7 +593,7 @@ class _EventsBlock extends StatelessWidget {
     if (eventEnrollments.isEmpty) return const SizedBox.shrink();
     final pending = childPendingEvents(child);
     final ordered = [...eventEnrollments]..sort((a, b) => _eventRank(a).compareTo(_eventRank(b)));
-    final cards = ordered.take(5).map((enr) {
+    final cards = ordered.take(maxItems ?? 5).map((enr) {
             final e = enr as Map<String, dynamic>;
             final event = e['event'] as Map<String, dynamic>? ?? {};
             final status = e['status'] as String? ?? '';
