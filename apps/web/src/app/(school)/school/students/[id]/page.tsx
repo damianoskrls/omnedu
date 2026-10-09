@@ -370,6 +370,11 @@ export default function StudentProfilePage() {
     setSiblingResults(allStudents.filter(s => s.fullName.toLowerCase().includes(q)).slice(0, 8));
   }, [siblingSearch, allStudents]);
 
+  useEffect(() => {
+    if (tab !== 'health' || healthFocus === 'all') return;
+    healthAnchor.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [tab, healthFocus]);
+
   async function handleSaveFee() {
     if (!feeForm) return;
     setSavingFee(true);
@@ -574,11 +579,6 @@ export default function StudentProfilePage() {
     setHealthFocus(focus);
     setTab('health');
   };
-
-  useEffect(() => {
-    if (tab !== 'health' || healthFocus === 'all') return;
-    healthAnchor.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [tab, healthFocus]);
 
   return (
     <div>
