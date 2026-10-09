@@ -343,11 +343,12 @@ export class SchoolEventsService implements OnModuleInit {
       throw new ForbiddenException('Consent already given');
     }
 
-    const newStatus = consent
-      ? (await this.prisma.schoolEvent.findUnique({ where: { id: enrollment.eventId }, select: { costPerChild: true } }))?.costPerChild
-        ? 'pending_payment'
-        : 'consent_given'
-      : 'consent_declined';
+    const priced = await this.prisma.schoolEvent.findUnique({
+      where: { id: enrollment.eventId },
+      select: { costPerChild: true },
+    });
+    const cost = Number(priced?.costPerChild ?? 0);
+    const newStatus = !consent ? 'consent_declined' : cost > 0 ? 'pending_payment' : 'consent_given';
 
     const updated = await this.prisma.schoolEventEnrollment.update({
       where: { id: enrollmentId },

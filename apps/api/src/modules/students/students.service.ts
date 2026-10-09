@@ -206,7 +206,7 @@ export class StudentsService {
           include: {
             event: {
               select: {
-                id: true, title: true, description: true, eventType: true, eventDate: true,
+                id: true, title: true, description: true, dayInstructions: true, eventType: true, eventDate: true,
                 costPerChild: true, status: true, mediaUrls: true,
               },
             },
@@ -275,7 +275,7 @@ export class StudentsService {
           include: {
             event: {
               select: {
-                id: true, title: true, description: true, eventType: true, eventDate: true,
+                id: true, title: true, description: true, dayInstructions: true, eventType: true, eventDate: true,
                 costPerChild: true, status: true,
                 postMedia: { orderBy: { createdAt: 'asc' } },
               },

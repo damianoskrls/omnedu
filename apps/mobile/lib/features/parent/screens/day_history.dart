@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/widgets/person_face.dart';
+import 'events_screen.dart';
 
 const dayHistoryColors = [Color(0xFF77328D), Color(0xFFE95926)];
 
@@ -106,7 +107,7 @@ class DayHistoryPanel extends ConsumerWidget {
           child: ChildRecentUpdates(schoolId: schoolId, child: child, archive: true),
         ),
         _InstructionsBlock(child: child, colors: colors),
-        _EventsBlock(child: child, colors: colors),
+        _EventsBlock(schoolId: schoolId, child: child, colors: colors),
       ],
     );
   }
@@ -423,12 +424,13 @@ class ChildInstructionCards extends StatelessWidget {
 }
 
 class ChildEventCards extends StatelessWidget {
+  final String schoolId;
   final Map<String, dynamic> child;
-  const ChildEventCards({super.key, required this.child});
+  const ChildEventCards({super.key, required this.schoolId, required this.child});
 
   @override
   Widget build(BuildContext context) {
-    return _EventsBlock(child: child, colors: dayHistoryColors, showTitle: false);
+    return _EventsBlock(schoolId: schoolId, child: child, colors: dayHistoryColors, showTitle: false);
   }
 }
 
@@ -549,10 +551,11 @@ class _InstructionsBlock extends StatelessWidget {
 }
 
 class _EventsBlock extends StatelessWidget {
+  final String schoolId;
   final Map<String, dynamic> child;
   final List<Color> colors;
   final bool showTitle;
-  const _EventsBlock({required this.child, required this.colors, this.showTitle = true});
+  const _EventsBlock({required this.schoolId, required this.child, required this.colors, this.showTitle = true});
 
   @override
   Widget build(BuildContext context) {
@@ -578,11 +581,17 @@ class _EventsBlock extends StatelessWidget {
               'consent_declined': 'Άρνηση',
             };
             final sc = statusColors[status] ?? (const Color(0xFF6B7280), const Color(0xFFF3F4F6));
-            return Container(
+            final eventId = event['id']?.toString() ?? '';
+            return Material(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => openParentEvent(context, schoolId, eventId),
+                child: Container(
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: const Color(0xFFF0E6F4)),
               ),
@@ -595,6 +604,11 @@ class _EventsBlock extends StatelessWidget {
                   if ((event['eventDate'] as String?) != null)
                     Text(_formatEventDate(event['eventDate'] as String),
                         style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
+                  if (status == 'pending_consent')
+                    const Padding(
+                      padding: EdgeInsets.only(top: 4),
+                      child: Text('Πάτα για λεπτομέρειες και συναίνεση', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFE95926))),
+                    ),
                 ])),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -602,8 +616,11 @@ class _EventsBlock extends StatelessWidget {
                   child: Text(statusLabels[status] ?? status,
                       style: TextStyle(color: sc.$1, fontSize: 11, fontWeight: FontWeight.w600)),
                 ),
+                const Icon(Icons.chevron_right_rounded, color: Color(0xFF77328D)),
               ]),
               ]),
+                ),
+              ),
             );
     });
     final list = Padding(

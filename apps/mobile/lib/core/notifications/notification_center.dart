@@ -376,7 +376,7 @@ Future<void> openNotification(BuildContext context, WidgetRef ref, Map<String, d
   }
 
   if (type == 'event_post' || type == 'school_event') {
-    final eventId = data['eventId'] as String? ?? '';
+    final eventId = data['eventId']?.toString() ?? '';
     await Navigator.push(
       context,
       MaterialPageRoute(

@@ -7,21 +7,13 @@ import '../../../core/providers/auth_provider.dart';
 import '../../../core/widgets/app_image.dart';
 import '../../../core/widgets/person_face.dart';
 import '../../medications/medications_screen.dart';
+import '../parent_children.dart';
 import 'child_hub_screen.dart';
 import 'day_history.dart';
 import 'parent_meetings_screen.dart';
 import 'school_posts_screen.dart';
 import 'teacher_absences_screen.dart';
 import 'thematic_screen.dart';
-
-final myChildrenProvider = FutureProvider.family<List<dynamic>, String>(
-  (ref, schoolId) async {
-    final dio = ref.read(dioProvider);
-    final resp = await dio.get('/schools/$schoolId/students/my-children');
-    final data = resp.data;
-    return data is List ? data : [];
-  },
-);
 
 final monthThematicProvider = FutureProvider.family<List<dynamic>, String>((ref, schoolId) async {
   final dio = ref.read(dioProvider);
@@ -208,7 +200,7 @@ class HomeScreen extends ConsumerWidget {
                             return pending > 0 ? '$pending εκκρεμεί' : null;
                           }(),
                         ),
-                        for (final child in cards) ChildEventCards(child: child),
+                        for (final child in cards) ChildEventCards(schoolId: schoolId, child: child),
                       ],
                       ParentMedicationSection(schoolId: schoolId),
                       _GroupedExtras(children: cards, plans: plans, meetings: meetings),

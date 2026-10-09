@@ -4,14 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/utils/event_status.dart';
+import '../../../core/utils/system_insets.dart';
 import '../../../core/widgets/app_image.dart';
 import '../../../core/widgets/person_face.dart';
+import '../parent_children.dart';
 import 'celebration_detail_screen.dart';
 import 'event_gallery_screen.dart';
 import 'event_instructions.dart';
 
 // Returns list of enrollments (each has `event` + `student` + status)
-final _parentEventsProvider = FutureProvider.family<List<dynamic>, String>(
+final parentEventsProvider = FutureProvider.family<List<dynamic>, String>(
   (ref, schoolId) async {
     final dio = ref.read(dioProvider);
     final resp = await dio.get('/schools/$schoolId/events/parent/my-events');
@@ -62,7 +64,8 @@ class _ParentEventsScreenState extends ConsumerState<ParentEventsScreen> {
         '/schools/${widget.schoolId}/events/enrollments/$enrollmentId/consent',
         data: {'consent': consent},
       );
-      ref.invalidate(_parentEventsProvider(widget.schoolId));
+      ref.invalidate(parentEventsProvider(widget.schoolId));
+      ref.invalidate(myChildrenProvider(widget.schoolId));
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -76,7 +79,7 @@ class _ParentEventsScreenState extends ConsumerState<ParentEventsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final eventsAsync = ref.watch(_parentEventsProvider(widget.schoolId));
+    final eventsAsync = ref.watch(parentEventsProvider(widget.schoolId));
     final celebrations = ref.watch(_celebrationsProvider(widget.schoolId)).asData?.value ?? const [];
 
     return Scaffold(
@@ -89,7 +92,7 @@ class _ParentEventsScreenState extends ConsumerState<ParentEventsScreen> {
           IconButton(
             icon: const Icon(Icons.refresh_outlined, color: Color(0xFF77328D)),
             onPressed: () {
-              ref.invalidate(_parentEventsProvider(widget.schoolId));
+              ref.invalidate(parentEventsProvider(widget.schoolId));
               ref.invalidate(_celebrationsProvider(widget.schoolId));
             },
           ),
@@ -121,9 +124,9 @@ class _ParentEventsScreenState extends ConsumerState<ParentEventsScreen> {
 
           return RefreshIndicator(
             onRefresh: () async {
-              ref.invalidate(_parentEventsProvider(widget.schoolId));
+              ref.invalidate(parentEventsProvider(widget.schoolId));
               ref.invalidate(_celebrationsProvider(widget.schoolId));
-              await ref.read(_parentEventsProvider(widget.schoolId).future);
+              await ref.read(parentEventsProvider(widget.schoolId).future);
             },
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
@@ -138,6 +141,7 @@ class _ParentEventsScreenState extends ConsumerState<ParentEventsScreen> {
                   final student = group['student'] as Map<String, dynamic>;
                   final childEnrollments = group['enrollments'] as List<dynamic>;
                   return _ChildEventGroup(
+                    schoolId: widget.schoolId,
                     student: student,
                     enrollments: childEnrollments,
                     giving: _giving,
@@ -305,12 +309,14 @@ class _ItemBlock extends StatelessWidget {
 }
 
 class _ChildEventGroup extends StatelessWidget {
+  final String schoolId;
   final Map<String, dynamic> student;
   final List<dynamic> enrollments;
   final Set<String> giving;
   final Future<void> Function(String, bool) onConsent;
 
   const _ChildEventGroup({
+    required this.schoolId,
     required this.student,
     required this.enrollments,
     required this.giving,
@@ -344,7 +350,7 @@ class _ChildEventGroup extends StatelessWidget {
             ],
           ]),
         ),
-        ...enrollments.map((enr) => _EventCard(enrollment: enr, giving: giving, onConsent: onConsent)),
+        ...enrollments.map((enr) => _EventCard(schoolId: schoolId, enrollment: enr, giving: giving, onConsent: onConsent)),
         const SizedBox(height: 20),
       ],
     );
@@ -352,11 +358,12 @@ class _ChildEventGroup extends StatelessWidget {
 }
 
 class _EventCard extends StatelessWidget {
+  final String schoolId;
   final dynamic enrollment;
   final Set<String> giving;
   final Future<void> Function(String, bool) onConsent;
 
-  const _EventCard({required this.enrollment, required this.giving, required this.onConsent});
+  const _EventCard({required this.schoolId, required this.enrollment, required this.giving, required this.onConsent});
 
   @override
   Widget build(BuildContext context) {
@@ -397,7 +404,7 @@ class _EventCard extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
             child: InkWell(
-              onTap: () => openEventGallery(context, event),
+              onTap: () => openParentEvent(context, schoolId, event['id']?.toString() ?? ''),
               child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -576,7 +583,7 @@ class _EventCard extends StatelessWidget {
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                             padding: const EdgeInsets.symmetric(vertical: 10),
                           ),
-                          child: const Text('Άρνηση', style: TextStyle(fontWeight: FontWeight.w600)),
+                          child: const Text('Όχι', style: TextStyle(fontWeight: FontWeight.w600)),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -591,7 +598,7 @@ class _EventCard extends StatelessWidget {
                             padding: const EdgeInsets.symmetric(vertical: 10),
                             elevation: 0,
                           ),
-                          child: const Text('Δίνω Συναίνεση ✓', style: TextStyle(fontWeight: FontWeight.w700)),
+                          child: const Text('Συναινώ', style: TextStyle(fontWeight: FontWeight.w700)),
                         ),
                       ),
                     ]),
@@ -614,51 +621,308 @@ class _EventCard extends StatelessWidget {
   }
 }
 
-class ParentEventScreen extends ConsumerWidget {
+void openParentEvent(BuildContext context, String schoolId, String eventId) {
+  if (schoolId.isEmpty || eventId.isEmpty) return;
+  Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => ParentEventScreen(schoolId: schoolId, eventId: eventId)),
+  );
+}
+
+class ParentEventScreen extends ConsumerStatefulWidget {
   final String schoolId;
   final String eventId;
   const ParentEventScreen({super.key, required this.schoolId, required this.eventId});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final events = ref.watch(_parentEventsProvider(schoolId));
+  ConsumerState<ParentEventScreen> createState() => _ParentEventScreenState();
+}
+
+class _ParentEventScreenState extends ConsumerState<ParentEventScreen> {
+  final _giving = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() {
+      if (!mounted) return;
+      ref.invalidate(parentEventsProvider(widget.schoolId));
+    });
+  }
+
+  Future<void> _giveConsent(String enrollmentId, bool consent) async {
+    setState(() => _giving.add(enrollmentId));
+    try {
+      final dio = ref.read(dioProvider);
+      await dio.put(
+        '/schools/${widget.schoolId}/events/enrollments/$enrollmentId/consent',
+        data: {'consent': consent},
+      );
+      ref.invalidate(parentEventsProvider(widget.schoolId));
+      ref.invalidate(myChildrenProvider(widget.schoolId));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Δεν αποθηκεύτηκε η απάντηση. Δοκίμασε ξανά.'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _giving.remove(enrollmentId));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final events = ref.watch(parentEventsProvider(widget.schoolId));
     return events.when(
-      loading: () => const Scaffold(body: Center(child: CircularProgressIndicator(color: Color(0xFF77328D)))),
-      error: (_, __) => const Scaffold(body: Center(child: Text('Η εκδήλωση δεν φορτώθηκε.'))),
+      loading: () => const Scaffold(
+        backgroundColor: Color(0xFFF6F3FA),
+        body: Center(child: CircularProgressIndicator(color: Color(0xFF77328D))),
+      ),
+      error: (_, __) => Scaffold(
+        appBar: AppBar(title: const Text('Εκδήλωση')),
+        body: const Center(child: Text('Η εκδήλωση δεν φορτώθηκε.')),
+      ),
       data: (rows) {
         Map<String, dynamic>? event;
-        final children = <String>[];
+        final enrollments = <Map<String, dynamic>>[];
         for (final row in rows) {
           if (row is! Map) continue;
           final item = Map<String, dynamic>.from(row);
           final current = item['event'];
-          if (current is! Map || current['id']?.toString() != eventId) continue;
+          if (current is! Map || current['id']?.toString() != widget.eventId) continue;
           event ??= Map<String, dynamic>.from(current);
-          final name = (item['student'] as Map?)?['fullName']?.toString() ?? '';
-          if (name.isNotEmpty) children.add(name);
+          enrollments.add(item);
         }
         if (event == null) {
-          return const Scaffold(body: Center(child: Text('Η εκδήλωση δεν είναι διαθέσιμη.')));
+          return Scaffold(
+            appBar: AppBar(title: const Text('Εκδήλωση')),
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('Η εκδήλωση δεν είναι διαθέσιμη.', textAlign: TextAlign.center),
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: () => ref.invalidate(parentEventsProvider(widget.schoolId)),
+                      child: const Text('Ανανέωση'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
         }
-        final cost = double.tryParse(event['costPerChild']?.toString() ?? '') ?? 0;
-        final date = event['eventDate']?.toString();
-        final when = date == null || date.isEmpty ? '' : formatCelebrationDate(date);
-        final details = [
-          if (children.isNotEmpty) children.join(', '),
-          if (when.isNotEmpty) when,
-          if (cost > 0) '${cost.toStringAsFixed(2)} €',
-        ].join(' · ');
-        return EventGalleryScreen(
-          title: event['title'] as String? ?? 'Εκδήλωση',
-          eventDate: date,
-          status: event['status'] as String?,
-          description: event['description'] as String?,
-          dayInstructions: event['dayInstructions'] as String?,
-          recap: event['recap'] as String?,
-          media: eventMediaList(event['postMedia']),
-          detailsLine: details,
+        return _EventDetailBody(
+          event: event,
+          enrollments: enrollments,
+          giving: _giving,
+          onConsent: _giveConsent,
         );
       },
     );
+  }
+}
+
+class _EventDetailBody extends StatelessWidget {
+  final Map<String, dynamic> event;
+  final List<Map<String, dynamic>> enrollments;
+  final Set<String> giving;
+  final Future<void> Function(String, bool) onConsent;
+
+  const _EventDetailBody({
+    required this.event,
+    required this.enrollments,
+    required this.giving,
+    required this.onConsent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final title = event['title']?.toString() ?? 'Εκδήλωση';
+    final eventType = event['eventType']?.toString() ?? '';
+    final description = (event['description']?.toString() ?? '').trim();
+    final dayInstructions = event['dayInstructions']?.toString();
+    final recap = (event['recap']?.toString() ?? '').trim();
+    final date = event['eventDate']?.toString();
+    final when = date == null || date.isEmpty ? '' : _formatEventDate(date);
+    final cost = double.tryParse(event['costPerChild']?.toString() ?? '') ?? 0;
+    final media = eventMediaList(event['postMedia']);
+    final completed = eventDisplayStatus(event['status']?.toString(), date) == 'completed';
+    final teachers = event['teachers'] as List<dynamic>? ?? [];
+    final names = teachers.map((row) {
+      if (row is! Map) return '';
+      final user = row['user'];
+      if (user is! Map) return '';
+      return user['fullName']?.toString() ?? '';
+    }).where((name) => name.isNotEmpty).join(', ');
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF6F3FA),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF111827))),
+      ),
+      body: ListView(
+        padding: EdgeInsets.fromLTRB(16, 16, 16, 24 + systemBottomInset(context)),
+        children: [
+          Text(_eventTypeGr[eventType] ?? 'Εκδήλωση', style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w800)),
+          if (when.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(when, style: const TextStyle(fontSize: 14, color: Color(0xFF6B7280))),
+          ],
+          if (cost > 0) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              child: Text(
+                'Κόστος συμμετοχής ανά παιδί: ${cost.toStringAsFixed(2)} €',
+                style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF111827)),
+              ),
+            ),
+          ],
+          if (names.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text('Εκπαιδευτικοί: $names', style: const TextStyle(color: Color(0xFF6B7280))),
+          ],
+          if (description.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            const Text('Περιγραφή', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF77328D))),
+            const SizedBox(height: 6),
+            Text(description, style: const TextStyle(fontSize: 15, height: 1.45, color: Color(0xFF374151))),
+          ],
+          if (instructionLines(dayInstructions).isNotEmpty) ...[
+            const SizedBox(height: 16),
+            UsefulInstructions(text: dayInstructions),
+          ],
+          if (recap.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Text('Ανασκόπηση', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF77328D))),
+            const SizedBox(height: 6),
+            Text(recap, style: const TextStyle(fontSize: 15, height: 1.45, color: Color(0xFF2C2422))),
+          ],
+          const SizedBox(height: 18),
+          ...enrollments.map((enrollment) => _ConsentBlock(
+                enrollment: enrollment,
+                loading: giving.contains(enrollment['id']?.toString() ?? ''),
+                onConsent: onConsent,
+              )),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () => openEventGallery(context, event),
+            icon: Icon(completed || media.isNotEmpty || recap.isNotEmpty ? Icons.photo_library_rounded : Icons.lock_clock_rounded),
+            label: Text(
+              (completed || media.isNotEmpty || recap.isNotEmpty)
+                  ? 'Ανάρτηση εκδήλωσης'
+                  : 'Η ανάρτηση εμφανίζεται μετά την εκδήλωση',
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF77328D),
+              side: const BorderSide(color: Color(0xFF77328D)),
+              minimumSize: const Size.fromHeight(48),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ConsentBlock extends StatelessWidget {
+  final Map<String, dynamic> enrollment;
+  final bool loading;
+  final Future<void> Function(String, bool) onConsent;
+
+  const _ConsentBlock({required this.enrollment, required this.loading, required this.onConsent});
+
+  @override
+  Widget build(BuildContext context) {
+    final enrollmentId = enrollment['id']?.toString() ?? '';
+    final status = enrollment['status']?.toString() ?? '';
+    final student = enrollment['student'] as Map?;
+    final name = student?['fullName']?.toString() ?? '';
+    final meta = _statusMeta[status];
+    final pending = status == 'pending_consent';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: pending ? const Color(0xFFF6C7B8) : const Color(0xFFE5E7EB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (name.isNotEmpty)
+            Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF111827))),
+          if (meta != null) ...[
+            const SizedBox(height: 6),
+            Text(meta.$1, style: TextStyle(color: meta.$2, fontWeight: FontWeight.w700)),
+          ],
+          if (pending) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Θέλεις να συμμετέχει το παιδί;',
+              style: TextStyle(fontSize: 14, color: Color(0xFF374151)),
+            ),
+            const SizedBox(height: 12),
+            if (loading)
+              const Center(child: SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF77328D))))
+            else
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: enrollmentId.isEmpty ? null : () => onConsent(enrollmentId, false),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFFDC2626),
+                        side: const BorderSide(color: Color(0xFFFCA5A5)),
+                        minimumSize: const Size.fromHeight(56),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: const Text('Όχι', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 2,
+                    child: FilledButton(
+                      onPressed: enrollmentId.isEmpty ? null : () => onConsent(enrollmentId, true),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF77328D),
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size.fromHeight(56),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: const Text('Συναινώ', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+String _formatEventDate(String iso) {
+  try {
+    final dt = DateTime.parse(iso).toLocal();
+    const months = ['', 'Ιαν', 'Φεβ', 'Μαρ', 'Απρ', 'Μαΐ', 'Ιουν', 'Ιουλ', 'Αυγ', 'Σεπ', 'Οκτ', 'Νοε', 'Δεκ'];
+    return '${dt.day} ${months[dt.month]} ${dt.year}';
+  } catch (_) {
+    return iso;
   }
 }

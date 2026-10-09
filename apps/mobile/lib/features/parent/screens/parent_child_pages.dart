@@ -10,6 +10,7 @@ import '../../../core/widgets/app_image.dart';
 import '../../messages/conversation_ui.dart';
 import 'event_gallery_screen.dart';
 import 'event_instructions.dart';
+import 'events_screen.dart';
 import 'bus_map_screen.dart';
 
 String _iso(DateTime d) =>
@@ -578,14 +579,14 @@ class ChildEventsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final events = ref.watch(_childEventsProvider(schoolId));
+    final events = ref.watch(parentEventsProvider(schoolId));
     final studentId = child['id'] as String? ?? '';
     return Scaffold(
       backgroundColor: const Color(0xFFF6F3FA),
       appBar: AppBar(
         title: const Text('Εκδρομές & εκδηλώσεις'),
         actions: [
-          IconButton(onPressed: () => ref.invalidate(_childEventsProvider(schoolId)), icon: const Icon(Icons.refresh_rounded)),
+          IconButton(onPressed: () => ref.invalidate(parentEventsProvider(schoolId)), icon: const Icon(Icons.refresh_rounded)),
         ],
       ),
       body: events.when(
@@ -605,13 +606,13 @@ class ChildEventsScreen extends ConsumerWidget {
           }
           return RefreshIndicator(
             color: const Color(0xFF77328D),
-            onRefresh: () => ref.refresh(_childEventsProvider(schoolId).future),
+            onRefresh: () => ref.refresh(parentEventsProvider(schoolId).future),
             child: ListView.separated(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
               itemCount: mine.length,
               separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemBuilder: (_, i) => _ChildEventCard(enrollment: Map<String, dynamic>.from(mine[i] as Map)),
+              itemBuilder: (_, i) => _ChildEventCard(schoolId: schoolId, enrollment: Map<String, dynamic>.from(mine[i] as Map)),
             ),
           );
         },
@@ -620,15 +621,10 @@ class ChildEventsScreen extends ConsumerWidget {
   }
 }
 
-final _childEventsProvider = FutureProvider.family<List<dynamic>, String>((ref, schoolId) async {
-  final dio = ref.read(dioProvider);
-  final resp = await dio.get('/schools/$schoolId/events/parent/my-events');
-  return resp.data is List ? resp.data as List<dynamic> : [];
-});
-
 class _ChildEventCard extends StatelessWidget {
+  final String schoolId;
   final Map<String, dynamic> enrollment;
-  const _ChildEventCard({required this.enrollment});
+  const _ChildEventCard({required this.schoolId, required this.enrollment});
 
   @override
   Widget build(BuildContext context) {
@@ -649,7 +645,7 @@ class _ChildEventCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
-        onTap: () => openEventGallery(context, event),
+        onTap: () => openParentEvent(context, schoolId, event['id']?.toString() ?? ''),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
