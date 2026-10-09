@@ -677,6 +677,8 @@ class _ChildEventCard extends StatelessWidget {
                 const SizedBox(height: 10),
                 UsefulInstructions(text: dayInstructions),
               ],
+              const SizedBox(height: 8),
+              EventDayFacts(arriveBy: event['arriveBy']?.toString(), busOperates: event['busOperates']),
               const SizedBox(height: 12),
               Row(
                 children: [

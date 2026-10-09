@@ -1,9 +1,10 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class BusTrackingService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private notifications: NotificationsService) {}
 
   async drivers(schoolId: string) {
     return this.prisma.schoolMember.findMany({
@@ -196,6 +197,75 @@ export class BusTrackingService {
       }),
     };
   }
+
+  async listClosures(schoolId: string) {
+    const rows = await this.prisma.busClosure.findMany({
+      where: { schoolId },
+      orderBy: { day: 'desc' },
+      take: 80,
+    });
+    return rows.map(closureJson);
+  }
+
+  async todayClosure(schoolId: string) {
+    const row = await this.prisma.busClosure.findUnique({
+      where: { schoolId_day: { schoolId, day: schoolDay() } },
+    });
+    if (!row) return { closed: false };
+    return { closed: true, ...closureJson(row) };
+  }
+
+  async createClosure(schoolId: string, userId: string, body: { day?: string; reason?: string }) {
+    const day = parseDay(body.day);
+    const reason = (body.reason ?? '').trim();
+    if (!reason) throw new BadRequestException('Γράψε τον λόγο.');
+    const saved = await this.prisma.busClosure.upsert({
+      where: { schoolId_day: { schoolId, day } },
+      create: { schoolId, day, reason: reason.slice(0, 500), createdById: userId },
+      update: { reason: reason.slice(0, 500), createdById: userId },
+    });
+    await this.notifyClosure(schoolId, saved.day, saved.reason);
+    return closureJson(saved);
+  }
+
+  async removeClosure(schoolId: string, closureId: string) {
+    const existing = await this.prisma.busClosure.findFirst({ where: { id: closureId, schoolId } });
+    if (!existing) throw new NotFoundException('Η ημέρα δεν βρέθηκε.');
+    await this.prisma.busClosure.delete({ where: { id: existing.id } });
+    return { success: true };
+  }
+
+  private async notifyClosure(schoolId: string, day: Date, reason: string) {
+    const rows = await this.prisma.studentService.findMany({
+      where: {
+        isActive: true,
+        service: { schoolId, isActive: true, OR: [{ serviceType: 'bus' }, { name: { contains: 'σχολ', mode: 'insensitive' } }] },
+        student: { schoolId, isActive: true },
+      },
+      select: { student: { select: { parents: { select: { userId: true } } } } },
+    });
+    const parents = rows.flatMap((row) => row.student.parents.map((parent) => parent.userId));
+    const label = `${String(day.getUTCDate()).padStart(2, '0')}/${String(day.getUTCMonth() + 1).padStart(2, '0')}/${day.getUTCFullYear()}`;
+    const today = schoolDay().getTime() === day.getTime();
+    await this.notifications.notifyUsers(schoolId, parents, {
+      event: 'bus_closure',
+      type: 'bus_closure',
+      title: today ? 'Σήμερα δεν θα έχει σχολικό' : `Στις ${label} δεν θα έχει σχολικό`,
+      body: `Λόγος: ${reason}`,
+      data: { screen: 'bus', day: label },
+    });
+  }
+}
+
+function closureJson(row: { id: string; day: Date; reason: string }) {
+  const day = row.day.toISOString().slice(0, 10);
+  return { id: row.id, day, reason: row.reason };
+}
+
+function parseDay(value?: string) {
+  const day = (value ?? '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new BadRequestException('Η ημερομηνία δεν είναι έγκυρη.');
+  return new Date(`${day}T00:00:00.000Z`);
 }
 
 function schoolDay(now = new Date()) {

@@ -469,6 +469,10 @@ class _EventCard extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: UsefulInstructions(text: dayInstructions),
             ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: EventDayFacts(arriveBy: event['arriveBy']?.toString(), busOperates: event['busOperates']),
+          ),
 
           // Cost row
           if (cost > 0)
@@ -803,6 +807,8 @@ class _EventDetailBody extends StatelessWidget {
             const SizedBox(height: 16),
             UsefulInstructions(text: dayInstructions),
           ],
+          const SizedBox(height: 12),
+          EventDayFacts(arriveBy: event['arriveBy']?.toString(), busOperates: event['busOperates']),
           if (recap.isNotEmpty) ...[
             const SizedBox(height: 16),
             const Text('Ανασκόπηση', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF77328D))),

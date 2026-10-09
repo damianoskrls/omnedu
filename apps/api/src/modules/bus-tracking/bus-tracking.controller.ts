@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -50,6 +50,33 @@ export class BusTrackingController {
     @Body() body: { serviceId?: string; studentId?: string },
   ) {
     return this.service.pickup(schoolId, user.sub, user.role, body);
+  }
+
+  @Get('closures/today')
+  todayClosure(@Param('schoolId') schoolId: string) {
+    return this.service.todayClosure(schoolId);
+  }
+
+  @Get('closures')
+  @Roles('school_admin')
+  listClosures(@Param('schoolId') schoolId: string) {
+    return this.service.listClosures(schoolId);
+  }
+
+  @Post('closures')
+  @Roles('school_admin')
+  createClosure(
+    @Param('schoolId') schoolId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { day?: string; reason?: string },
+  ) {
+    return this.service.createClosure(schoolId, user.sub, body);
+  }
+
+  @Delete('closures/:closureId')
+  @Roles('school_admin')
+  removeClosure(@Param('schoolId') schoolId: string, @Param('closureId') closureId: string) {
+    return this.service.removeClosure(schoolId, closureId);
   }
 
   @Get('student/:studentId')

@@ -8,6 +8,7 @@ import {
   Bus, Plus, X, Pencil, Trash2,
   MapPin, Clock, User, Users, Settings, Home, Phone,
 } from 'lucide-react';
+import { BusClosures } from './bus-closures';
 
 const MapPicker = dynamic(() => import('@/components/MapPickerInner'), {
   ssr: false,
@@ -364,6 +365,8 @@ export default function RoutesPage() {
           </button>
         )}
       </div>
+
+      {isAdmin && <BusClosures schoolId={schoolId} />}
 
       {/* Stats */}
       {!loading && services.length > 0 && (

@@ -8,6 +8,7 @@ import '../../../core/widgets/app_image.dart';
 import '../../../core/widgets/person_face.dart';
 import '../../medications/medications_screen.dart';
 import '../parent_children.dart';
+import 'bus_closure.dart';
 import 'child_hub_screen.dart';
 import 'day_history.dart';
 import 'parent_meetings_screen.dart';
@@ -169,6 +170,7 @@ class HomeScreen extends ConsumerWidget {
                           },
                         ),
                       ),
+                      if (cards.any(childHasBus)) BusClosedNotice(schoolId: schoolId),
                       daySectionTitle(Icons.today_rounded, 'Ενημέρωση Σήμερα', dayHistoryColors),
                       for (final child in cards)
                         Padding(

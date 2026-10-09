@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnedu/core/widgets/person_face.dart';
+import 'package:omnedu/features/parent/screens/bus_closure.dart';
 import 'package:omnedu/features/parent/screens/child_hub_screen.dart';
 
 void main() {
@@ -74,6 +75,9 @@ void main() {
   testWidgets('a child with a school bus shows the map shortcut above the regulations', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
+        overrides: [
+          busClosureTodayProvider.overrideWith((ref, schoolId) async => null),
+        ],
         child: MaterialApp(
           home: ChildHubScreen(
             schoolId: 'school-1',
@@ -96,5 +100,35 @@ void main() {
     final bus = tester.getTopLeft(find.text('Δες πού είναι το σχολικό'));
     final rules = tester.getTopLeft(find.text('Κανονισμοί'));
     expect(bus.dy, lessThan(rules.dy));
+  });
+
+  testWidgets('a closed bus day replaces the map shortcut with the reason', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          busClosureTodayProvider.overrideWith((ref, schoolId) async => {'closed': true, 'reason': 'Απεργία'}),
+        ],
+        child: const MaterialApp(
+          home: ChildHubScreen(
+            schoolId: 'school-1',
+            child: {
+              'id': 'child-1',
+              'fullName': 'Σοφία Γεωργίου',
+              'studentServices': [
+                {
+                  'service': {'name': 'Πρωινό σχολικό', 'serviceType': 'bus'},
+                },
+              ],
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Σήμερα δεν θα έχει σχολικό'), findsOneWidget);
+    expect(find.text('Απεργία'), findsOneWidget);
+    expect(find.text('Δες πού είναι το σχολικό'), findsNothing);
   });
 }

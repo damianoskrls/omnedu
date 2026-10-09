@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/widgets/person_face.dart';
+import 'event_instructions.dart';
 import 'events_screen.dart';
 
 const dayHistoryColors = [Color(0xFF77328D), Color(0xFFE95926)];
@@ -609,6 +610,7 @@ class _EventsBlock extends StatelessWidget {
                       padding: EdgeInsets.only(top: 4),
                       child: Text('Πάτα για λεπτομέρειες και συναίνεση', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFE95926))),
                     ),
+                  EventDayFacts(arriveBy: event['arriveBy']?.toString(), busOperates: event['busOperates']),
                 ])),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

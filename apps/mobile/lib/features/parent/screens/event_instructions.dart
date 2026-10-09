@@ -12,6 +12,44 @@ List<String> instructionLines(String? raw) {
       .toList();
 }
 
+bool? busRuns(Object? value) {
+  if (value == true || value == 'true') return true;
+  if (value == false || value == 'false') return false;
+  return null;
+}
+
+class EventDayFacts extends StatelessWidget {
+  final String? arriveBy;
+  final Object? busOperates;
+  const EventDayFacts({super.key, this.arriveBy, this.busOperates});
+
+  @override
+  Widget build(BuildContext context) {
+    final time = arriveBy?.trim() ?? '';
+    final bus = busRuns(busOperates);
+    if (time.isEmpty && bus == null) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (time.isNotEmpty)
+          Text(
+            'Το παιδί πρέπει να είναι στο σχολείο το αργότερο έως τις $time.',
+            style: const TextStyle(fontSize: 15, height: 1.4, fontWeight: FontWeight.w700, color: Color(0xFF111827)),
+          ),
+        if (bus != null) ...[
+          if (time.isNotEmpty) const SizedBox(height: 6),
+          Text(
+            bus
+                ? 'Το δρομολόγιο του σχολικού θα λειτουργήσει εκείνη την ημέρα.'
+                : 'Το δρομολόγιο του σχολικού δεν θα λειτουργήσει εκείνη την ημέρα.',
+            style: const TextStyle(fontSize: 15, height: 1.4, color: Color(0xFF374151)),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 class UsefulInstructions extends StatelessWidget {
   final String? text;
   final Color color;

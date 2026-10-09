@@ -1,11 +1,13 @@
-import { ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { athensTodayYmd, resolveEventStatus } from './event-status';
+import { addCalendarDays, athensTodayYmd, dayBeforeBody, dayBeforeTitle, eventDayYmd, resolveEventStatus } from './event-status';
 import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
-export class SchoolEventsService implements OnModuleInit {
+export class SchoolEventsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SchoolEventsService.name);
+  private reminderTimer: NodeJS.Timeout | null = null;
+  private reminderRunning = false;
 
   constructor(private prisma: PrismaService, private notifications: NotificationsService) {}
 
@@ -16,6 +18,13 @@ export class SchoolEventsService implements OnModuleInit {
       const message = String((error as { message?: string })?.message ?? error);
       if (!/already exists|duplicate/i.test(message)) this.logger.warn(`Event recap column: ${message}`);
     }
+    void this.sendDayBeforeReminders();
+    this.reminderTimer = setInterval(() => void this.sendDayBeforeReminders(), 20 * 60 * 1000);
+    this.reminderTimer.unref?.();
+  }
+
+  onModuleDestroy() {
+    if (this.reminderTimer) clearInterval(this.reminderTimer);
   }
 
   async list(schoolId: string, status?: string) {
@@ -52,7 +61,7 @@ export class SchoolEventsService implements OnModuleInit {
   }
 
   async create(schoolId: string, userId: string, dto: any) {
-    const { title, description, dayInstructions, eventType, eventDate, costPerChild, classIds, mediaUrls, teacherIds, status, audienceType, audienceIds } = dto;
+    const { title, description, dayInstructions, arriveBy, busOperates, eventType, eventDate, costPerChild, classIds, mediaUrls, teacherIds, status, audienceType, audienceIds } = dto;
 
     const resolvedClassIds = await this.resolveAudienceToClassIds(schoolId, audienceType, audienceIds, classIds);
 
@@ -63,6 +72,8 @@ export class SchoolEventsService implements OnModuleInit {
         title,
         description,
         dayInstructions: emptyToNull(dayInstructions),
+        arriveBy: clockOrNull(arriveBy),
+        busOperates: boolOrNull(busOperates),
         eventType: eventType ?? 'general',
         eventDate: eventDate ? new Date(eventDate) : null,
         costPerChild: costPerChild != null ? costPerChild : null,
@@ -83,6 +94,7 @@ export class SchoolEventsService implements OnModuleInit {
     if ((event.status === 'published' || event.status === 'completed') && resolvedClassIds.length) {
       await this.enrollStudentsForClasses(schoolId, event.id, resolvedClassIds);
     }
+    void this.sendDayBeforeReminders();
 
     return event;
   }
@@ -91,9 +103,10 @@ export class SchoolEventsService implements OnModuleInit {
     const existing = await this.prisma.schoolEvent.findFirst({ where: { id: eventId, schoolId } });
     if (!existing) throw new NotFoundException('Event not found');
 
-    const { title, description, dayInstructions, eventType, eventDate, costPerChild, classIds, mediaUrls, teacherIds, status, audienceType, audienceIds } = dto;
+    const { title, description, dayInstructions, arriveBy, busOperates, eventType, eventDate, costPerChild, classIds, mediaUrls, teacherIds, status, audienceType, audienceIds } = dto;
 
     const nextDate = eventDate !== undefined ? (eventDate ? new Date(eventDate) : null) : existing.eventDate;
+    const dateChanged = eventDate !== undefined && eventDayYmd(nextDate) !== eventDayYmd(existing.eventDate);
     const nextStatus = resolveEventStatus(status, nextDate, existing.status);
     const wasPublished = existing.status === 'published' || existing.status === 'completed';
     const becomesPublished = (nextStatus === 'published' || nextStatus === 'completed') && !wasPublished;
@@ -108,6 +121,9 @@ export class SchoolEventsService implements OnModuleInit {
         ...(title !== undefined && { title }),
         ...(description !== undefined && { description }),
         ...(dayInstructions !== undefined && { dayInstructions: emptyToNull(dayInstructions) }),
+        ...(arriveBy !== undefined && { arriveBy: clockOrNull(arriveBy) }),
+        ...(busOperates !== undefined && { busOperates: boolOrNull(busOperates) }),
+        ...(dateChanged && { dayBeforeNotifiedAt: null }),
         ...(eventType !== undefined && { eventType }),
         ...(eventDate !== undefined && { eventDate: eventDate ? new Date(eventDate) : null }),
         ...(costPerChild !== undefined && { costPerChild }),
@@ -132,6 +148,7 @@ export class SchoolEventsService implements OnModuleInit {
     if (becomesPublished && resolvedClassIds?.length) {
       await this.enrollStudentsForClasses(schoolId, eventId, resolvedClassIds);
     }
+    void this.sendDayBeforeReminders();
 
     return event;
   }
@@ -170,6 +187,76 @@ export class SchoolEventsService implements OnModuleInit {
     return { success: true };
   }
 
+  async sendDayBeforeReminders(now = new Date()) {
+    if (this.reminderRunning) return;
+    this.reminderRunning = true;
+    try {
+      const tomorrow = addCalendarDays(athensTodayYmd(now), 1);
+      const events = await this.prisma.schoolEvent.findMany({
+        where: {
+          status: { in: ['published', 'completed'] },
+          dayBeforeNotifiedAt: null,
+          eventDate: { not: null },
+        },
+        select: {
+          id: true,
+          schoolId: true,
+          title: true,
+          description: true,
+          eventType: true,
+          eventDate: true,
+          arriveBy: true,
+          busOperates: true,
+        },
+      });
+      for (const event of events) {
+        if (eventDayYmd(event.eventDate) !== tomorrow) continue;
+        await this.notifyDayBefore(event);
+        await this.prisma.schoolEvent.update({
+          where: { id: event.id },
+          data: { dayBeforeNotifiedAt: new Date() },
+        });
+      }
+    } catch (error) {
+      this.logger.warn(`Day-before reminder: ${(error as { message?: string })?.message ?? error}`);
+    } finally {
+      this.reminderRunning = false;
+    }
+  }
+
+  private async notifyDayBefore(event: {
+    id: string;
+    schoolId: string;
+    title: string;
+    description: string | null;
+    eventType: string;
+    arriveBy: string | null;
+    busOperates: boolean | null;
+  }) {
+    const rows = await this.prisma.schoolEventEnrollment.findMany({
+      where: { eventId: event.id, status: { not: 'consent_declined' } },
+      select: { student: { select: { fullName: true, parents: { select: { userId: true } } } } },
+    });
+    const byParent = new Map<string, string[]>();
+    for (const row of rows) {
+      for (const parent of row.student.parents) {
+        const names = byParent.get(parent.userId) ?? [];
+        if (!names.includes(row.student.fullName)) names.push(row.student.fullName);
+        byParent.set(parent.userId, names);
+      }
+    }
+    const body = dayBeforeBody(event) || 'Πάτα για να δεις τις λεπτομέρειες.';
+    for (const [userId, names] of byParent) {
+      await this.notifications.notifyUsers(event.schoolId, [userId], {
+        event: 'school_event',
+        type: 'school_event',
+        title: dayBeforeTitle(names, event.eventType),
+        body,
+        data: { screen: 'events', eventId: event.id },
+      });
+    }
+  }
+
   private async enrollStudentsForClasses(schoolId: string, eventId: string, classIds: string[]) {
     // Get active class enrollment for current academic year
     const academicYear = await this.prisma.academicYear.findFirst({
@@ -201,7 +288,7 @@ export class SchoolEventsService implements OnModuleInit {
   private async notifyPublished(schoolId: string, eventId: string) {
     const event = await this.prisma.schoolEvent.findFirst({
       where: { id: eventId, schoolId },
-      select: { title: true, description: true, dayInstructions: true, eventDate: true, eventType: true, costPerChild: true },
+      select: { title: true, description: true, dayInstructions: true, arriveBy: true, busOperates: true, eventDate: true, eventType: true, costPerChild: true },
     });
     if (!event) return;
     const rows = await this.prisma.schoolEventEnrollment.findMany({
@@ -216,7 +303,9 @@ export class SchoolEventsService implements OnModuleInit {
     const cost = event.costPerChild != null && Number(event.costPerChild) > 0 ? `${Number(event.costPerChild).toFixed(2)} €` : '';
     const details = (event.description ?? '').replace(/\s+/g, ' ').trim();
     const instructions = (event.dayInstructions ?? '').trim() ? 'Υπάρχουν χρήσιμες οδηγίες για την ημέρα.' : '';
-    const body = [kind, when, cost, details, instructions].filter(Boolean).join(' · ').slice(0, 180);
+    const arrival = event.arriveBy ? `έως τις ${event.arriveBy}` : '';
+    const bus = event.busOperates === false ? 'χωρίς σχολικό' : event.busOperates === true ? 'με σχολικό' : '';
+    const body = [kind, when, arrival, bus, cost, details, instructions].filter(Boolean).join(' · ').slice(0, 180);
     await this.notifications.notifyUsers(schoolId, parents, {
       event: 'school_event',
       type: 'school_event',
@@ -481,6 +570,22 @@ export class SchoolEventsService implements OnModuleInit {
     await this.prisma.schoolEventMedia.delete({ where: { id: mediaId } });
     return { success: true };
   }
+}
+
+function clockOrNull(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour > 23 || minute > 59) return null;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+function boolOrNull(value: unknown): boolean | null {
+  if (value === true || value === 'true' || value === 'yes') return true;
+  if (value === false || value === 'false' || value === 'no') return false;
+  return null;
 }
 
 function emptyToNull(value: unknown): string | null {

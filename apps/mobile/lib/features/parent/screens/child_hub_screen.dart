@@ -7,6 +7,7 @@ import '../../medications/medications_screen.dart';
 import 'bulletin_screen.dart';
 import 'school_posts_screen.dart';
 import 'child_detail_screen.dart';
+import 'bus_closure.dart';
 import 'bus_map_screen.dart';
 import 'parent_child_pages.dart';
 import 'parent_meetings_screen.dart';
@@ -220,7 +221,7 @@ class ChildHubScreen extends StatelessWidget {
   }
 }
 
-class _BusWhereButton extends StatelessWidget {
+class _BusWhereButton extends ConsumerWidget {
   final String schoolId;
   final Map<String, dynamic> child;
   const _BusWhereButton({required this.schoolId, required this.child});
@@ -241,10 +242,17 @@ class _BusWhereButton extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final studentId = child['id']?.toString() ?? '';
     final bus = _bus(child);
     if (bus == null) return const SizedBox.shrink();
+    final closure = ref.watch(busClosureTodayProvider(schoolId)).asData?.value;
+    if (closure != null) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: BusClosedCard(reason: closure['reason']?.toString() ?? ''),
+      );
+    }
     final catalog = bus['service'];
     final name = catalog is Map ? catalog['name']?.toString().trim() ?? '' : '';
     return Padding(

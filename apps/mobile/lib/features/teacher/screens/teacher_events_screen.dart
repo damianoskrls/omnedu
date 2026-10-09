@@ -237,6 +237,10 @@ class _TeacherEventCardState extends State<_TeacherEventCard> {
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: UsefulInstructions(text: dayInstructions),
             ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: EventDayFacts(arriveBy: event['arriveBy']?.toString(), busOperates: event['busOperates']),
+          ),
 
           // Stats row
           Padding(

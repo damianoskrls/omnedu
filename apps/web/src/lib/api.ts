@@ -441,6 +441,13 @@ export const activitiesApi = {
     api.delete(`/schools/${schoolId}/activities/${activityId}/instructors/${instructorId}`),
 };
 
+export const busClosuresApi = {
+  list: (schoolId: string) => api.get(`/schools/${schoolId}/bus-tracking/closures`),
+  create: (schoolId: string, data: { day: string; reason: string }) =>
+    api.post(`/schools/${schoolId}/bus-tracking/closures`, data),
+  remove: (schoolId: string, id: string) => api.delete(`/schools/${schoolId}/bus-tracking/closures/${id}`),
+};
+
 export const extraServicesApi = {
   list: (schoolId: string) => api.get(`/schools/${schoolId}/extra-services`),
   get: (schoolId: string, id: string) => api.get(`/schools/${schoolId}/extra-services/${id}`),

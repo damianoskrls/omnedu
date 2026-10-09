@@ -51,7 +51,7 @@ export default function EventsPage() {
   const [modal, setModal] = useState<'create' | 'edit' | null>(null);
   const [editingEvent, setEditingEvent] = useState<any>(null);
   const [form, setForm] = useState<any>({
-    title: '', description: '', dayInstructions: '', eventType: 'excursion', eventDate: '',
+    title: '', description: '', dayInstructions: '', arriveBy: '', busOperates: true, eventType: 'excursion', eventDate: '',
     costPerChild: '', classIds: [], audienceType: 'all', audienceIds: [],
     teacherIds: [], mediaUrls: [], status: 'draft',
   });
@@ -81,7 +81,7 @@ export default function EventsPage() {
   }, [schoolId]);
 
   const resetForm = () => setForm({
-    title: '', description: '', dayInstructions: '', eventType: 'excursion', eventDate: '',
+    title: '', description: '', dayInstructions: '', arriveBy: '', busOperates: true, eventType: 'excursion', eventDate: '',
     costPerChild: '', classIds: [], audienceType: 'all', audienceIds: [],
     teacherIds: [], mediaUrls: [], status: 'draft',
   });
@@ -94,6 +94,8 @@ export default function EventsPage() {
       title: ev.title,
       description: ev.description ?? '',
       dayInstructions: ev.dayInstructions ?? '',
+      arriveBy: ev.arriveBy ?? '',
+      busOperates: ev.busOperates !== false,
       eventType: ev.eventType,
       eventDate: ev.eventDate ? ev.eventDate.slice(0, 10) : '',
       costPerChild: ev.costPerChild ?? '',
@@ -491,6 +493,24 @@ export default function EventsPage() {
                   placeholder={'❖ τα παιδιά θα μεταφερθούν στο χώρο με πούλμαν.\n❖ Τα παιδιά εκείνη την ημέρα θα πρέπει να είναι στο σχολείο το αργότερο έως τις 8:00 π.μ.\n❖ θα πρέπει να έχουν μαζί τους μια τσάντα εκδρομής.'}
                   className={`${inputCls} resize-y`} />
                 <p className="text-xs text-gray-400 mt-1">Κάθε γραμμή εμφανίζεται ως οδηγία στον γονέα.</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Μέχρι τι ώρα το αργότερο στο σχολείο</label>
+                  <input type="time" value={form.arriveBy ?? ''} onChange={e => setForm((p: any) => ({ ...p, arriveBy: e.target.value }))} className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Δρομολόγιο σχολικού εκείνη την ημέρα</label>
+                  <select
+                    value={form.busOperates === false ? 'no' : 'yes'}
+                    onChange={e => setForm((p: any) => ({ ...p, busOperates: e.target.value === 'yes' }))}
+                    className={inputCls}
+                  >
+                    <option value="yes">Θα λειτουργήσει</option>
+                    <option value="no">Δεν θα λειτουργήσει</option>
+                  </select>
+                </div>
               </div>
 
               {/* Audience */}

@@ -1163,6 +1163,19 @@ model BusPosition {
   @@map("bus_positions")
 }
 
+model BusClosure {
+  id          String   @id @default(uuid())
+  schoolId    String   @map("school_id")
+  day         DateTime @db.Date
+  reason      String
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([schoolId, day])
+  @@index([schoolId, day])
+  @@map("bus_closures")
+}
+
 model BusPickup {
   id           String   @id @default(uuid())
   schoolId     String   @map("school_id")
@@ -1360,6 +1373,9 @@ model SchoolEvent {
   title           String
   description     String?
   dayInstructions String?   @map("day_instructions") @db.Text
+  arriveBy        String?   @map("arrive_by")
+  busOperates     Boolean?  @map("bus_operates")
+  dayBeforeNotifiedAt DateTime? @map("day_before_notified_at")
   eventType       String    @default("general") @map("event_type") // excursion | theater | event | general
   eventDate    DateTime? @map("event_date")
   costPerChild Decimal?  @map("cost_per_child") @db.Decimal(10, 2)

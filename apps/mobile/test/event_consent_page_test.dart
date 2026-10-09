@@ -14,6 +14,8 @@ void main() {
           'eventType': 'excursion',
           'description': 'Περπατάμε στο δάσος.',
           'dayInstructions': '❖ Να είναι στο σχολείο έως τις 8:00.',
+          'arriveBy': '08:00',
+          'busOperates': false,
           'eventDate': '2026-10-20T08:00:00.000Z',
           'costPerChild': '15',
           'status': 'published',
@@ -44,6 +46,8 @@ void main() {
     expect(find.text('Να είναι στο σχολείο έως τις 8:00.'), findsOneWidget);
     expect(find.text('Κόστος συμμετοχής ανά παιδί: 15.00 €'), findsOneWidget);
     expect(find.text('Σοφία'), findsOneWidget);
+    expect(find.text('Το παιδί πρέπει να είναι στο σχολείο το αργότερο έως τις 08:00.'), findsOneWidget);
+    expect(find.text('Το δρομολόγιο του σχολικού δεν θα λειτουργήσει εκείνη την ημέρα.'), findsOneWidget);
     expect(find.text('Συναινώ'), findsOneWidget);
     expect(find.text('Όχι'), findsOneWidget);
   });

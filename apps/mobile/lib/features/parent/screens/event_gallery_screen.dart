@@ -30,6 +30,8 @@ void openEventGallery(BuildContext context, Map event) {
         status: event['status'] as String?,
         description: event['description'] as String?,
         dayInstructions: event['dayInstructions'] as String?,
+        arriveBy: event['arriveBy']?.toString(),
+        busOperates: event['busOperates'],
         recap: event['recap'] as String?,
         media: eventMediaList(event['postMedia']),
       ),
@@ -43,6 +45,8 @@ class EventGalleryScreen extends StatelessWidget {
   final String? status;
   final String? description;
   final String? dayInstructions;
+  final String? arriveBy;
+  final Object? busOperates;
   final String? recap;
   final String? detailsLine;
   final List<Map<String, dynamic>> media;
@@ -55,6 +59,8 @@ class EventGalleryScreen extends StatelessWidget {
     this.status,
     this.description,
     this.dayInstructions,
+    this.arriveBy,
+    this.busOperates,
     this.recap,
     this.detailsLine,
   });
@@ -64,6 +70,8 @@ class EventGalleryScreen extends StatelessWidget {
       (recap ?? '').trim().isNotEmpty ||
       (description ?? '').trim().isNotEmpty ||
       instructionLines(dayInstructions).isNotEmpty ||
+      (arriveBy ?? '').trim().isNotEmpty ||
+      busRuns(busOperates) != null ||
       (detailsLine ?? '').trim().isNotEmpty;
 
   @override
@@ -108,6 +116,8 @@ class EventGalleryScreen extends StatelessWidget {
                     const SizedBox(height: 14),
                     UsefulInstructions(text: dayInstructions),
                   ],
+                  const SizedBox(height: 12),
+                  EventDayFacts(arriveBy: arriveBy, busOperates: busOperates),
                   if ((recap ?? '').trim().isNotEmpty) ...[
                     if ((description ?? '').trim().isNotEmpty) const SizedBox(height: 10),
                     Text(recap!.trim(), style: const TextStyle(fontSize: 16, height: 1.45, color: Color(0xFF2C2422))),

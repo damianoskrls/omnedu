@@ -9,6 +9,52 @@ export function eventDayYmd(eventDate: Date | string | null | undefined): string
   return eventDate.toISOString().slice(0, 10);
 }
 
+export function addCalendarDays(ymd: string, days: number): string {
+  const [year, month, day] = ymd.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + days));
+  return date.toISOString().slice(0, 10);
+}
+
+export function childFirstName(fullName: string): string {
+  return fullName.trim().split(/\s+/)[0] ?? '';
+}
+
+export function eventKindLabel(eventType: string | null | undefined): string {
+  if (eventType === 'excursion') return 'εκδρομή';
+  if (eventType === 'theater') return 'θέατρο';
+  return 'εκδήλωση';
+}
+
+/** "Αύριο η Ίριδα έχει εκδρομή." */
+export function dayBeforeTitle(fullNames: string[], eventType: string | null | undefined): string {
+  const kind = eventKindLabel(eventType);
+  const names = fullNames.map(childFirstName).filter(Boolean);
+  if (names.length === 0) return `Αύριο το παιδί σου έχει ${kind}.`;
+  if (names.length === 1) return `Αύριο η ${names[0]} έχει ${kind}.`;
+  const head = names.slice(0, -1).map((name) => `η ${name}`).join(', ');
+  return `Αύριο ${head} και η ${names[names.length - 1]} έχουν ${kind}.`;
+}
+
+export function dayBeforeBody(event: {
+  title?: string | null;
+  description?: string | null;
+  arriveBy?: string | null;
+  busOperates?: boolean | null;
+}): string {
+  const description = (event.description ?? '').replace(/\s+/g, ' ').trim();
+  const parts = [
+    (event.title ?? '').trim(),
+    event.arriveBy ? `Να είναι στο σχολείο το αργότερο έως τις ${event.arriveBy}.` : '',
+    event.busOperates === false
+      ? 'Το σχολικό δεν θα λειτουργήσει εκείνη την ημέρα.'
+      : event.busOperates === true
+        ? 'Το σχολικό θα λειτουργήσει κανονικά.'
+        : '',
+    description,
+  ].filter(Boolean);
+  return parts.join(' ').slice(0, 500);
+}
+
 /** Today in Athens, as YYYY-MM-DD. The school day changes at Greek midnight. */
 export function athensTodayYmd(now = new Date()): string {
   return new Intl.DateTimeFormat('en-CA', {
