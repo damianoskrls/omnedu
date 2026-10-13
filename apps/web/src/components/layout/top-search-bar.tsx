@@ -54,7 +54,12 @@ const ROLE_LABELS: Record<string, string> = {
 
 // ─── Module-level entity cache ────────────────────────────────────────────────
 type EntityCache = { students: Student[]; parents: Parent[]; staff: StaffMember[] };
-const entityCache: { schoolId?: string; data?: EntityCache; fetchedAt?: number } = {};
+const entityCache: {
+  schoolId?: string;
+  data?: EntityCache;
+  fetchedAt?: number;
+  inflight?: Promise<EntityCache>;
+} = {};
 const CACHE_TTL = 5 * 60 * 1000;
 
 async function fetchEntities(schoolId: string): Promise<EntityCache> {
@@ -67,36 +72,50 @@ async function fetchEntities(schoolId: string): Promise<EntityCache> {
   ) {
     return entityCache.data;
   }
-  const [students, parents, staff] = await Promise.all([
-    studentsApi.list(schoolId, undefined, true).catch(() => []),
+  // Deduplicate concurrent callers: return the in-flight promise if one exists
+  if (entityCache.schoolId === schoolId && entityCache.inflight) {
+    return entityCache.inflight;
+  }
+  const promise = Promise.all([
+    studentsApi.list(schoolId).catch(() => []),
     api.get(`/schools/${schoolId}/parents`).catch(() => []),
     staffApi.list(schoolId).catch(() => []),
-  ]);
-  const data: EntityCache = {
-    students: Array.isArray(students) ? students : [],
-    parents: Array.isArray(parents) ? parents : [],
-    staff: Array.isArray(staff) ? staff : [],
-  };
+  ]).then(([students, parents, staff]) => {
+    const data: EntityCache = {
+      students: Array.isArray(students) ? students : [],
+      parents: Array.isArray(parents) ? parents : [],
+      staff: Array.isArray(staff) ? staff : [],
+    };
+    entityCache.schoolId = schoolId;
+    entityCache.data = data;
+    entityCache.fetchedAt = Date.now();
+    entityCache.inflight = undefined;
+    return data;
+  });
   entityCache.schoolId = schoolId;
-  entityCache.data = data;
-  entityCache.fetchedAt = now;
-  return data;
+  entityCache.inflight = promise;
+  return promise;
+}
+
+// Strip Greek (and other) diacritics so "γιωργος" matches "Γιώργος"
+function normalize(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }
 
 function filterEntities(data: EntityCache, q: string, navItems: SearchItem[]): EntityResult[] {
-  const lower = q.toLowerCase();
+  const lower = normalize(q);
   const results: EntityResult[] = [];
 
-  // Students
+  // Students — active and inactive (archive may be searched intentionally)
   const students = data.students
-    .filter((s) => s.fullName.toLowerCase().includes(lower))
+    .filter((s) => normalize(s.fullName).includes(lower))
     .slice(0, 5);
   for (const s of students) {
     results.push({
       kind: 'student',
       id: s.id,
       label: s.fullName,
-      subtitle: s.className,
+      subtitle: s.className ?? (s.isActive === false ? 'Αρχειοθετημένος' : undefined),
       href: `/school/students/${s.id}`,
     });
   }
@@ -109,7 +128,7 @@ function filterEntities(data: EntityCache, q: string, navItems: SearchItem[]): E
         p.phone ?? '',
         p.email ?? '',
         ...(p.children ?? []).map((c) => c.fullName),
-      ].join(' ').toLowerCase();
+      ].map(normalize).join(' ');
       return haystack.includes(lower);
     })
     .slice(0, 5);
@@ -126,7 +145,7 @@ function filterEntities(data: EntityCache, q: string, navItems: SearchItem[]): E
   // Staff
   const staff = data.staff
     .filter((m) => {
-      const haystack = [m.fullName, m.phone ?? '', m.role ?? ''].join(' ').toLowerCase();
+      const haystack = [m.fullName, m.phone ?? '', m.role ?? ''].map(normalize).join(' ');
       return haystack.includes(lower);
     })
     .slice(0, 3);
@@ -143,7 +162,7 @@ function filterEntities(data: EntityCache, q: string, navItems: SearchItem[]): E
   // Nav items
   const nav = navItems
     .filter((item) =>
-      item.label.toLowerCase().includes(lower) || item.category.toLowerCase().includes(lower),
+      normalize(item.label).includes(lower) || normalize(item.category).includes(lower),
     )
     .slice(0, 3);
   for (const item of nav) {
@@ -198,6 +217,8 @@ export function TopSearchBar({ variant }: { variant: 'super-admin' | 'school' })
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Generation counter: lets async callbacks detect they're stale
+  const genRef = useRef(0);
 
   useEffect(() => {
     if (open) setRecentHrefs(getRecent(variant));
@@ -221,6 +242,8 @@ export function TopSearchBar({ variant }: { variant: 'super-admin' | 'school' })
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     const q = query.trim();
+    const gen = ++genRef.current;
+
     if (q.length < 2) {
       setResults([]);
       setLoading(false);
@@ -228,14 +251,17 @@ export function TopSearchBar({ variant }: { variant: 'super-admin' | 'school' })
     }
 
     if (variant !== 'school' || !schoolId) {
-      // super-admin: only nav search, no async needed
       setResults(filterEntities({ students: [], parents: [], staff: [] }, q, navItems));
       return;
     }
 
-    // Use cache if warm, else show spinner while fetching
-    const now = Date.now();
-    if (entityCache.schoolId === schoolId && entityCache.data && entityCache.fetchedAt && now - entityCache.fetchedAt < CACHE_TTL) {
+    // Warm cache: filter synchronously, no spinner
+    if (
+      entityCache.schoolId === schoolId &&
+      entityCache.data &&
+      entityCache.fetchedAt &&
+      Date.now() - entityCache.fetchedAt < CACHE_TTL
+    ) {
       setResults(filterEntities(entityCache.data, q, navItems));
       return;
     }
@@ -243,9 +269,18 @@ export function TopSearchBar({ variant }: { variant: 'super-admin' | 'school' })
     setLoading(true);
     debounceRef.current = setTimeout(() => {
       fetchEntities(schoolId)
-        .then((data) => setResults(filterEntities(data, q, navItems)))
-        .catch(() => setResults([]))
-        .finally(() => setLoading(false));
+        .then((data) => {
+          if (genRef.current !== gen) return; // stale — a newer query is in-flight
+          setResults(filterEntities(data, q, navItems));
+        })
+        .catch(() => {
+          if (genRef.current !== gen) return;
+          setResults([]);
+        })
+        .finally(() => {
+          if (genRef.current !== gen) return;
+          setLoading(false);
+        });
     }, 250);
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
@@ -303,7 +338,6 @@ export function TopSearchBar({ variant }: { variant: 'super-admin' | 'school' })
   }
 
   const showSearch = query.trim().length >= 2;
-  const isEmpty = !showSearch;
 
   return (
     <div ref={containerRef} className="relative w-56 sm:w-72">
@@ -392,13 +426,13 @@ export function TopSearchBar({ variant }: { variant: 'super-admin' | 'school' })
             <p className="px-5 py-4 text-xs text-[#a89890]">Συνεχίστε να πληκτρολογείτε...</p>
           )}
 
-          {/* ── Empty state: Recent + Trending ── */}
-          {isEmpty && (
+          {/* ── Empty state: Recent + Trending (only when query is fully empty) ── */}
+          {query.trim().length === 0 && (
             <div className="p-2">
               <SectionHeader icon={Clock} label="Πρόσφατα" />
               {recentNavItems.length > 0 ? (
                 recentNavItems.map((item) => (
-                  <NavRow key={item.href} item={item} active={false} onSelect={() => handleSelect(item.href)} />
+                  <NavRow key={item.href} item={item} onSelect={() => handleSelect(item.href)} />
                 ))
               ) : (
                 <p className="px-3 py-2 text-xs text-[#c0b4ac]">Καμία πρόσφατη αναζήτηση</p>
@@ -406,7 +440,7 @@ export function TopSearchBar({ variant }: { variant: 'super-admin' | 'school' })
               <div className="mt-2">
                 <SectionHeader icon={TrendingUp} label="Δημοφιλή" />
                 {trendingItems.map((item) => (
-                  <NavRow key={item.href} item={item} active={false} onSelect={() => handleSelect(item.href)} />
+                  <NavRow key={item.href} item={item} onSelect={() => handleSelect(item.href)} />
                 ))}
               </div>
             </div>
@@ -542,35 +576,16 @@ function EntityRow({
   );
 }
 
-function NavRow({
-  item,
-  active,
-  onSelect,
-}: {
-  item: SearchItem;
-  active: boolean;
-  onSelect: () => void;
-}) {
-  const Icon = item.icon;
-  return (
-    <div
-      role="option"
-      aria-selected={active}
-      onClick={onSelect}
-      className={cn(
-        'flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 transition-colors',
-        active ? 'bg-[#f3e8f7]' : 'hover:bg-[#faf6f2]',
-      )}
-    >
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[#f6f1ea] text-[#8a756c]">
-        <Icon className="h-3.5 w-3.5" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-[#2f2a28]">{item.label}</p>
-      </div>
-      <span className="shrink-0 rounded-md bg-[#f3e8f7] px-1.5 py-0.5 text-[10px] font-semibold text-[#77328d]">
-        {item.category}
-      </span>
-    </div>
-  );
+// NavRow reuses EntityRow by fabricating an EntityResult — keeps styling in sync
+function NavRow({ item, onSelect }: { item: SearchItem; onSelect: () => void }) {
+  const result: EntityResult = {
+    kind: 'nav',
+    id: item.href,
+    label: item.label,
+    subtitle: item.category,
+    href: item.href,
+    icon: item.icon,
+    category: item.category,
+  };
+  return <EntityRow result={result} active={false} onSelect={onSelect} />;
 }
