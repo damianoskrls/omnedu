@@ -98,7 +98,8 @@ async function fetchEntities(schoolId: string): Promise<EntityCache> {
 }
 
 // Strip Greek (and other) diacritics so "γιωργος" matches "Γιώργος"
-function normalize(s: string): string {
+function normalize(s: string | null | undefined): string {
+  if (!s) return '';
   return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }
 
