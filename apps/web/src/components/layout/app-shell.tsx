@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Menu } from 'lucide-react';
 import { AdminAlerts } from '@/components/layout/admin-alerts';
 import { Sidebar } from '@/components/layout/sidebar';
+import { TopSearchBar } from '@/components/layout/top-search-bar';
 import { useStoredUser } from '@/lib/auth';
 
 export function AppShell({
@@ -35,6 +36,7 @@ export function AppShell({
             <Menu className="h-4 w-4" />
           </button>
           <p className="hidden text-sm font-semibold capitalize text-[#6b625c] sm:block">{today}</p>
+          <TopSearchBar variant={variant} />
           <div className="ml-auto flex items-center gap-2">
             {variant === 'school' && <AdminAlerts />}
             <span className="hidden h-2 w-2 rounded-full bg-[#cce3ac] ring-4 ring-[#e7f3d4] sm:inline-block" />

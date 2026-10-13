@@ -6,13 +6,10 @@ import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { getStoredUser, useStoredUser } from '@/lib/auth';
 import { schoolsApi } from '@/lib/api';
-import {
-  LayoutDashboard, School, Users, GraduationCap, BookOpen, Baby,
-  MessageSquare, CreditCard, Settings, LogOut,
-  Layers, Utensils, ClipboardList, Pill, BellRing, Zap, Bus, Wrench, Newspaper, CalendarDays, ScrollText, NotebookPen, PartyPopper, TreePalm, BarChart3, Shirt, FileText,
-  X,
-} from 'lucide-react';
+import { LogOut, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { schoolNav, superAdminNav } from '@/lib/nav-items';
+import type { NavItem, NavGroup } from '@/lib/nav-items';
 
 interface SidebarProps {
   variant: 'super-admin' | 'school';
@@ -21,71 +18,6 @@ interface SidebarProps {
   onClose?: () => void;
 }
 
-interface NavItem {
-  href: string;
-  label: string;
-  icon: LucideIcon;
-}
-
-interface NavGroup {
-  label: string;
-  items: NavItem[];
-}
-
-const superAdminNav: NavGroup[] = [
-  {
-    label: 'Πλατφόρμα',
-    items: [
-      { href: '/super-admin/dashboard', label: 'Επισκόπηση', icon: LayoutDashboard },
-      { href: '/super-admin/schools', label: 'Σχολεία', icon: School },
-      { href: '/super-admin/users', label: 'Χρήστες', icon: Users },
-      { href: '/super-admin/settings', label: 'Ρυθμίσεις', icon: Settings },
-    ],
-  },
-];
-
-const schoolNav: NavGroup[] = [
-  {
-    label: 'Καθημερινά',
-    items: [
-      { href: '/school/dashboard', label: 'Επισκόπηση', icon: LayoutDashboard },
-      { href: '/school/students', label: 'Μαθητές', icon: GraduationCap },
-      { href: '/school/parents', label: 'Γονείς', icon: Baby },
-      { href: '/school/classes', label: 'Τάξεις', icon: BookOpen },
-      { href: '/school/levels', label: 'Βαθμίδες', icon: Layers },
-      { href: '/school/staff', label: 'Προσωπικό', icon: Users },
-      { href: '/school/menu', label: 'Διατροφολόγιο', icon: Utensils },
-      { href: '/school/thematic', label: 'Διαθεματικό', icon: NotebookPen },
-      { href: '/school/assignments', label: 'Εργασίες', icon: FileText },
-      { href: '/school/medications', label: 'Φάρμακα', icon: Pill },
-      { href: '/school/activities', label: 'Δραστηριότητες', icon: Zap },
-    ],
-  },
-  {
-    label: 'Ενημέρωση',
-    items: [
-      { href: '/school/found', label: 'Ευρήματα', icon: Shirt },
-      { href: '/school/posts', label: 'Νέα & Εκδηλώσεις', icon: Newspaper },
-      { href: '/school/events', label: 'Εκδρομές & Θέατρο', icon: CalendarDays },
-      { href: '/school/celebrations', label: 'Γιορτές', icon: PartyPopper },
-      { href: '/school/questionnaires', label: 'Ερωτηματολόγιο', icon: ClipboardList },
-      { href: '/school/notifications', label: 'Ειδοποιήσεις', icon: BellRing },
-      { href: '/school/messages', label: 'Μηνύματα', icon: MessageSquare },
-    ],
-  },
-  {
-    label: 'Λειτουργία',
-    items: [
-      { href: '/school/routes', label: 'Σχολικό', icon: Bus },
-      { href: '/school/services', label: 'Παροχές', icon: Wrench },
-      { href: '/school/reports', label: 'Αναφορές', icon: BarChart3 },
-      { href: '/school/billing', label: 'Οικονομικά', icon: CreditCard },
-      { href: '/school/regulations', label: 'Κανονισμοί', icon: ScrollText },
-      { href: '/school/holidays', label: 'Σχολικές αργίες', icon: TreePalm },
-      { href: '/school/settings', label: 'Ρυθμίσεις', icon: Settings },
-    ],
-  },
-];
 
 function initials(name?: string | null) {
   if (!name) return 'Ο';
