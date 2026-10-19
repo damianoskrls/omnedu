@@ -51,8 +51,8 @@ export const schoolNav: NavGroup[] = [
     label: 'Ενημέρωση',
     items: [
       { href: '/school/found', label: 'Ευρήματα', icon: Shirt },
-      { href: '/school/posts', label: 'Νέα & Εκδηλώσεις', icon: Newspaper },
-      { href: '/school/events', label: 'Εκδρομές & Θέατρο', icon: CalendarDays },
+      { href: '/school/posts', label: 'Ανακοινώσεις', icon: Newspaper },
+      { href: '/school/events', label: 'Εκδρομές & Εκδηλώσεις', icon: CalendarDays },
       { href: '/school/celebrations', label: 'Γιορτές', icon: PartyPopper },
       { href: '/school/questionnaires', label: 'Ερωτηματολόγιο', icon: ClipboardList },
       { href: '/school/notifications', label: 'Ειδοποιήσεις', icon: BellRing },

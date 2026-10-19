@@ -391,6 +391,11 @@ export class StudentsService {
   async permanentDelete(id: string, schoolId: string) {
     const student = await this.prisma.student.findFirst({ where: { id, schoolId, isActive: false } });
     if (!student) throw new NotFoundException('Archived student not found');
+    // Clean up relations that lack onDelete: Cascade in the schema
+    await this.prisma.reportMedia.deleteMany({ where: { studentId: id } });
+    await this.prisma.invoice.deleteMany({ where: { studentId: id } });
+    await this.prisma.consentSignature.updateMany({ where: { studentId: id }, data: { studentId: null } });
+    await this.prisma.notificationBroadcast.updateMany({ where: { targetStudentId: id }, data: { targetStudentId: null } });
     return this.prisma.student.delete({ where: { id } });
   }
 

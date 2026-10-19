@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { schoolEventsApi, classesApi, levelsApi, schoolsApi } from '@/lib/api';
+import { schoolEventsApi, classesApi, levelsApi, schoolsApi, schoolPostsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
 import {
   Plus, X, CalendarDays, Users, Euro, BookOpen, Check, Clock,
@@ -136,6 +136,18 @@ export default function EventsPage() {
           }
         }
         setEvents(p => [res, ...p]);
+        // Auto-create an announcement post when event is published
+        if (payload.status === 'published') {
+          schoolPostsApi.create(schoolId, {
+            title: payload.title,
+            content: payload.description || undefined,
+            postType: 'general',
+            mediaUrls: res.mediaUrls ?? [],
+            publishedAt: payload.eventDate ? new Date(payload.eventDate).toISOString() : new Date().toISOString(),
+            audienceType: payload.audienceType ?? 'all',
+            audienceIds: Array.isArray(payload.audienceIds) ? payload.audienceIds : [],
+          }).catch(() => {}); // silent — post is best-effort
+        }
       } else if (modal === 'edit' && editingEvent) {
         const res = await schoolEventsApi.update(schoolId, editingEvent.id, payload);
         setEvents(p => p.map(e => e.id === editingEvent.id ? res : e));
@@ -235,7 +247,7 @@ export default function EventsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Εκδρομές & Θέατρο</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Εκδρομές & Εκδηλώσεις</h1>
           <p className="text-sm text-gray-500 mt-0.5">Διαχείριση εκδηλώσεων, συναινέσεις και πληρωμές</p>
         </div>
         <button onClick={openCreate}

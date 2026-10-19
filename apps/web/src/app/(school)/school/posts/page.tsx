@@ -83,7 +83,7 @@ export default function PostsPage() {
   }, [schoolId, activeTab]);
 
   const openNew = () => { setFormError(''); setModal({
-    postType: 'excursion',
+    postType: 'general',
     title: '',
     content: '',
     mediaUrls: [],
@@ -161,8 +161,8 @@ export default function PostsPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Νέα & Εκδηλώσεις</h1>
-          <p className="text-sm text-gray-500 mt-1">Εκδρομές, παραστάσεις, εκδηλώσεις σχολείου</p>
+          <h1 className="text-2xl font-bold text-gray-900">Ανακοινώσεις</h1>
+          <p className="text-sm text-gray-500 mt-1">Γενικές ανακοινώσεις και νέα για τους γονείς</p>
         </div>
         <button
           onClick={openNew}
@@ -195,8 +195,8 @@ export default function PostsPage() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-20 text-gray-400">
           <Newspaper className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p className="font-medium text-gray-500 mb-1">Δεν υπάρχουν αναρτήσεις</p>
-          <p className="text-sm">Προσθέστε την πρώτη ανάρτηση για τους γονείς</p>
+          <p className="font-medium text-gray-500 mb-1">Δεν υπάρχουν ανακοινώσεις</p>
+          <p className="text-sm">Προσθέστε την πρώτη ανακοίνωση για τους γονείς</p>
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -336,27 +336,6 @@ function PostModal({
 
         {/* Body */}
         <div className="p-6 overflow-y-auto flex-1 space-y-5">
-          {/* Type */}
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-2">Τύπος</label>
-            <div className="grid grid-cols-4 gap-2">
-              {(Object.entries(TYPE_META) as [PostType, typeof TYPE_META[PostType]][]).map(([key, m]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => onChange({ ...post, postType: key })}
-                  className={`py-2 px-3 text-xs rounded-xl border-2 font-semibold transition-colors ${
-                    post.postType === key
-                      ? `${m.border} ${m.bg} ${m.text}`
-                      : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                  }`}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
           {/* Title */}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Τίτλος *</label>
@@ -364,7 +343,7 @@ function PostModal({
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               value={post.title ?? ''}
               onChange={e => onChange({ ...post, title: e.target.value })}
-              placeholder="π.χ. Εκδρομή στην Ακρόπολη"
+              placeholder="π.χ. Σήμερα μάθαμε για τα ζώα..."
             />
           </div>
 
@@ -401,7 +380,7 @@ function PostModal({
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
               value={post.content ?? ''}
               onChange={e => onChange({ ...post, content: e.target.value })}
-              placeholder="Πληροφορίες για την εκδρομή, ώρες αναχώρησης, τι να φέρουν τα παιδιά..."
+              placeholder="Πληροφορίες, ανακοινώσεις, νέα από την τάξη..."
             />
           </div>
 

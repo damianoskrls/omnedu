@@ -30,6 +30,7 @@ export default function StudentsPage() {
 
   // Create modal
   const [showArchived, setShowArchived] = useState(false);
+  const [archivedCount, setArchivedCount] = useState(0);
   const [archiveModal, setArchiveModal] = useState<{ id: string; name: string; restore?: boolean; permanentDelete?: boolean } | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -49,6 +50,14 @@ export default function StudentsPage() {
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [schoolId, showArchived]);
+
+  // Keep archived count fresh for badge
+  useEffect(() => {
+    if (!schoolId) return;
+    studentsApi.list(schoolId, undefined, false).then((s: any) => {
+      setArchivedCount(Array.isArray(s) ? s.length : 0);
+    }).catch(() => {});
+  }, [schoolId]);
 
   // Build teacher list from classes
   const teachers = useMemo(() => {
@@ -150,6 +159,11 @@ export default function StudentsPage() {
             >
               <Archive className="h-4 w-4" />
               {showArchived ? 'Ενεργοί Μαθητές' : 'Αρχείο'}
+              {!showArchived && archivedCount > 0 && (
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-100 text-amber-700 text-xs font-bold">
+                  {archivedCount}
+                </span>
+              )}
             </button>
           )}
           {isAdmin && !showArchived && (
