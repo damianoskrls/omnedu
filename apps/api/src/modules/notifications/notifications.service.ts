@@ -431,53 +431,74 @@ export class NotificationsService implements OnModuleInit {
       return 0;
     }
 
-    const [settings, school] = await Promise.all([
-      this.prisma.notificationSettings.findUnique({ where: { schoolId } }),
-      this.prisma.school.findUnique({ where: { id: schoolId }, select: { name: true, logoUrl: true } }),
-    ]);
+    try {
+      const [settings, school] = await Promise.all([
+        this.prisma.notificationSettings.findUnique({ where: { schoolId } }).catch(e => {
+          this.logger.warn('[EMAIL] Could not load notification settings', e?.message);
+          return null;
+        }),
+        this.prisma.school.findUnique({ where: { id: schoolId } }).catch(e => {
+          this.logger.warn('[EMAIL] Could not load school', e?.message);
+          return null;
+        }),
+      ]);
 
-    const fromEmail = this.config.get<string>('RESEND_FROM_EMAIL')
-      ?? settings?.emailFrom
-      ?? 'noreply@omnedu.gr';
+      const fromEmail = this.config.get<string>('RESEND_FROM_EMAIL')
+        ?? process.env.RESEND_FROM_EMAIL
+        ?? settings?.emailFrom
+        ?? 'noreply@omnedu.gr';
 
-    const userEmailRows = userIds.length > 0
-      ? await this.prisma.user.findMany({ where: { id: { in: userIds }, email: { not: null } }, select: { email: true } })
-      : [];
+      this.logger.log(`[EMAIL] From: ${fromEmail}, school: ${school?.name ?? schoolId}`);
 
-    const allEmails = [
-      ...userEmailRows.map(u => u.email as string),
-      ...(data.customEmails ?? []),
-    ].filter(Boolean).map(e => e.trim().toLowerCase());
-    const uniqueEmails = [...new Set(allEmails)];
+      const userEmailRows = userIds.length > 0
+        ? await this.prisma.user.findMany({ where: { id: { in: userIds }, email: { not: null } }, select: { email: true } })
+        : [];
 
-    if (uniqueEmails.length === 0) {
-      this.logger.log('[EMAIL] No recipients with email address — skipping');
+      const allEmails = [
+        ...userEmailRows.map(u => u.email as string),
+        ...(data.customEmails ?? []),
+      ].filter(Boolean).map(e => e.trim().toLowerCase());
+      const uniqueEmails = [...new Set(allEmails)];
+
+      this.logger.log(`[EMAIL] Recipients: ${uniqueEmails.length} (${userEmailRows.length} from DB + ${(data.customEmails ?? []).length} custom)`);
+
+      if (uniqueEmails.length === 0) {
+        this.logger.log('[EMAIL] No recipients with email address — skipping');
+        return 0;
+      }
+
+      const schoolName = school?.name ?? 'omnedu';
+      const logoUrl = (school as any)?.logoUrl ?? null;
+      const html = this.buildEmailHtml({ schoolName, logoUrl, title: data.title, body: data.body });
+
+      const BATCH_SIZE = 100;
+      let sent = 0;
+      for (let i = 0; i < uniqueEmails.length; i += BATCH_SIZE) {
+        const batch = uniqueEmails.slice(i, i + BATCH_SIZE);
+        try {
+          const messages = batch.map(to => ({
+            from: fromEmail,
+            to,
+            subject: data.title,
+            html,
+          }));
+          const result = await this.resendClient!.batch.send(messages);
+          if (result.error) {
+            this.logger.error(`[EMAIL] Resend API error (${i}–${i + batch.length}): ${JSON.stringify(result.error)}`);
+          } else {
+            sent += batch.length;
+          }
+        } catch (e) {
+          this.logger.error(`[EMAIL] Resend batch exception (${i}–${i + batch.length})`, e);
+        }
+      }
+
+      this.logger.log(`[EMAIL] Sent "${data.title}" to ${sent} recipients via Resend`);
+      return sent;
+    } catch (e) {
+      this.logger.error('[EMAIL] sendEmails failed', e);
       return 0;
     }
-
-    const schoolName = school?.name ?? 'omnedu';
-    const html = this.buildEmailHtml({ schoolName, logoUrl: school?.logoUrl ?? null, title: data.title, body: data.body });
-
-    const BATCH_SIZE = 100;
-    let sent = 0;
-    for (let i = 0; i < uniqueEmails.length; i += BATCH_SIZE) {
-      const batch = uniqueEmails.slice(i, i + BATCH_SIZE);
-      try {
-        const messages = batch.map(to => ({
-          from: fromEmail,
-          to,
-          subject: data.title,
-          html,
-        }));
-        await this.resendClient!.batch.send(messages);
-        sent += batch.length;
-      } catch (e) {
-        this.logger.error(`[EMAIL] Resend batch error (${i}–${i + batch.length})`, e);
-      }
-    }
-
-    this.logger.log(`[EMAIL] Sent "${data.title}" to ${sent} recipients via Resend`);
-    return sent;
   }
 
   private buildEmailHtml(opts: { schoolName: string; logoUrl: string | null; title: string; body: string }): string {
