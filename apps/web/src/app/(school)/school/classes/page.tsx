@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { classesApi, levelsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
+import { useAcademicYear } from '@/contexts/AcademicYearContext';
 import { Plus, Users, BookOpen, ChevronRight, GraduationCap, X, Pencil, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { PersonAvatar } from '@/components/PersonAvatar';
@@ -59,6 +60,7 @@ const UNKNOWN_META = {
 export default function ClassesPage() {
   const user = useStoredUser();
   const schoolId = user?.schoolId ?? '';
+  const { selectedYear } = useAcademicYear();
   const isAdmin = user?.role === 'school_admin';
   const [classes, setClasses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,7 +74,7 @@ export default function ClassesPage() {
 
   const load = () => {
     if (!schoolId) return;
-    classesApi.list(schoolId).then((data: any) => {
+    classesApi.list(schoolId, selectedYear?.id).then((data: any) => {
       setClasses(Array.isArray(data) ? data : []);
       setLoading(false);
     }).catch(() => setLoading(false));
@@ -83,7 +85,7 @@ export default function ClassesPage() {
     if (!schoolId) return;
     levelsApi.list(schoolId).then((d: any) => setLevels(Array.isArray(d) ? d : []));
     classesApi.academicYears(schoolId).then((d: any) => setAcademicYears(Array.isArray(d) ? d : []));
-  }, [schoolId]);
+  }, [schoolId, selectedYear?.id]);
 
   const currentAcademicYear = academicYears.find(y => y.isCurrent);
 

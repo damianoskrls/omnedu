@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { studentsApi, classesApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
+import { useAcademicYear } from '@/contexts/AcademicYearContext';
 import { Plus, Search, ChevronRight, X, UserPlus, Trash2, Archive, RotateCcw } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -18,6 +19,7 @@ export default function StudentsPage() {
   const user = useStoredUser();
   const schoolId = user?.schoolId ?? '';
   const router = useRouter();
+  const { selectedYear } = useAcademicYear();
   const isAdmin = user?.role === 'school_admin';
 
   const [students, setStudents] = useState<any[]>([]);
@@ -42,14 +44,14 @@ export default function StudentsPage() {
     if (!schoolId) return;
     setLoading(true);
     Promise.all([
-      studentsApi.list(schoolId, undefined, !showArchived ? true : false),
-      classesApi.list(schoolId),
+      studentsApi.list(schoolId, undefined, !showArchived ? true : false, selectedYear?.id),
+      classesApi.list(schoolId, selectedYear?.id),
     ]).then(([s, c]: any[]) => {
       setStudents(Array.isArray(s) ? s : []);
       setClasses(Array.isArray(c) ? c : []);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, [schoolId, showArchived]);
+  }, [schoolId, showArchived, selectedYear?.id]);
 
   // Keep archived count fresh for badge
   useEffect(() => {

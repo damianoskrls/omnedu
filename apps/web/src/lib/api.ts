@@ -133,8 +133,8 @@ export const schoolsApi = {
 };
 
 export const studentsApi = {
-  list: (schoolId: string, classId?: string, isActive?: boolean) =>
-    api.get(`/schools/${schoolId}/students`, { params: { classId, ...(isActive !== undefined ? { isActive: String(isActive) } : {}) } }),
+  list: (schoolId: string, classId?: string, isActive?: boolean, academicYearId?: string) =>
+    api.get(`/schools/${schoolId}/students`, { params: { classId, academicYearId, ...(isActive !== undefined ? { isActive: String(isActive) } : {}) } }),
   get: (schoolId: string, id: string) => api.get(`/schools/${schoolId}/students/${id}`),
   create: (schoolId: string, data: any) => api.post(`/schools/${schoolId}/students`, data),
   update: (schoolId: string, id: string, data: any) =>
@@ -180,7 +180,7 @@ export const studentsApi = {
 };
 
 export const classesApi = {
-  list: (schoolId: string) => api.get(`/schools/${schoolId}/classes`),
+  list: (schoolId: string, academicYearId?: string) => api.get(`/schools/${schoolId}/classes`, { params: { academicYearId } }),
   get: (schoolId: string, id: string) => api.get(`/schools/${schoolId}/classes/${id}`),
   create: (schoolId: string, data: { name: string; academicYearId: string; levelId?: string; ageGroup?: string; capacity?: number }) =>
     api.post(`/schools/${schoolId}/classes`, data),

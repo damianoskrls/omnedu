@@ -132,13 +132,13 @@ const activityDetailSelect = {
 export class StudentsService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(schoolId: string, classId?: string, isActive?: boolean) {
+  async findAll(schoolId: string, classId?: string, isActive?: boolean, academicYearId?: string) {
     return this.prisma.student.findMany({
       where: {
         schoolId,
         isActive: isActive ?? true,
-        ...(classId
-          ? { enrollments: { some: { classId } } }
+        ...(classId || academicYearId
+          ? { enrollments: { some: { ...(classId ? { classId } : {}), ...(academicYearId ? { academicYearId } : {}) } } }
           : {}),
       },
       include: {

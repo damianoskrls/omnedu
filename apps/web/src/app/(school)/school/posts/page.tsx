@@ -35,13 +35,6 @@ const TYPE_META: Record<PostType, { label: string; bg: string; text: string; bor
   event:     { label: 'Εκδήλωση',  bg: 'bg-orange-50',  text: 'text-orange-700',  border: 'border-orange-200' },
 };
 
-const TABS: { key: PostType | 'all'; label: string }[] = [
-  { key: 'all',       label: 'Όλα' },
-  { key: 'excursion', label: 'Εκδρομές' },
-  { key: 'theater',   label: 'Θέατρο' },
-  { key: 'event',     label: 'Εκδηλώσεις' },
-  { key: 'general',   label: 'Γενικά' },
-];
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
@@ -51,7 +44,6 @@ export default function PostsPage() {
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<PostType | 'all'>('all');
   const [modal, setModal] = useState<Partial<Post> | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -59,11 +51,11 @@ export default function PostsPage() {
   const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
   const [levels, setLevels] = useState<{ id: string; name: string }[]>([]);
 
-  const load = async (type?: PostType | 'all') => {
+  const load = async () => {
     if (!schoolId) return;
     setLoading(true);
     try {
-      const res = await schoolPostsApi.list(schoolId, type === 'all' ? undefined : type) as any;
+      const res = await schoolPostsApi.list(schoolId, 'general') as any;
       setPosts((res.data ?? res) as Post[]);
     } finally {
       setLoading(false);
@@ -72,7 +64,7 @@ export default function PostsPage() {
 
   useEffect(() => {
     if (!schoolId) return;
-    load(activeTab);
+    load();
     Promise.all([
       classesApi.list(schoolId) as Promise<any>,
       levelsApi.list(schoolId) as Promise<any>,
@@ -80,7 +72,7 @@ export default function PostsPage() {
       setClasses(Array.isArray(c) ? c : []);
       setLevels(Array.isArray(l) ? l : []);
     });
-  }, [schoolId, activeTab]);
+  }, [schoolId]);
 
   const openNew = () => { setFormError(''); setModal({
     postType: 'general',
@@ -120,7 +112,7 @@ export default function PostsPage() {
         await schoolPostsApi.create(schoolId, payload);
       }
       setModal(null);
-      await load(activeTab);
+      await load();
     } catch (err: any) {
       const message = err?.message;
       setFormError(Array.isArray(message) ? message.join(' ') : message || 'Η δημοσίευση δεν αποθηκεύτηκε. Δοκίμασε ξανά.');
@@ -132,7 +124,7 @@ export default function PostsPage() {
   const remove = async (id: string) => {
     if (!confirm('Να διαγραφεί οριστικά αυτή η ανάρτηση;')) return;
     await schoolPostsApi.remove(schoolId, id);
-    await load(activeTab);
+    await load();
   };
 
   const uploadImage = async (file: File) => {
@@ -172,22 +164,6 @@ export default function PostsPage() {
         </button>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-6 w-fit">
-        {TABS.map(t => (
-          <button
-            key={t.key}
-            onClick={() => setActiveTab(t.key)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              activeTab === t.key
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
 
       {/* Content */}
       {loading ? (

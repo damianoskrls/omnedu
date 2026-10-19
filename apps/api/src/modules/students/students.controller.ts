@@ -24,10 +24,11 @@ export class StudentsController {
     @CurrentUser() user: JwtPayload,
     @Query('classId') classId?: string,
     @Query('isActive') isActive?: string,
+    @Query('academicYearId') academicYearId?: string,
   ) {
     if (user.role === 'parent') return this.students.findByParent(user.sub, schoolId);
     const active = isActive === 'false' ? false : isActive === 'true' ? true : undefined;
-    return this.students.findAll(schoolId, classId, active);
+    return this.students.findAll(schoolId, classId, active, academicYearId);
   }
 
   @Get('my-children')
