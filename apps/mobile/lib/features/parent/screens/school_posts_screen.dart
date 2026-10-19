@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:video_player/video_player.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/widgets/app_image.dart';
 import '../../../core/widgets/person_face.dart';
@@ -9,6 +8,17 @@ import 'event_gallery_screen.dart';
 bool postMediaIsVideo(String url) {
   final value = url.toLowerCase();
   return value.contains('/video/upload/') || value.contains('.mp4') || value.contains('.mov') || value.contains('.m4v') || value.contains('.webm');
+}
+
+/// Returns a Cloudinary still-frame thumbnail URL for a video URL, or null if
+/// the URL is not a Cloudinary video.
+String? videoThumbnailUrl(String url) {
+  if (!url.contains('/video/upload/')) return null;
+  // Insert so_0,f_jpg after /video/upload/ and replace the extension with .jpg
+  var thumb = url.replaceFirst('/video/upload/', '/video/upload/so_0,f_jpg/');
+  final dotIdx = thumb.lastIndexOf('.');
+  if (dotIdx != -1) thumb = '${thumb.substring(0, dotIdx)}.jpg';
+  return thumb;
 }
 
 final schoolPostsProvider = FutureProvider.family<List<dynamic>, ({String schoolId, String? type, String? studentId})>(
@@ -302,43 +312,17 @@ class _PostThumb extends StatefulWidget {
 }
 
 class _PostThumbState extends State<_PostThumb> {
-  VideoPlayerController? _controller;
-  bool _initialized = false;
-
-  @override
-  void initState() {
-    super.initState();
-    if (postMediaIsVideo(widget.url)) {
-      _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url))
-        ..initialize().then((_) {
-          if (mounted) setState(() => _initialized = true);
-        }).catchError((_) {});
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     if (!postMediaIsVideo(widget.url)) {
       return AppImage(widget.url, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: const Color(0xFFF3F4F6)));
     }
+    final thumb = videoThumbnailUrl(widget.url);
     return Stack(
       fit: StackFit.expand,
       children: [
-        if (_initialized && _controller != null)
-          FittedBox(
-            fit: BoxFit.cover,
-            child: SizedBox(
-              width: _controller!.value.size.width,
-              height: _controller!.value.size.height,
-              child: VideoPlayer(_controller!),
-            ),
-          )
+        if (thumb != null)
+          AppImage(thumb, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const ColoredBox(color: Color(0xFF3D1152)))
         else
           const ColoredBox(color: Color(0xFF3D1152)),
         const Center(child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 42)),
