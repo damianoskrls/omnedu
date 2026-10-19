@@ -8,6 +8,7 @@ cd "$ROOT/apps/api"
 (node_modules/.bin/prisma migrate deploy || {
   node_modules/.bin/prisma migrate resolve --rolled-back 20261008160000_conversation_delete || true
   node_modules/.bin/prisma migrate resolve --rolled-back 20261008170000_owner_role || true
+  node_modules/.bin/prisma migrate resolve --rolled-back 20261019120000_add_parent_notes || true
   node_modules/.bin/prisma migrate deploy || echo 'migration failed, starting api anyway'
 })
 cd "$ROOT"
