@@ -737,7 +737,22 @@ class _FinancialItem {
   final String label;
   final double amount;
   final _FinancialItemType type;
-  const _FinancialItem({required this.childName, required this.label, required this.amount, required this.type});
+  // Extra detail fields for the bottom sheet
+  final String? eventDate;
+  final String? description;
+  final int? billingMonth;
+  final int? billingYear;
+
+  const _FinancialItem({
+    required this.childName,
+    required this.label,
+    required this.amount,
+    required this.type,
+    this.eventDate,
+    this.description,
+    this.billingMonth,
+    this.billingYear,
+  });
 }
 
 class _FinancialPendingSection extends StatelessWidget {
@@ -745,10 +760,14 @@ class _FinancialPendingSection extends StatelessWidget {
   const _FinancialPendingSection({required this.charges});
 
   static const _months = [
+    '', 'Ιανουάριος', 'Φεβρουάριος', 'Μάρτιος', 'Απρίλιος', 'Μάιος', 'Ιούνιος',
+    'Ιούλιος', 'Αύγουστος', 'Σεπτέμβριος', 'Οκτώβριος', 'Νοέμβριος', 'Δεκέμβριος',
+  ];
+  static const _shortMonths = [
     '', 'Ιαν', 'Φεβ', 'Μαρ', 'Απρ', 'Μαΐ', 'Ιουν',
     'Ιουλ', 'Αυγ', 'Σεπ', 'Οκτ', 'Νοε', 'Δεκ',
   ];
-  static String _monthName(int m) => (m >= 1 && m <= 12) ? _months[m] : '';
+  static String _shortMonthName(int m) => (m >= 1 && m <= 12) ? _shortMonths[m] : '';
 
   @override
   Widget build(BuildContext context) {
@@ -768,8 +787,15 @@ class _FinancialPendingSection extends StatelessWidget {
         final event = ev['event'] as Map? ?? {};
         final cost = double.tryParse(event['costPerChild']?.toString() ?? '0') ?? 0;
         if (cost <= 0) continue;
-        final eventName = event['name'] as String? ?? 'Εκδήλωση';
-        items.add(_FinancialItem(childName: name, label: eventName, amount: cost, type: _FinancialItemType.event));
+        final title = event['title'] as String? ?? 'Εκδήλωση';
+        items.add(_FinancialItem(
+          childName: name,
+          label: title,
+          amount: cost,
+          type: _FinancialItemType.event,
+          eventDate: event['eventDate'] as String?,
+          description: event['description'] as String?,
+        ));
       }
 
       // Overdue monthly fee: only from the 10th of the month onward
@@ -786,9 +812,11 @@ class _FinancialPendingSection extends StatelessWidget {
           if (owed > 0.01) {
             items.add(_FinancialItem(
               childName: name,
-              label: 'Δίδακτρα ${_monthName(month)}',
+              label: 'Δίδακτρα ${_shortMonthName(month)}',
               amount: owed,
               type: _FinancialItemType.monthly,
+              billingMonth: month,
+              billingYear: year,
             ));
           }
         }
@@ -804,7 +832,12 @@ class _FinancialPendingSection extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
           child: Column(
-            children: items.map((item) => _FinancialItemTile(item: item)).toList(),
+            children: items
+                .map((item) => _FinancialItemTile(
+                      item: item,
+                      fullMonths: _months,
+                    ))
+                .toList(),
           ),
         ),
       ],
@@ -814,57 +847,209 @@ class _FinancialPendingSection extends StatelessWidget {
 
 class _FinancialItemTile extends StatelessWidget {
   final _FinancialItem item;
-  const _FinancialItemTile({super.key, required this.item});
+  final List<String> fullMonths;
+  const _FinancialItemTile({super.key, required this.item, required this.fullMonths});
+
+  String _formatDate(String? raw) {
+    if (raw == null) return '';
+    final d = DateTime.tryParse(raw);
+    if (d == null) return '';
+    return '${d.day} ${(d.month >= 1 && d.month <= 12) ? fullMonths[d.month] : ''} ${d.year}';
+  }
+
+  void _showDetail(BuildContext context) {
+    final isEvent = item.type == _FinancialItemType.event;
+    final dateStr = isEvent ? _formatDate(item.eventDate) : '';
+    final monthLabel = (!isEvent && item.billingMonth != null && item.billingMonth! >= 1 && item.billingMonth! <= 12)
+        ? '${fullMonths[item.billingMonth!]} ${item.billingYear ?? ''}'
+        : '';
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Handle bar
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE5E7EB),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            // Title row
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEF2F2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    isEvent ? Icons.event_rounded : Icons.calendar_month_rounded,
+                    size: 22,
+                    color: const Color(0xFFDC2626),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    item.label,
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF111827)),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            const Divider(height: 1, color: Color(0xFFF3F4F6)),
+            const SizedBox(height: 16),
+            // Detail rows
+            _DetailRow(icon: Icons.person_outline_rounded, label: 'Παιδί', value: item.childName),
+            if (isEvent && dateStr.isNotEmpty)
+              _DetailRow(icon: Icons.calendar_today_outlined, label: 'Ημερομηνία', value: dateStr),
+            if (!isEvent && monthLabel.isNotEmpty)
+              _DetailRow(icon: Icons.calendar_month_outlined, label: 'Περίοδος', value: monthLabel),
+            if (isEvent && item.description != null && item.description!.isNotEmpty)
+              _DetailRow(icon: Icons.info_outline_rounded, label: 'Περιγραφή', value: item.description!),
+            const SizedBox(height: 8),
+            // Amount
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF2F2),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFFECACA)),
+              ),
+              child: Column(
+                children: [
+                  const Text('Εκκρεμεί πληρωμή', style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
+                  const SizedBox(height: 4),
+                  Text(
+                    '€${item.amount.toStringAsFixed(2)}',
+                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xFFDC2626)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () => Navigator.pop(context),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF6B7280),
+                  side: const BorderSide(color: Color(0xFFE5E7EB)),
+                  minimumSize: const Size.fromHeight(44),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: const Text('Κλείσιμο'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final isEvent = item.type == _FinancialItemType.event;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFFECACA)),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFDC2626).withOpacity(0.06),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+    return GestureDetector(
+      onTap: () => _showDetail(context),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFFECACA)),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFDC2626).withOpacity(0.06),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF2F2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                isEvent ? Icons.event_rounded : Icons.calendar_month_rounded,
+                size: 18,
+                color: const Color(0xFFDC2626),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.label,
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF111827)),
+                  ),
+                  if (item.childName.isNotEmpty)
+                    Text(item.childName, style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+                ],
+              ),
+            ),
+            Text(
+              '€${item.amount.toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFFDC2626)),
+            ),
+            const SizedBox(width: 6),
+            const Icon(Icons.chevron_right_rounded, size: 18, color: Color(0xFFD1D5DB)),
+          ],
+        ),
       ),
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  const _DetailRow({required this.icon, required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFEF2F2),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              isEvent ? Icons.event_rounded : Icons.calendar_month_rounded,
-              size: 18,
-              color: const Color(0xFFDC2626),
-            ),
-          ),
-          const SizedBox(width: 12),
+          Icon(icon, size: 16, color: const Color(0xFF9CA3AF)),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  item.label,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF111827)),
-                ),
-                if (item.childName.isNotEmpty)
-                  Text(item.childName, style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+                Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+                const SizedBox(height: 2),
+                Text(value, style: const TextStyle(fontSize: 13, color: Color(0xFF374151), fontWeight: FontWeight.w500)),
               ],
             ),
-          ),
-          Text(
-            '€${item.amount.toStringAsFixed(2)}',
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFFDC2626)),
           ),
         ],
       ),
