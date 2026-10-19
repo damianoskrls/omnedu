@@ -29,6 +29,15 @@ final monthThematicProvider = FutureProvider.family<List<dynamic>, String>((ref,
   }
 });
 
+// Returns the most recent school day on or before [from] (Mon–Fri).
+DateTime _prevSchoolDay(DateTime from) {
+  var d = from;
+  while (d.weekday == DateTime.saturday || d.weekday == DateTime.sunday) {
+    d = d.subtract(const Duration(days: 1));
+  }
+  return d;
+}
+
 final _recentPostsProvider = FutureProvider.family<List<dynamic>, String>(
   (ref, schoolId) async {
     final dio = ref.read(dioProvider);
@@ -38,16 +47,21 @@ final _recentPostsProvider = FutureProvider.family<List<dynamic>, String>(
       if (data is! List) return [];
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
+      // Show last 2 school days (skipping weekends).
+      final day1 = _prevSchoolDay(today);
+      final day2 = _prevSchoolDay(day1.subtract(const Duration(days: 1)));
       const _celebTypes = {'birthday', 'nameday', 'celebration'};
       return data.where((row) {
         if (row is! Map) return false;
         final t = row['postType']?.toString() ?? '';
         if (t == 'found') return false;
-        if (_celebTypes.contains(t)) {
-          final dt = DateTime.tryParse(row['publishedAt']?.toString() ?? '');
-          if (dt != null) return !DateTime(dt.year, dt.month, dt.day).isBefore(today);
-        }
-        return true;
+        final dt = DateTime.tryParse(row['publishedAt']?.toString() ?? '');
+        if (dt == null) return false;
+        final postDay = DateTime(dt.year, dt.month, dt.day);
+        // Birthday/nameday/celebration: only same day.
+        if (_celebTypes.contains(t)) return !postDay.isBefore(today);
+        // All other posts: only from the last 2 school days.
+        return !postDay.isBefore(day2);
       }).take(3).toList();
     } catch (_) {
       return [];

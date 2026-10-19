@@ -434,10 +434,20 @@ bool childHasEvents(Map<String, dynamic> child) {
 int childPendingEvents(Map<String, dynamic> child) {
   final events = child['eventEnrollments'];
   if (events is! List) return 0;
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
   return events.where((row) {
     if (row is! Map) return false;
     final status = row['status'] as String?;
-    return status == 'pending_consent' || status == 'pending_payment';
+    if (status != 'pending_consent' && status != 'pending_payment') return false;
+    // Only count future (or today's) events.
+    final event = row['event'];
+    if (event is! Map) return true;
+    final dateStr = event['eventDate']?.toString();
+    if (dateStr == null || dateStr.isEmpty) return true;
+    final d = DateTime.tryParse(dateStr);
+    if (d == null) return true;
+    return !DateTime(d.year, d.month, d.day).isBefore(today);
   }).length;
 }
 
