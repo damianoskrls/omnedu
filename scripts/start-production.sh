@@ -6,15 +6,22 @@ cd "$ROOT"
 
 cd "$ROOT/apps/api"
 
-# Direct repair: ensure missing columns exist before Prisma migration tracking runs.
-# This is belt-and-suspenders — if prisma migrate deploy has a stuck/failed migration
-# that blocks the chain, this guarantees the columns exist regardless.
-cat > /tmp/omnedu_repair.sql << 'EOSQL'
-ALTER TABLE "school_members" ADD COLUMN IF NOT EXISTS "notes" TEXT;
-EOSQL
-node_modules/.bin/prisma db execute --file /tmp/omnedu_repair.sql || \
-  echo '[repair] prisma db execute failed — will rely on migration chain'
-rm -f /tmp/omnedu_repair.sql
+# Direct repair: add missing DB columns using @prisma/client before migrations run.
+# Uses the same client/DATABASE_URL the app itself uses — more reliable than prisma db execute.
+node << 'NODEREPAIR' || echo '[repair] node repair script failed'
+const { PrismaClient } = require('@prisma/client');
+(async () => {
+  const p = new PrismaClient();
+  try {
+    await p.$executeRawUnsafe('ALTER TABLE "school_members" ADD COLUMN IF NOT EXISTS "notes" TEXT');
+    console.log('[repair] school_members.notes column ensured');
+  } catch(e) {
+    console.error('[repair] failed:', e.message);
+  } finally {
+    await p.$disconnect();
+  }
+})();
+NODEREPAIR
 
 (node_modules/.bin/prisma migrate deploy || {
   node_modules/.bin/prisma migrate resolve --rolled-back 20261008160000_conversation_delete || true
