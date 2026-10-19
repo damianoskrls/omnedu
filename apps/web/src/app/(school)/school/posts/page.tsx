@@ -224,7 +224,18 @@ function PostCard({
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col hover:shadow-md transition-shadow">
       {post.mediaUrls.length > 0 ? (
         <div className="relative h-44 bg-gray-100 overflow-hidden">
-          <img src={post.mediaUrls[0]} alt="" className="w-full h-full object-cover" />
+          {/\.(mp4|mov|webm)(\?|$)/i.test(post.mediaUrls[0]) ? (
+            <>
+              <video src={post.mediaUrls[0]} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-full bg-black/50 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                </div>
+              </div>
+            </>
+          ) : (
+            <img src={post.mediaUrls[0]} alt="" className="w-full h-full object-cover" />
+          )}
           {post.mediaUrls.length > 1 && (
             <span className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
               <ImageIcon className="w-3 h-3" /> +{post.mediaUrls.length - 1}
