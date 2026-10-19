@@ -8,6 +8,7 @@ import '../../../core/widgets/app_image.dart';
 import '../../../core/widgets/app_top_bar.dart';
 import '../../../core/widgets/person_face.dart';
 import '../parent_children.dart';
+import 'billing_screen.dart';
 import 'bus_closure.dart';
 import 'child_hub_screen.dart';
 import 'day_history.dart';
@@ -80,6 +81,7 @@ class HomeScreen extends ConsumerWidget {
     final thematicAsync = ref.watch(monthThematicProvider(schoolId));
     final meetingsAsync = ref.watch(parentMeetingsProvider(schoolId));
     final absencesAsync = ref.watch(teacherAbsencesProvider(schoolId));
+    final chargesAsync = ref.watch(myChargesProvider(schoolId));
     final user = ref.watch(authProvider).user;
     final firstName = user?.fullName.split(' ').first ?? '';
     final cards = _childMaps(childrenAsync.asData?.value ?? const []);
@@ -97,6 +99,7 @@ class HomeScreen extends ConsumerWidget {
           ref.invalidate(monthThematicProvider(schoolId));
           ref.invalidate(parentMeetingsProvider(schoolId));
           ref.invalidate(teacherAbsencesProvider(schoolId));
+          ref.invalidate(myChargesProvider(schoolId));
         },
         child: CustomScrollView(
           slivers: [
@@ -281,6 +284,7 @@ class HomeScreen extends ConsumerWidget {
                             ),
                           ),
                       ],
+                      _FinancialPendingSection(charges: chargesAsync.asData?.value ?? const []),
                       _GroupedExtras(children: cards, plans: plans),
                     ],
                   );
@@ -720,6 +724,150 @@ class _TypeIcon extends StatelessWidget {
       height: 54,
       decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
       child: Icon(Icons.photo_library_outlined, color: fg, size: 22),
+    );
+  }
+}
+
+// ── Οικονομικές Εκκρεμότητες ──────────────────────────────────────────────
+
+enum _FinancialItemType { event, monthly }
+
+class _FinancialItem {
+  final String childName;
+  final String label;
+  final double amount;
+  final _FinancialItemType type;
+  const _FinancialItem({required this.childName, required this.label, required this.amount, required this.type});
+}
+
+class _FinancialPendingSection extends StatelessWidget {
+  final List<dynamic> charges;
+  const _FinancialPendingSection({required this.charges});
+
+  static const _months = [
+    '', 'Ιαν', 'Φεβ', 'Μαρ', 'Απρ', 'Μαΐ', 'Ιουν',
+    'Ιουλ', 'Αυγ', 'Σεπ', 'Οκτ', 'Νοε', 'Δεκ',
+  ];
+  static String _monthName(int m) => (m >= 1 && m <= 12) ? _months[m] : '';
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final items = <_FinancialItem>[];
+
+    for (final entry in charges) {
+      if (entry is! Map) continue;
+      final student = entry['student'] as Map? ?? {};
+      final name = student['fullName'] as String? ?? '';
+
+      // Pending event payments
+      final events = entry['events'] as List? ?? [];
+      for (final ev in events) {
+        if (ev is! Map) continue;
+        if (ev['status'] != 'pending_payment') continue;
+        final event = ev['event'] as Map? ?? {};
+        final cost = double.tryParse(event['costPerChild']?.toString() ?? '0') ?? 0;
+        if (cost <= 0) continue;
+        final eventName = event['name'] as String? ?? 'Εκδήλωση';
+        items.add(_FinancialItem(childName: name, label: eventName, amount: cost, type: _FinancialItemType.event));
+      }
+
+      // Overdue monthly fee: only from the 10th of the month onward
+      if (now.day >= 10) {
+        final monthly = entry['monthly'] as List? ?? [];
+        for (final m in monthly) {
+          if (m is! Map) continue;
+          final year = m['year'] as int? ?? 0;
+          final month = m['month'] as int? ?? 0;
+          if (year != now.year || month != now.month) continue;
+          final totalDue = double.tryParse(m['totalDue']?.toString() ?? '0') ?? 0;
+          final paidAmount = double.tryParse(m['paidAmount']?.toString() ?? '0') ?? 0;
+          final owed = totalDue - paidAmount;
+          if (owed > 0.01) {
+            items.add(_FinancialItem(
+              childName: name,
+              label: 'Δίδακτρα ${_monthName(month)}',
+              amount: owed,
+              type: _FinancialItemType.monthly,
+            ));
+          }
+        }
+      }
+    }
+
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        daySectionTitle(Icons.account_balance_wallet_rounded, 'Οικονομικές Εκκρεμότητες', dayHistoryColors),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+          child: Column(
+            children: items.map((item) => _FinancialItemTile(item: item)).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FinancialItemTile extends StatelessWidget {
+  final _FinancialItem item;
+  const _FinancialItemTile({super.key, required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final isEvent = item.type == _FinancialItemType.event;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFFECACA)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFDC2626).withOpacity(0.06),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFEF2F2),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              isEvent ? Icons.event_rounded : Icons.calendar_month_rounded,
+              size: 18,
+              color: const Color(0xFFDC2626),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.label,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF111827)),
+                ),
+                if (item.childName.isNotEmpty)
+                  Text(item.childName, style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+              ],
+            ),
+          ),
+          Text(
+            '€${item.amount.toStringAsFixed(2)}',
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFFDC2626)),
+          ),
+        ],
+      ),
     );
   }
 }
