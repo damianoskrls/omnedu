@@ -1,13 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { classesApi, studentsApi, parentMeetingsApi, levelsApi } from '@/lib/api';
+import { classesApi, studentsApi, parentMeetingsApi, levelsApi, staffApi, broadcastsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, Users, GraduationCap, BookOpen, ChevronRight, Star,
-  Calendar, Plus, X, Save, ClipboardList, Pencil, Trash2,
+  Calendar, Plus, X, Save, ClipboardList, Pencil, Trash2, Bell, UserMinus, UserPlus, ShieldCheck,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { el } from 'date-fns/locale';
@@ -58,6 +58,19 @@ export default function ClassDetailPage() {
   const [years, setYears] = useState<any[]>([]);
   const [savingClass, setSavingClass] = useState(false);
   const [classError, setClassError] = useState('');
+
+  // Teacher management
+  const [staffList, setStaffList] = useState<any[]>([]);
+  const [showAddTeacher, setShowAddTeacher] = useState(false);
+  const [addingTeacherId, setAddingTeacherId] = useState('');
+  const [savingTeacher, setSavingTeacher] = useState(false);
+  const [removingTeacherId, setRemovingTeacherId] = useState<string | null>(null);
+
+  // Push notification
+  const [showNotifModal, setShowNotifModal] = useState(false);
+  const [notifForm, setNotifForm] = useState({ title: '', body: '' });
+  const [sendingNotif, setSendingNotif] = useState(false);
+  const [notifSent, setNotifSent] = useState(false);
 
   const load = async () => {
     if (!schoolId || !classId) return;
@@ -191,6 +204,56 @@ export default function ClassDetailPage() {
     }
   };
 
+  const openAddTeacher = async () => {
+    if (staffList.length === 0) {
+      const data = await staffApi.list(schoolId) as any;
+      setStaffList(Array.isArray(data) ? data : []);
+    }
+    setAddingTeacherId('');
+    setShowAddTeacher(true);
+  };
+
+  const saveTeacher = async () => {
+    if (!addingTeacherId) return;
+    setSavingTeacher(true);
+    try {
+      await classesApi.assignTeacher(schoolId, classId, addingTeacherId, cls.teachers?.length === 0);
+      setShowAddTeacher(false);
+      await load();
+    } finally {
+      setSavingTeacher(false);
+    }
+  };
+
+  const removeTeacher = async (userId: string) => {
+    if (!confirm('Αφαίρεση εκπαιδευτικού από την τάξη;')) return;
+    setRemovingTeacherId(userId);
+    try {
+      await classesApi.removeTeacher(schoolId, classId, userId);
+      await load();
+    } finally {
+      setRemovingTeacherId(null);
+    }
+  };
+
+  const sendNotification = async () => {
+    if (!notifForm.title.trim() || !notifForm.body.trim()) return;
+    setSendingNotif(true);
+    try {
+      await broadcastsApi.send(schoolId, {
+        title: notifForm.title.trim(),
+        body: notifForm.body.trim(),
+        targetType: 'class',
+        targetClassId: classId,
+        channels: ['push'],
+      });
+      setNotifSent(true);
+      setTimeout(() => { setShowNotifModal(false); setNotifSent(false); setNotifForm({ title: '', body: '' }); }, 1500);
+    } finally {
+      setSendingNotif(false);
+    }
+  };
+
   if (loading) return <div className="p-8 text-gray-400 text-center">Φόρτωση...</div>;
   if (!cls) {
     return (
@@ -241,9 +304,12 @@ export default function ClassDetailPage() {
               </div>
             </div>
           </div>
-          <div className="flex items-start gap-2">
+          <div className="flex items-start gap-2 flex-wrap">
             {canManage && (
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
+                <button type="button" onClick={() => setShowNotifModal(true)} className="inline-flex items-center gap-1 rounded-lg border border-[#642678]/20 bg-[#faf5fc] px-3 py-2 text-sm font-semibold text-[#642678] hover:bg-[#f3e8f7]">
+                  <Bell className="h-4 w-4" /> Ειδοποίηση
+                </button>
                 <button type="button" onClick={startEditClass} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-[#642678] hover:bg-[#faf5fc]">
                   <Pencil className="h-4 w-4" /> Επεξεργασία
                 </button>
@@ -301,18 +367,25 @@ export default function ClassDetailPage() {
         <div className="space-y-6">
           {/* Teachers */}
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-            <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <GraduationCap className="h-4 w-4 text-emerald-600" />
-              Εκπαιδευτικοί
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                <GraduationCap className="h-4 w-4 text-emerald-600" />
+                Εκπαιδευτικοί
+              </h2>
+              {canManage && (
+                <button onClick={openAddTeacher} className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg" title="Προσθήκη εκπαιδευτικού">
+                  <UserPlus size={16} />
+                </button>
+              )}
+            </div>
             {!cls.teachers?.length ? (
               <p className="text-sm text-gray-400">Δεν έχουν ανατεθεί.</p>
             ) : (
               <div className="space-y-3">
                 {cls.teachers.map((t: any) => (
-                  <div key={t.userId} className="flex items-center gap-3">
+                  <div key={t.userId} className="flex items-center gap-3 group">
                     <PersonAvatar name={t.user.fullName} src={t.user.avatarUrl} tone="green" className="h-9 w-9 rounded-xl text-xs shadow-sm" />
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <div className="text-sm font-medium text-gray-900 truncate">{t.user.fullName}</div>
                       {t.isPrimary && (
                         <div className="flex items-center gap-0.5 text-xs text-amber-600">
@@ -320,11 +393,42 @@ export default function ClassDetailPage() {
                         </div>
                       )}
                     </div>
+                    {canManage && (
+                      <button
+                        onClick={() => removeTeacher(t.userId)}
+                        disabled={removingTeacherId === t.userId}
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded text-gray-300 hover:text-red-400 disabled:opacity-40 transition-opacity"
+                        title="Αφαίρεση"
+                      >
+                        <UserMinus size={14} />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
             )}
           </div>
+
+          {/* Level coordinator */}
+          {cls.level?.coordinatorLinks?.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+              <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-violet-500" />
+                Υπεύθυνος Βαθμίδας
+              </h2>
+              <div className="space-y-3">
+                {cls.level.coordinatorLinks.map((c: any) => (
+                  <div key={c.userId} className="flex items-center gap-3">
+                    <PersonAvatar name={c.user.fullName} src={c.user.avatarUrl} tone="violet" className="h-9 w-9 rounded-xl text-xs shadow-sm" />
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-gray-900 truncate">{c.user.fullName}</div>
+                      <div className="text-xs text-violet-500">{cls.level.name}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Parent Meetings */}
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
@@ -515,6 +619,97 @@ export default function ClassDetailPage() {
                 {savingInstr ? 'Αποθήκευση...' : 'Αποθήκευση'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add teacher modal */}
+      {showAddTeacher && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-semibold text-gray-900">Προσθήκη Εκπαιδευτικού</h2>
+              <button onClick={() => setShowAddTeacher(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <div className="space-y-3">
+              <select
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                value={addingTeacherId}
+                onChange={(e) => setAddingTeacherId(e.target.value)}
+              >
+                <option value="">Επιλέξτε εκπαιδευτικό...</option>
+                {staffList
+                  .filter((s: any) => s.role === 'teacher' || s.role === 'school_admin')
+                  .filter((s: any) => !cls.teachers?.some((t: any) => t.userId === s.userId))
+                  .map((s: any) => (
+                    <option key={s.userId} value={s.userId}>{s.user?.fullName ?? s.fullName}</option>
+                  ))}
+              </select>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => setShowAddTeacher(false)} className="flex-1 border border-gray-300 text-gray-700 rounded-lg py-2 text-sm hover:bg-gray-50">Άκυρο</button>
+              <button
+                onClick={saveTeacher}
+                disabled={savingTeacher || !addingTeacherId}
+                className="flex-1 bg-indigo-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {savingTeacher ? 'Αποθήκευση...' : 'Προσθήκη'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Push notification modal */}
+      {showNotifModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-semibold text-gray-900">Αποστολή Ειδοποίησης</h2>
+              <button onClick={() => { setShowNotifModal(false); setNotifForm({ title: '', body: '' }); setNotifSent(false); }} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            {notifSent ? (
+              <div className="py-6 text-center">
+                <div className="text-3xl mb-2">✓</div>
+                <p className="text-sm text-emerald-600 font-semibold">Η ειδοποίηση εστάλη!</p>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-gray-400 mb-4">Αποστολή push notification σε όλους τους γονείς της τάξης <span className="font-semibold text-gray-600">{cls.name}</span>.</p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Τίτλος *</label>
+                    <input
+                      value={notifForm.title}
+                      onChange={(e) => setNotifForm({ ...notifForm, title: e.target.value })}
+                      placeholder="π.χ. Σημαντική ανακοίνωση"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#642678]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Μήνυμα *</label>
+                    <textarea
+                      value={notifForm.body}
+                      onChange={(e) => setNotifForm({ ...notifForm, body: e.target.value })}
+                      rows={3}
+                      placeholder="π.χ. Αύριο δεν θα γίνει μάθημα λόγω εορτής."
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#642678] resize-none"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-3 mt-5">
+                  <button onClick={() => { setShowNotifModal(false); setNotifForm({ title: '', body: '' }); }} className="flex-1 border border-gray-300 text-gray-700 rounded-lg py-2 text-sm hover:bg-gray-50">Άκυρο</button>
+                  <button
+                    onClick={sendNotification}
+                    disabled={sendingNotif || !notifForm.title.trim() || !notifForm.body.trim()}
+                    className="flex-1 bg-[#642678] text-white rounded-lg py-2 text-sm font-medium hover:bg-[#531f63] disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    <Bell size={14} />
+                    {sendingNotif ? 'Αποστολή...' : 'Αποστολή'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

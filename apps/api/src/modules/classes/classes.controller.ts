@@ -55,6 +55,12 @@ export class ClassesController {
     return this.classes.assignTeacher(classId, body.userId, body.isPrimary);
   }
 
+  @Delete(':id/teachers/:userId')
+  @Roles('school_admin')
+  removeTeacher(@Param('id') classId: string, @Param('userId') userId: string) {
+    return this.classes.removeTeacher(classId, userId);
+  }
+
   @Get('academic-years/list')
   getAcademicYears(@Param('schoolId') schoolId: string) {
     return this.classes.getAcademicYears(schoolId);

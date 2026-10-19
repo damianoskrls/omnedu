@@ -199,6 +199,10 @@ export const classesApi = {
     api.put(`/schools/${schoolId}/classes/${classId}/instructions/${instructionId}`, data),
   deleteInstruction: (schoolId: string, classId: string, instructionId: string) =>
     api.delete(`/schools/${schoolId}/classes/${classId}/instructions/${instructionId}`),
+  assignTeacher: (schoolId: string, classId: string, userId: string, isPrimary?: boolean) =>
+    api.post(`/schools/${schoolId}/classes/${classId}/teachers`, { userId, isPrimary }),
+  removeTeacher: (schoolId: string, classId: string, userId: string) =>
+    api.delete(`/schools/${schoolId}/classes/${classId}/teachers/${userId}`),
 };
 
 export const parentsApi = {

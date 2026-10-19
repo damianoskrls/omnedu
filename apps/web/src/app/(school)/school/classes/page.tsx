@@ -6,6 +6,7 @@ import { useStoredUser } from '@/lib/auth';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
 import { Plus, Users, BookOpen, ChevronRight, GraduationCap, X, Pencil, Trash2 } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { PersonAvatar } from '@/components/PersonAvatar';
 
 // Ordered levels for Greek kindergartens
@@ -59,6 +60,7 @@ const UNKNOWN_META = {
 
 export default function ClassesPage() {
   const user = useStoredUser();
+  const router = useRouter();
   const schoolId = user?.schoolId ?? '';
   const { selectedYear } = useAcademicYear();
   const isAdmin = user?.role === 'school_admin';
@@ -243,7 +245,7 @@ export default function ClassesPage() {
                           <div className="flex items-center gap-1">
                             {isAdmin && (
                               <>
-                                <button type="button" onClick={() => openEdit(cls)} className="rounded-lg p-1.5 text-gray-400 hover:bg-[#faf5fc] hover:text-[#77328D]" aria-label="Επεξεργασία">
+                                <button type="button" onClick={() => router.push(`/school/classes/${cls.id}`)} className="rounded-lg p-1.5 text-gray-400 hover:bg-[#faf5fc] hover:text-[#77328D]" aria-label="Επεξεργασία">
                                   <Pencil className="h-4 w-4" />
                                 </button>
                                 <button type="button" onClick={() => removeClass(cls)} className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600" aria-label="Διαγραφή">

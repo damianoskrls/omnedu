@@ -71,7 +71,12 @@ export class ClassesService {
           include: { student: { select: { id: true, fullName: true, avatarUrl: true } } },
         },
         academicYear: true,
-        level: { select: { id: true, name: true, description: true } },
+        level: {
+          select: {
+            id: true, name: true, description: true,
+            coordinatorLinks: { include: { user: { select: { id: true, fullName: true, avatarUrl: true } } } },
+          },
+        },
         parentMeetings: { orderBy: { meetingDate: 'asc' }, take: 10 },
         instructions: { orderBy: { sortOrder: 'asc' } },
       },
@@ -159,6 +164,12 @@ export class ClassesService {
       where: { classId_userId: { classId, userId } },
       create: { classId, userId, isPrimary },
       update: { isPrimary },
+    });
+  }
+
+  async removeTeacher(classId: string, userId: string) {
+    return this.prisma.classTeacher.delete({
+      where: { classId_userId: { classId, userId } },
     });
   }
 
