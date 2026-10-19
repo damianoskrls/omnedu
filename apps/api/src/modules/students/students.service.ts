@@ -60,16 +60,18 @@ type ParentCard = {
   email: string;
   phone: string | null;
   avatarUrl: string | null;
+  notes: string | null;
   children: ParentChild[];
 };
 
-function parentCard(user: ParentUser): ParentCard {
+function parentCard(user: ParentUser, notes?: string | null): ParentCard {
   return {
     id: user.id,
     fullName: user.fullName,
     email: user.email,
     phone: user.phone,
     avatarUrl: user.avatarUrl,
+    notes: notes ?? null,
     children: [],
   };
 }
@@ -570,17 +572,17 @@ export class StudentsService {
       }),
       this.prisma.schoolMember.findMany({
         where: { schoolId, role: 'parent', isActive: true },
-        include: { user: { select: parentUserSelect } },
+        select: { userId: true, notes: true, user: { select: parentUserSelect } },
       }),
     ]);
+    const notesMap = new Map(members.map((m) => [m.userId, m.notes ?? null]));
     const grouped = new Map<string, ParentCard>();
-    for (const link of links) {
-      const card = grouped.get(link.userId) ?? parentCard(link.user);
-      card.children.push(parentChild(link));
-      grouped.set(link.userId, card);
-    }
     for (const member of members) {
-      if (!grouped.has(member.userId)) grouped.set(member.userId, parentCard(member.user));
+      grouped.set(member.userId, parentCard(member.user, member.notes));
+    }
+    for (const link of links) {
+      if (!grouped.has(link.userId)) grouped.set(link.userId, parentCard(link.user, notesMap.get(link.userId)));
+      grouped.get(link.userId)!.children.push(parentChild(link));
     }
     return [...grouped.values()]
       .map((card) => ({ ...card, children: card.children.sort((a, b) => a.fullName.localeCompare(b.fullName, 'el')) }))
@@ -594,7 +596,7 @@ export class StudentsService {
     return parent;
   }
 
-  async createStandaloneParent(schoolId: string, data: { fullName: string; email?: string; phone?: string }) {
+  async createStandaloneParent(schoolId: string, data: { fullName: string; email?: string; phone?: string; notes?: string }) {
     return this.prisma.$transaction(async (tx) => {
       const email = data.email?.trim() || `parent-${randomBytes(8).toString('hex')}@omnedu.placeholder`;
       let user = await this.findUserByContact(tx, data.email, data.phone);
@@ -604,23 +606,54 @@ export class StudentsService {
         });
       }
       const existing = await tx.schoolMember.findFirst({ where: { schoolId, userId: user.id } });
-      if (!existing) await tx.schoolMember.create({ data: { schoolId, userId: user.id, role: 'parent' } });
+      if (!existing) {
+        await tx.schoolMember.create({ data: { schoolId, userId: user.id, role: 'parent', notes: data.notes } });
+      } else if (data.notes !== undefined) {
+        await tx.schoolMember.update({ where: { id: existing.id }, data: { notes: data.notes } });
+      }
       return this.getParent(schoolId, user.id);
     });
   }
 
-  async updateStandaloneParent(schoolId: string, userId: string, data: { fullName?: string; email?: string; phone?: string }) {
+  async updateStandaloneParent(schoolId: string, userId: string, data: { fullName?: string; email?: string; phone?: string; notes?: string }) {
     const member = await this.prisma.schoolMember.findFirst({ where: { schoolId, userId } });
     if (!member) throw new NotFoundException('Ο γονέας δεν βρέθηκε');
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        ...(data.fullName !== undefined ? { fullName: data.fullName } : {}),
-        ...(data.phone !== undefined ? { phone: normalizePhone(data.phone) } : {}),
-        ...(data.email !== undefined ? { email: data.email } : {}),
-      },
-    });
+    await Promise.all([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          ...(data.fullName !== undefined ? { fullName: data.fullName } : {}),
+          ...(data.phone !== undefined ? { phone: normalizePhone(data.phone) } : {}),
+          ...(data.email !== undefined ? { email: data.email } : {}),
+        },
+      }),
+      data.notes !== undefined
+        ? this.prisma.schoolMember.update({ where: { id: member.id }, data: { notes: data.notes } })
+        : Promise.resolve(),
+    ]);
     return this.getParent(schoolId, userId);
+  }
+
+  async linkChildToParent(schoolId: string, parentUserId: string, studentId: string, options?: { relation?: string; isPrimary?: boolean }) {
+    const [member, student] = await Promise.all([
+      this.prisma.schoolMember.findFirst({ where: { schoolId, userId: parentUserId, role: 'parent' } }),
+      this.prisma.student.findFirst({ where: { id: studentId, schoolId } }),
+    ]);
+    if (!member) throw new NotFoundException('Ο γονέας δεν βρέθηκε');
+    if (!student) throw new NotFoundException('Ο μαθητής δεν βρέθηκε');
+    await this.prisma.studentParent.upsert({
+      where: { studentId_userId: { studentId, userId: parentUserId } },
+      create: { studentId, userId: parentUserId, relation: options?.relation, isPrimary: options?.isPrimary ?? false },
+      update: { relation: options?.relation, isPrimary: options?.isPrimary ?? false },
+    });
+    return this.getParent(schoolId, parentUserId);
+  }
+
+  async unlinkChildFromParent(schoolId: string, parentUserId: string, studentId: string) {
+    const member = await this.prisma.schoolMember.findFirst({ where: { schoolId, userId: parentUserId } });
+    if (!member) throw new NotFoundException('Ο γονέας δεν βρέθηκε');
+    await this.prisma.studentParent.deleteMany({ where: { studentId, userId: parentUserId } });
+    return { ok: true };
   }
 
   async deleteStandaloneParent(schoolId: string, userId: string) {

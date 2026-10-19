@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Baby, ChevronRight, Pencil, Plus, Search, Send, Trash2, X } from 'lucide-react';
-import { parentsApi, api } from '@/lib/api';
+import { parentsApi, studentsApi, api } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
 
 type Child = { id: string; fullName: string; className?: string; isActive?: boolean };
@@ -12,8 +12,10 @@ type ParentRow = {
   fullName: string;
   email?: string;
   phone?: string | null;
+  notes?: string | null;
   children?: Child[];
 };
+type StudentOption = { id: string; fullName: string; className?: string };
 
 function errText(error: any) {
   const message = error?.response?.data?.message ?? error?.message;
@@ -21,7 +23,7 @@ function errText(error: any) {
   return message || 'Σφάλμα';
 }
 
-const emptyForm = () => ({ fullName: '', email: '', phone: '' });
+const emptyForm = () => ({ fullName: '', email: '', phone: '', notes: '' });
 
 export default function ParentsPage() {
   const user = useStoredUser();
@@ -45,6 +47,13 @@ export default function ParentsPage() {
   const [editForm, setEditForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState('');
+
+  // Edit — children management
+  const [allStudents, setAllStudents] = useState<StudentOption[]>([]);
+  const [childSearch, setChildSearch] = useState('');
+  const [linkingChild, setLinkingChild] = useState<string | null>(null);
+  const [unlinkingChild, setUnlinkingChild] = useState<string | null>(null);
+  const [editChildren, setEditChildren] = useState<Child[]>([]);
 
   // Delete
   const [deleteTarget, setDeleteTarget] = useState<ParentRow | null>(null);
@@ -72,6 +81,7 @@ export default function ParentsPage() {
         parent.fullName,
         parent.email,
         parent.phone,
+        parent.notes,
         ...(parent.children ?? []).map((child) => `${child.fullName} ${child.className ?? ''}`),
       ].join(' ').toLowerCase();
       return haystack.includes(query);
@@ -120,6 +130,7 @@ export default function ParentsPage() {
         fullName: createForm.fullName.trim(),
         email: createForm.email.trim() || undefined,
         phone: createForm.phone.trim() || undefined,
+        notes: createForm.notes.trim() || undefined,
       });
       setShowCreate(false);
       setCreateForm(emptyForm());
@@ -133,8 +144,21 @@ export default function ParentsPage() {
 
   const openEdit = (parent: ParentRow) => {
     setEditTarget(parent);
-    setEditForm({ fullName: parent.fullName, email: parent.email ?? '', phone: parent.phone ?? '' });
+    setEditForm({ fullName: parent.fullName, email: parent.email ?? '', phone: parent.phone ?? '', notes: parent.notes ?? '' });
+    setEditChildren(parent.children ?? []);
     setEditError('');
+    setChildSearch('');
+    // Load students list for picker
+    if (schoolId) {
+      studentsApi.list(schoolId, undefined, true).then((data: any) => {
+        const list = Array.isArray(data) ? data : (data?.students ?? []);
+        setAllStudents(list.map((s: any) => ({
+          id: s.id,
+          fullName: s.fullName,
+          className: s.className ?? s.enrollments?.[0]?.class?.name,
+        })));
+      }).catch(() => {});
+    }
   };
 
   const doEdit = async () => {
@@ -146,6 +170,7 @@ export default function ParentsPage() {
         fullName: editForm.fullName.trim(),
         email: editForm.email.trim() || undefined,
         phone: editForm.phone.trim() || undefined,
+        notes: editForm.notes,
       });
       setEditTarget(null);
       reload();
@@ -153,6 +178,36 @@ export default function ParentsPage() {
       setEditError(errText(error));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const doLinkChild = async (studentId: string) => {
+    if (!editTarget) return;
+    setLinkingChild(studentId);
+    try {
+      const updated: any = await parentsApi.linkChild(schoolId, editTarget.id, studentId);
+      setEditChildren(updated?.children ?? []);
+      setParents((prev) => prev.map((p) => p.id === editTarget.id ? { ...p, children: updated?.children ?? p.children } : p));
+    } catch {
+      // ignore
+    } finally {
+      setLinkingChild(null);
+    }
+  };
+
+  const doUnlinkChild = async (studentId: string) => {
+    if (!editTarget) return;
+    setUnlinkingChild(studentId);
+    try {
+      await parentsApi.unlinkChild(schoolId, editTarget.id, studentId);
+      setEditChildren((prev) => prev.filter((c) => c.id !== studentId));
+      setParents((prev) => prev.map((p) => p.id === editTarget.id
+        ? { ...p, children: (p.children ?? []).filter((c) => c.id !== studentId) }
+        : p));
+    } catch {
+      // ignore
+    } finally {
+      setUnlinkingChild(null);
     }
   };
 
@@ -169,6 +224,12 @@ export default function ParentsPage() {
       setDeleting(false);
     }
   };
+
+  const linkedIds = new Set(editChildren.map((c) => c.id));
+  const filteredStudents = useMemo(() => {
+    const q = childSearch.trim().toLowerCase();
+    return allStudents.filter((s) => !linkedIds.has(s.id) && (!q || s.fullName.toLowerCase().includes(q) || (s.className ?? '').toLowerCase().includes(q)));
+  }, [allStudents, childSearch, editChildren]);
 
   return (
     <div>
@@ -256,6 +317,9 @@ export default function ParentsPage() {
                       <p className="truncate font-bold text-[#2f2a28]">{parent.fullName}</p>
                       <p className="truncate text-sm text-[#6b625c]">{parent.phone || 'Χωρίς τηλέφωνο'}</p>
                       <p className="truncate text-xs text-[#a89890]">{parent.email}</p>
+                      {parent.notes && (
+                        <p className="mt-1 truncate text-xs text-[#8a756c] italic">{parent.notes}</p>
+                      )}
                     </div>
                     <div className="flex items-center gap-1">
                       <button
@@ -337,6 +401,16 @@ export default function ParentsPage() {
                   className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Σχόλια</label>
+                <textarea
+                  value={createForm.notes}
+                  onChange={(e) => setCreateForm({ ...createForm, notes: e.target.value })}
+                  placeholder="Προαιρετικές σημειώσεις για τον γονέα..."
+                  rows={2}
+                  className="w-full resize-none border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                />
+              </div>
               {createError && <p className="text-sm text-red-500">{createError}</p>}
             </div>
             <div className="flex justify-end gap-2 px-6 pb-6">
@@ -356,44 +430,110 @@ export default function ParentsPage() {
       {/* Edit modal */}
       {editTarget && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm">
-            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100 shrink-0">
               <h3 className="text-lg font-bold text-gray-900">Επεξεργασία Γονέα</h3>
               <button onClick={() => setEditTarget(null)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="px-6 py-4 space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Ονοματεπώνυμο *</label>
-                <input
-                  value={editForm.fullName}
-                  onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })}
-                  autoFocus
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                />
+            <div className="overflow-y-auto flex-1 px-6 py-4 space-y-4">
+              {/* Basic info */}
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Ονοματεπώνυμο *</label>
+                  <input
+                    value={editForm.fullName}
+                    onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })}
+                    autoFocus
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={editForm.email}
+                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Τηλέφωνο</label>
+                  <input
+                    type="tel"
+                    value={editForm.phone}
+                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Σχόλια</label>
+                  <textarea
+                    value={editForm.notes}
+                    onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                    placeholder="Προαιρετικές σημειώσεις για τον γονέα..."
+                    rows={2}
+                    className="w-full resize-none border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  />
+                </div>
               </div>
+
+              {/* Children management */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input
-                  type="email"
-                  value={editForm.email}
-                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                />
+                <p className="text-sm font-semibold text-gray-800 mb-2">Παιδιά</p>
+                {/* Currently linked children */}
+                {editChildren.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {editChildren.map((child) => (
+                      <span key={child.id} className="inline-flex items-center gap-1.5 rounded-full bg-[#f3e8f7] pl-2.5 pr-1.5 py-1 text-xs font-semibold text-[#642678]">
+                        <Baby className="h-3 w-3" />
+                        {child.fullName}{child.className ? ` · ${child.className}` : ''}
+                        <button
+                          type="button"
+                          onClick={() => doUnlinkChild(child.id)}
+                          disabled={unlinkingChild === child.id}
+                          className="rounded-full hover:bg-[#e8cff5] p-0.5 text-[#642678] disabled:opacity-40"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {/* Student search to add */}
+                <div className="relative mb-2">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+                  <input
+                    value={childSearch}
+                    onChange={(e) => setChildSearch(e.target.value)}
+                    placeholder="Αναζήτηση μαθητή για σύνδεση..."
+                    className="w-full border border-gray-200 rounded-xl py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  />
+                </div>
+                {childSearch.trim() && (
+                  <div className="max-h-36 overflow-y-auto rounded-xl border border-gray-100 bg-gray-50">
+                    {filteredStudents.length === 0 ? (
+                      <p className="px-3 py-3 text-xs text-gray-400 text-center">Δεν βρέθηκαν μαθητές</p>
+                    ) : filteredStudents.slice(0, 20).map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => { doLinkChild(s.id); setChildSearch(''); }}
+                        disabled={linkingChild === s.id}
+                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-[#faf5fc] disabled:opacity-50"
+                      >
+                        <span className="font-medium text-gray-800">{s.fullName}</span>
+                        {s.className && <span className="text-xs text-gray-400">{s.className}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Τηλέφωνο</label>
-                <input
-                  type="tel"
-                  value={editForm.phone}
-                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                />
-              </div>
+
               {editError && <p className="text-sm text-red-500">{editError}</p>}
             </div>
-            <div className="flex justify-end gap-2 px-6 pb-6">
+            <div className="flex justify-end gap-2 px-6 pb-6 pt-4 border-t border-gray-100 shrink-0">
               <button onClick={() => setEditTarget(null)} className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900">Ακύρωση</button>
               <button
                 onClick={doEdit}

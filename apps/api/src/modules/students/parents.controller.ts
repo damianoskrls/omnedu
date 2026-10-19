@@ -19,7 +19,7 @@ export class ParentsController {
   @Roles('school_admin')
   create(
     @Param('schoolId') schoolId: string,
-    @Body() body: { fullName: string; email?: string; phone?: string },
+    @Body() body: { fullName: string; email?: string; phone?: string; notes?: string },
   ) {
     return this.students.createStandaloneParent(schoolId, body);
   }
@@ -35,7 +35,7 @@ export class ParentsController {
   update(
     @Param('schoolId') schoolId: string,
     @Param('userId') userId: string,
-    @Body() body: { fullName?: string; email?: string; phone?: string },
+    @Body() body: { fullName?: string; email?: string; phone?: string; notes?: string },
   ) {
     return this.students.updateStandaloneParent(schoolId, userId, body);
   }
@@ -44,5 +44,25 @@ export class ParentsController {
   @Roles('school_admin')
   remove(@Param('schoolId') schoolId: string, @Param('userId') userId: string) {
     return this.students.deleteStandaloneParent(schoolId, userId);
+  }
+
+  @Post(':userId/children')
+  @Roles('school_admin')
+  linkChild(
+    @Param('schoolId') schoolId: string,
+    @Param('userId') userId: string,
+    @Body() body: { studentId: string; relation?: string; isPrimary?: boolean },
+  ) {
+    return this.students.linkChildToParent(schoolId, userId, body.studentId, body);
+  }
+
+  @Delete(':userId/children/:studentId')
+  @Roles('school_admin')
+  unlinkChild(
+    @Param('schoolId') schoolId: string,
+    @Param('userId') userId: string,
+    @Param('studentId') studentId: string,
+  ) {
+    return this.students.unlinkChildFromParent(schoolId, userId, studentId);
   }
 }

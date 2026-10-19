@@ -207,12 +207,16 @@ export const classesApi = {
 
 export const parentsApi = {
   list: (schoolId: string) => api.get(`/schools/${schoolId}/parents`),
-  create: (schoolId: string, data: { fullName: string; email?: string; phone?: string }) =>
+  create: (schoolId: string, data: { fullName: string; email?: string; phone?: string; notes?: string }) =>
     api.post(`/schools/${schoolId}/parents`, data),
-  update: (schoolId: string, userId: string, data: { fullName?: string; email?: string; phone?: string }) =>
+  update: (schoolId: string, userId: string, data: { fullName?: string; email?: string; phone?: string; notes?: string }) =>
     api.patch(`/schools/${schoolId}/parents/${userId}`, data),
   delete: (schoolId: string, userId: string) =>
     api.delete(`/schools/${schoolId}/parents/${userId}`),
+  linkChild: (schoolId: string, userId: string, studentId: string) =>
+    api.post(`/schools/${schoolId}/parents/${userId}/children`, { studentId }),
+  unlinkChild: (schoolId: string, userId: string, studentId: string) =>
+    api.delete(`/schools/${schoolId}/parents/${userId}/children/${studentId}`),
 };
 
 export const schoolReportsApi = {
