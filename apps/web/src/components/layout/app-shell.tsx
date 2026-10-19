@@ -1,13 +1,36 @@
 'use client';
 
 import { useState } from 'react';
-import { Menu } from 'lucide-react';
+import { Menu, ChevronDown } from 'lucide-react';
 import { AdminAlerts } from '@/components/layout/admin-alerts';
 import { Sidebar } from '@/components/layout/sidebar';
 import { TopSearchBar } from '@/components/layout/top-search-bar';
 import { useStoredUser } from '@/lib/auth';
+import { AcademicYearProvider, useAcademicYear } from '@/contexts/AcademicYearContext';
 
-export function AppShell({
+function YearPicker() {
+  const { years, selectedYear, setSelectedYear } = useAcademicYear();
+  if (years.length <= 1) return null;
+  return (
+    <div className="relative hidden sm:flex items-center">
+      <select
+        value={selectedYear?.id ?? ''}
+        onChange={e => {
+          const y = years.find(yr => yr.id === e.target.value);
+          if (y) setSelectedYear(y);
+        }}
+        className="appearance-none cursor-pointer rounded-xl border border-[#77328d]/20 bg-white/80 pl-3 pr-7 py-1.5 text-xs font-semibold text-[#642678] shadow-sm focus:outline-none focus:ring-2 focus:ring-[#77328d]/30"
+      >
+        {years.map(y => (
+          <option key={y.id} value={y.id}>{y.label}{y.isCurrent ? ' ✓' : ''}</option>
+        ))}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-2 h-3 w-3 text-[#642678]" />
+    </div>
+  );
+}
+
+function AppShellInner({
   variant,
   children,
 }: {
@@ -36,6 +59,7 @@ export function AppShell({
             <Menu className="h-4 w-4" />
           </button>
           <p className="hidden text-sm font-semibold capitalize text-[#6b625c] sm:block">{today}</p>
+          {variant === 'school' && <YearPicker />}
           <TopSearchBar variant={variant} />
           <div className="ml-auto flex items-center gap-2">
             {variant === 'school' && <AdminAlerts />}
@@ -49,4 +73,25 @@ export function AppShell({
       </div>
     </div>
   );
+}
+
+export function AppShell({
+  variant,
+  children,
+}: {
+  variant: 'super-admin' | 'school';
+  children: React.ReactNode;
+}) {
+  const user = useStoredUser();
+  const schoolId = variant === 'school' ? (user?.schoolId ?? '') : '';
+
+  if (variant === 'school') {
+    return (
+      <AcademicYearProvider schoolId={schoolId}>
+        <AppShellInner variant={variant}>{children}</AppShellInner>
+      </AcademicYearProvider>
+    );
+  }
+
+  return <AppShellInner variant={variant}>{children}</AppShellInner>;
 }

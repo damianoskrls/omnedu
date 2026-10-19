@@ -177,6 +177,38 @@ export class ClassesService {
       data: { schoolId, ...data, startsOn: new Date(data.startsOn), endsOn: new Date(data.endsOn) },
     });
   }
+
+  async rolloverToYear(
+    schoolId: string,
+    yearId: string,
+    dto: { studentRollovers: { studentId: string; newClassId: string }[]; deactivateStudentIds: string[]; activate: boolean },
+  ) {
+    const year = await this.prisma.academicYear.findFirst({ where: { id: yearId, schoolId } });
+    if (!year) throw new NotFoundException('Σχολικό έτος δεν βρέθηκε');
+
+    for (const { studentId, newClassId } of dto.studentRollovers) {
+      const existing = await this.prisma.classEnrollment.findFirst({ where: { studentId, academicYearId: yearId } });
+      if (existing) {
+        await this.prisma.classEnrollment.update({ where: { id: existing.id }, data: { classId: newClassId } });
+      } else {
+        await this.prisma.classEnrollment.create({ data: { studentId, classId: newClassId, academicYearId: yearId } });
+      }
+    }
+
+    if (dto.deactivateStudentIds.length > 0) {
+      await this.prisma.student.updateMany({
+        where: { id: { in: dto.deactivateStudentIds }, schoolId },
+        data: { isActive: false },
+      });
+    }
+
+    if (dto.activate) {
+      await this.prisma.academicYear.updateMany({ where: { schoolId }, data: { isCurrent: false } });
+      await this.prisma.academicYear.update({ where: { id: yearId }, data: { isCurrent: true } });
+    }
+
+    return { ok: true, yearId, enrolled: dto.studentRollovers.length, deactivated: dto.deactivateStudentIds.length };
+  }
 }
 
 function athensToday() {

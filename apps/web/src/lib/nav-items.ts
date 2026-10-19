@@ -3,7 +3,7 @@ import {
   MessageSquare, CreditCard, Settings,
   Layers, Utensils, ClipboardList, Pill, BellRing, Zap, Bus, Wrench,
   Newspaper, CalendarDays, ScrollText, NotebookPen, PartyPopper, TreePalm,
-  BarChart3, Shirt, FileText,
+  BarChart3, Shirt, FileText, CalendarPlus,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -62,6 +62,7 @@ export const schoolNav: NavGroup[] = [
   {
     label: 'Λειτουργία',
     items: [
+      { href: '/school/new-year', label: 'Νέα Σχολική Χρονιά', icon: CalendarPlus },
       { href: '/school/routes', label: 'Σχολικό', icon: Bus },
       { href: '/school/services', label: 'Παροχές', icon: Wrench },
       { href: '/school/reports', label: 'Αναφορές', icon: BarChart3 },

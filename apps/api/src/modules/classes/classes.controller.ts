@@ -66,6 +66,16 @@ export class ClassesController {
     return this.classes.createAcademicYear(schoolId, body);
   }
 
+  @Post('academic-years/:yearId/rollover')
+  @Roles('school_admin')
+  rolloverToYear(
+    @Param('schoolId') schoolId: string,
+    @Param('yearId') yearId: string,
+    @Body() body: { studentRollovers: { studentId: string; newClassId: string }[]; deactivateStudentIds: string[]; activate: boolean },
+  ) {
+    return this.classes.rolloverToYear(schoolId, yearId, body);
+  }
+
   // ── Class Instructions ──────────────────────────────────────
 
   @Post(':id/instructions')
