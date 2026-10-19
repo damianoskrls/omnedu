@@ -594,6 +594,42 @@ export class StudentsService {
     return parent;
   }
 
+  async createStandaloneParent(schoolId: string, data: { fullName: string; email?: string; phone?: string }) {
+    return this.prisma.$transaction(async (tx) => {
+      const email = data.email?.trim() || `parent-${randomBytes(8).toString('hex')}@omnedu.placeholder`;
+      let user = await this.findUserByContact(tx, data.email, data.phone);
+      if (!user) {
+        user = await tx.user.create({
+          data: { email, fullName: data.fullName, phone: normalizePhone(data.phone), passwordHash: randomBytes(32).toString('hex') },
+        });
+      }
+      const existing = await tx.schoolMember.findFirst({ where: { schoolId, userId: user.id } });
+      if (!existing) await tx.schoolMember.create({ data: { schoolId, userId: user.id, role: 'parent' } });
+      return this.getParent(schoolId, user.id);
+    });
+  }
+
+  async updateStandaloneParent(schoolId: string, userId: string, data: { fullName?: string; email?: string; phone?: string }) {
+    const member = await this.prisma.schoolMember.findFirst({ where: { schoolId, userId } });
+    if (!member) throw new NotFoundException('Ο γονέας δεν βρέθηκε');
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(data.fullName !== undefined ? { fullName: data.fullName } : {}),
+        ...(data.phone !== undefined ? { phone: normalizePhone(data.phone) } : {}),
+        ...(data.email !== undefined ? { email: data.email } : {}),
+      },
+    });
+    return this.getParent(schoolId, userId);
+  }
+
+  async deleteStandaloneParent(schoolId: string, userId: string) {
+    const member = await this.prisma.schoolMember.findFirst({ where: { schoolId, userId } });
+    if (!member) throw new NotFoundException('Ο γονέας δεν βρέθηκε');
+    await this.prisma.schoolMember.updateMany({ where: { schoolId, userId }, data: { isActive: false } });
+    return { ok: true };
+  }
+
   async ensureParentChildren(parentUserId: string, schoolId: string) {
     const userIds = await this.accountUserIds(parentUserId);
     const linkIds = await this.parentAccountIds(userIds, schoolId);

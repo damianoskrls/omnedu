@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
+import { Resend } from 'resend';
 
 const parentPushEvents = new Set([
   'new_message',
@@ -33,6 +34,7 @@ interface BroadcastData {
   targetClassId?: string;
   targetStudentId?: string;
   channels?: string[]; // push | email | sms
+  customEmails?: string[]; // additional explicit email addresses
   appType?: string;
   appScreen?: string;
   academicYear?: string;
@@ -43,6 +45,7 @@ interface BroadcastData {
 export class NotificationsService implements OnModuleInit {
   private readonly logger = new Logger(NotificationsService.name);
   private fcmApp: admin.app.App | null = null;
+  private resendClient: Resend | null = null;
 
   async onModuleInit() {
     try {
@@ -63,6 +66,10 @@ export class NotificationsService implements OnModuleInit {
           credential: admin.credential.cert({ projectId, clientEmail, privateKey }),
         }, 'omnedu');
       } catch {}
+    }
+    const resendApiKey = this.config.get<string>('RESEND_API_KEY');
+    if (resendApiKey) {
+      this.resendClient = new Resend(resendApiKey);
     }
   }
 
@@ -165,7 +172,7 @@ export class NotificationsService implements OnModuleInit {
 
     // ─── Email notifications ────────────────────────────────
     if (channels.includes('email')) {
-      const emailCount = await this.sendEmails(schoolId, userIds, { ...data, body: noticeBody });
+      const emailCount = await this.sendEmails(schoolId, userIds, { ...data, body: noticeBody, customEmails: data.customEmails });
       if (!channels.includes('push')) recipientCount = emailCount;
     }
 
@@ -416,25 +423,95 @@ export class NotificationsService implements OnModuleInit {
     });
   }
 
-  // ─── Email stub (pluggable) ──────────────────────────────────────────────
+  // ─── Email (Resend) ──────────────────────────────────────────────────────
 
   private async sendEmails(schoolId: string, userIds: string[], data: BroadcastData): Promise<number> {
-    const settings = await this.prisma.notificationSettings.findUnique({ where: { schoolId } });
-    const fromEmail = settings?.emailFrom ?? this.config.get('mail.from') ?? 'noreply@omnedu.gr';
+    if (!this.resendClient) {
+      this.logger.warn('[EMAIL] RESEND_API_KEY not configured — skipping email send');
+      return 0;
+    }
 
-    const users = await this.prisma.user.findMany({
-      where: { id: { in: userIds } },
-      select: { email: true },
-    });
+    const [settings, school] = await Promise.all([
+      this.prisma.notificationSettings.findUnique({ where: { schoolId } }),
+      this.prisma.school.findUnique({ where: { id: schoolId }, select: { name: true, logoUrl: true } }),
+    ]);
 
-    // Log for now — wire a real mail provider (SendGrid / SES / Brevo) here
-    this.logger.log(`[EMAIL] Sending "${data.title}" from ${fromEmail} to ${users.length} recipients`);
-    if (data.imageUrl) this.logger.log(`[EMAIL] Image: ${data.imageUrl}`);
+    const fromEmail = this.config.get<string>('RESEND_FROM_EMAIL')
+      ?? settings?.emailFrom
+      ?? 'noreply@omnedu.gr';
 
-    // TODO: integrate mail provider (SendGrid / AWS SES / Brevo)
-    // await this.mailer.sendBulk(users.map(u => u.email), { from: fromEmail, subject: data.title, html: buildHtml(data) });
+    const userEmailRows = userIds.length > 0
+      ? await this.prisma.user.findMany({ where: { id: { in: userIds }, email: { not: null } }, select: { email: true } })
+      : [];
 
-    return users.length;
+    const allEmails = [
+      ...userEmailRows.map(u => u.email as string),
+      ...(data.customEmails ?? []),
+    ].filter(Boolean).map(e => e.trim().toLowerCase());
+    const uniqueEmails = [...new Set(allEmails)];
+
+    if (uniqueEmails.length === 0) {
+      this.logger.log('[EMAIL] No recipients with email address — skipping');
+      return 0;
+    }
+
+    const schoolName = school?.name ?? 'omnedu';
+    const html = this.buildEmailHtml({ schoolName, logoUrl: school?.logoUrl ?? null, title: data.title, body: data.body });
+
+    const BATCH_SIZE = 100;
+    let sent = 0;
+    for (let i = 0; i < uniqueEmails.length; i += BATCH_SIZE) {
+      const batch = uniqueEmails.slice(i, i + BATCH_SIZE);
+      try {
+        const messages = batch.map(to => ({
+          from: fromEmail,
+          to,
+          subject: data.title,
+          html,
+        }));
+        await this.resendClient!.batch.send(messages);
+        sent += batch.length;
+      } catch (e) {
+        this.logger.error(`[EMAIL] Resend batch error (${i}–${i + batch.length})`, e);
+      }
+    }
+
+    this.logger.log(`[EMAIL] Sent "${data.title}" to ${sent} recipients via Resend`);
+    return sent;
+  }
+
+  private buildEmailHtml(opts: { schoolName: string; logoUrl: string | null; title: string; body: string }): string {
+    const logoHtml = opts.logoUrl
+      ? `<img src="${opts.logoUrl}" alt="${opts.schoolName}" style="height:48px;max-width:160px;object-fit:contain;margin-bottom:12px;display:block;margin-left:auto;margin-right:auto;" />`
+      : '';
+    const bodyHtml = opts.body
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br>');
+    return `<!DOCTYPE html>
+<html lang="el">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${opts.title}</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <div style="max-width:600px;margin:32px auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+    <div style="background:#6366f1;padding:28px 32px;text-align:center;">
+      ${logoHtml}
+      <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:700;letter-spacing:-0.3px;">${opts.schoolName}</h1>
+    </div>
+    <div style="padding:28px 32px;">
+      <h2 style="margin:0 0 16px;font-size:18px;font-weight:600;color:#111827;">${opts.title}</h2>
+      <p style="margin:0;color:#374151;font-size:15px;line-height:1.65;">${bodyHtml}</p>
+    </div>
+    <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 32px;text-align:center;">
+      <p style="margin:0;color:#9ca3af;font-size:12px;">Powered by <strong>omnedu</strong></p>
+    </div>
+  </div>
+</body>
+</html>`;
   }
 
   // ─── SMS stub (pluggable) ────────────────────────────────────────────────

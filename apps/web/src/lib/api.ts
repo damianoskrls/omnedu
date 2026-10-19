@@ -201,6 +201,16 @@ export const classesApi = {
     api.delete(`/schools/${schoolId}/classes/${classId}/instructions/${instructionId}`),
 };
 
+export const parentsApi = {
+  list: (schoolId: string) => api.get(`/schools/${schoolId}/parents`),
+  create: (schoolId: string, data: { fullName: string; email?: string; phone?: string }) =>
+    api.post(`/schools/${schoolId}/parents`, data),
+  update: (schoolId: string, userId: string, data: { fullName?: string; email?: string; phone?: string }) =>
+    api.patch(`/schools/${schoolId}/parents/${userId}`, data),
+  delete: (schoolId: string, userId: string) =>
+    api.delete(`/schools/${schoolId}/parents/${userId}`),
+};
+
 export const schoolReportsApi = {
   overview: (schoolId: string) => api.get(`/schools/${schoolId}/reports/overview`),
 };
@@ -380,6 +390,7 @@ export const broadcastsApi = {
     targetClassId?: string;
     targetStudentId?: string;
     channels?: string[];
+    customEmails?: string[];
     appType?: string;
     appScreen?: string;
     academicYear?: string;

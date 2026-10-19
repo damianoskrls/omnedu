@@ -1,0 +1,11 @@
+{
+  "remoteName": "origin",
+  "projects": [
+    {
+      "id": "prj_838SSxrYMAqVYLkmmGTOLxwhcGle",
+      "name": "omnedu",
+      "directory": "apps/web",
+      "orgId": "team_r49mU4xxis1t4UbdeACr2Db8"
+    }
+  ]
+}

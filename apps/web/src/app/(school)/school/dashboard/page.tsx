@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { activitiesApi, billingApi, classesApi, extraServicesApi, schoolEventsApi, staffApi, studentsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
+import { useAcademicYear } from '@/contexts/AcademicYearContext';
 import { GraduationCap, BookOpen, CreditCard, UserPlus, ArrowUpRight, Bus, CalendarDays, Sparkles, Shirt } from 'lucide-react';
 import { eventDisplayStatus } from '@/lib/event-status';
 import { PersonAvatar } from '@/components/PersonAvatar';
@@ -33,6 +34,7 @@ export default function SchoolDashboard() {
   const user = useStoredUser();
   const schoolId = user?.schoolId ?? '';
   const firstName = user?.fullName?.split(' ')[0];
+  const { selectedYear } = useAcademicYear();
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<DashboardView | null>(null);
 
@@ -41,9 +43,10 @@ export default function SchoolDashboard() {
       setLoading(false);
       return;
     }
+    setLoading(true);
     Promise.all([
-      studentsApi.list(schoolId).catch(() => []),
-      classesApi.list(schoolId).catch(() => []),
+      studentsApi.list(schoolId, undefined, true, selectedYear?.id).catch(() => []),
+      classesApi.list(schoolId, selectedYear?.id).catch(() => []),
       billingApi.stats(schoolId).catch(() => null),
       activitiesApi.list(schoolId).catch(() => []),
       schoolEventsApi.list(schoolId).catch(() => []),
@@ -58,10 +61,11 @@ export default function SchoolDashboard() {
         Array.isArray(events) ? events : [],
         Array.isArray(services) ? services : [],
         Array.isArray(staff) ? staff : [],
+        selectedYear?.label,
       ));
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, [schoolId]);
+  }, [schoolId, selectedYear?.id]);
 
   const data = view;
 
@@ -148,12 +152,10 @@ export default function SchoolDashboard() {
 
 type DashboardView = ReturnType<typeof buildView>;
 
-function buildView(students: any[], classes: any[], billing: any, activities: any[], events: any[], services: any[], staff: any[]) {
+function buildView(students: any[], classes: any[], billing: any, activities: any[], events: any[], services: any[], staff: any[], yearLabel?: string) {
   const now = new Date();
   const months = openSchoolMonths(now);
-  const currentClasses = classes.some((item) => item.academicYear?.isCurrent)
-    ? classes.filter((item) => item.academicYear?.isCurrent)
-    : classes;
+  const currentClasses = classes;
   const levelByClass = new Map(currentClasses.map((item) => [item.id, item.level?.name || item.name || 'Χωρίς βαθμίδα']));
   const currentClassIds = new Set(currentClasses.map((item) => item.id));
 
@@ -221,7 +223,7 @@ function buildView(students: any[], classes: any[], billing: any, activities: an
     .reduce((sum, service) => sum + Number(service._count?.studentServices ?? 0), 0);
 
   return {
-    schoolYear: billing?.schoolYear ?? `${months[0]?.year ?? now.getFullYear()}-${(months[0]?.year ?? now.getFullYear()) + 1}`,
+    schoolYear: yearLabel ?? billing?.schoolYear ?? `${months[0]?.year ?? now.getFullYear()}-${(months[0]?.year ?? now.getFullYear()) + 1}`,
     students: students.length,
     newThisMonth,
     classes: currentClasses.length,

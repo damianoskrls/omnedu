@@ -47,6 +47,7 @@ const defaultForm = () => ({
   title: '', body: '',
   targetType: 'all', targetClassId: '', targetStudentId: '',
   channels: ['push'] as string[],
+  customEmailsText: '',
 });
 
 // ─── Page ────────────────────────────────────────────────────────────────────
@@ -126,6 +127,9 @@ export default function NotificationsPage() {
           return;
         }
       }
+      const customEmails = form.customEmailsText
+        ? form.customEmailsText.split(/[\n,]+/).map(e => e.trim()).filter(Boolean)
+        : undefined;
       const result: any = await broadcastsApi.send(schoolId, {
         title: form.title,
         body: form.body,
@@ -134,6 +138,7 @@ export default function NotificationsPage() {
         targetClassId: form.targetClassId || undefined,
         targetStudentId: form.targetStudentId || undefined,
         channels: form.channels,
+        customEmails,
       });
       if (form.channels.includes('push')) {
         if (!result?.pushConfigured) {
@@ -410,6 +415,23 @@ export default function NotificationsPage() {
                     })}
                   </div>
                 </div>
+
+                {/* Custom emails — shown only when Email channel is selected */}
+                {form.channels.includes('email') && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Επιπλέον email <span className="text-gray-400 font-normal">(προαιρετικό)</span>
+                    </label>
+                    <textarea
+                      value={form.customEmailsText}
+                      onChange={e => setForm(p => ({ ...p, customEmailsText: e.target.value }))}
+                      placeholder={'email1@example.com\nemail2@example.com'}
+                      rows={3}
+                      className={inputCls + ' resize-none font-mono text-xs'}
+                    />
+                    <p className="text-xs text-gray-400 mt-0.5">Ένα ανά γραμμή ή με κόμμα. Στέλνει και στα emails των υπαρχόντων χρηστών.</p>
+                  </div>
+                )}
 
                 {/* Title */}
                 <div>
