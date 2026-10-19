@@ -140,11 +140,11 @@ export default function PostsPage() {
     try {
       const res = await schoolPostsApi.uploadMedia(schoolId, file) as any;
       const url: string = res.data?.url ?? res.url;
-      if (!url) throw new Error('Η φωτογραφία δεν ανέβηκε.');
+      if (!url) throw new Error('Το αρχείο δεν ανέβηκε.');
       setModal(prev => prev ? { ...prev, mediaUrls: [...(prev.mediaUrls ?? []), url] } : prev);
     } catch (err: any) {
       const message = err?.message;
-      setFormError(Array.isArray(message) ? message.join(' ') : message || 'Η φωτογραφία δεν ανέβηκε. Μπορείς να δημοσιεύσεις και χωρίς φωτογραφία.');
+      setFormError(Array.isArray(message) ? message.join(' ') : message || 'Το αρχείο δεν ανέβηκε. Μπορείς να δημοσιεύσεις και χωρίς αρχείο.');
     } finally {
       setUploading(false);
     }
@@ -319,7 +319,9 @@ function PostModal({
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    const files = Array.from(e.dataTransfer.files).filter(
+      f => f.type.startsWith('image/') || f.type === 'video/mp4' || f.type === 'video/quicktime',
+    );
     files.forEach(onUploadImage);
   };
 
@@ -403,26 +405,33 @@ function PostModal({
             />
           </div>
 
-          {/* Images */}
+          {/* Media */}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-2">
-              Φωτογραφίες ({(post.mediaUrls ?? []).length})
+              Φωτογραφίες & Βίντεο ({(post.mediaUrls ?? []).length})
             </label>
 
-            {/* Existing images */}
+            {/* Existing media */}
             {(post.mediaUrls ?? []).length > 0 && (
               <div className="grid grid-cols-4 gap-2 mb-3">
-                {(post.mediaUrls ?? []).map((url, i) => (
-                  <div key={i} className="relative group aspect-square rounded-lg overflow-hidden border border-gray-200">
-                    <img src={url} alt="" className="w-full h-full object-cover" />
-                    <button
-                      onClick={() => onRemoveImage(i)}
-                      className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X className="w-3 h-3 text-white" />
-                    </button>
-                  </div>
-                ))}
+                {(post.mediaUrls ?? []).map((url, i) => {
+                  const isVideo = /\.(mp4|mov|webm)(\?|$)/i.test(url);
+                  return (
+                    <div key={i} className="relative group aspect-square rounded-lg overflow-hidden border border-gray-200 bg-black">
+                      {isVideo ? (
+                        <video src={url} className="w-full h-full object-cover" muted playsInline />
+                      ) : (
+                        <img src={url} alt="" className="w-full h-full object-cover" />
+                      )}
+                      <button
+                        onClick={() => onRemoveImage(i)}
+                        className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-3 h-3 text-white" />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -436,7 +445,7 @@ function PostModal({
               <input
                 ref={fileRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,video/mp4,video/quicktime"
                 multiple
                 className="hidden"
                 onChange={e => {
@@ -449,8 +458,8 @@ function PostModal({
               ) : (
                 <>
                   <Upload className="w-6 h-6 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500">Σύρτε φωτογραφίες εδώ ή <span className="text-indigo-600 font-medium">κλικ για επιλογή</span></p>
-                  <p className="text-xs text-gray-400 mt-1">JPG, PNG, WebP έως 10MB</p>
+                  <p className="text-sm text-gray-500">Σύρτε αρχεία εδώ ή <span className="text-indigo-600 font-medium">κλικ για επιλογή</span></p>
+                  <p className="text-xs text-gray-400 mt-1">JPG, PNG, WebP, MP4 έως 10MB</p>
                 </>
               )}
             </div>
