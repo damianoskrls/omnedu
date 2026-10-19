@@ -70,6 +70,7 @@ export default function NotificationsPage() {
   const [imagePreview, setImagePreview] = useState('');
   const [sent, setSent]             = useState(false);
   const [sendNote, setSendNote]     = useState('');
+  const [showHistory, setShowHistory]   = useState(false);
   const [pushConfigured, setPushConfigured] = useState<boolean | null>(null);
   const [pushDevices, setPushDevices] = useState(0);
 
@@ -504,10 +505,16 @@ export default function NotificationsPage() {
         {/* History */}
         <div className={isAdmin ? 'lg:col-span-3' : 'lg:col-span-5'}>
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
-            <div className="px-5 py-4 border-b border-gray-100">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
               <h2 className="font-semibold text-gray-800">Ιστορικό αποστολών</h2>
+              <button
+                onClick={() => setShowHistory(h => !h)}
+                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+              >
+                {showHistory ? 'Απόκρυψη' : `Εμφάνιση${broadcasts.length > 0 ? ` (${broadcasts.length})` : ''}`}
+              </button>
             </div>
-            {loading ? (
+            {!showHistory ? null : loading ? (
               <div className="py-12 text-center text-gray-400 text-sm">Φόρτωση...</div>
             ) : broadcasts.length === 0 ? (
               <div className="py-12 text-center text-gray-400 text-sm">

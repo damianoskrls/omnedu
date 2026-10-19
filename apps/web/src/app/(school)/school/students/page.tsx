@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { studentsApi, classesApi } from '@/lib/api';
+import { studentsApi, classesApi, parentsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
 import { Plus, Search, ChevronRight, X, UserPlus, Trash2, Archive, RotateCcw } from 'lucide-react';
@@ -39,6 +39,10 @@ export default function StudentsPage() {
   const [newStudent, setNewStudent] = useState({ fullName: '', dob: '', levelId: '', classId: '', notes: '' });
   const emptyParent = () => ({ fullName: '', email: '', phone: '', relation: 'γονέας' });
   const [newParents, setNewParents] = useState([emptyParent()]);
+  const [parentMode, setParentMode] = useState<'new' | 'existing'>('new');
+  const [allParents, setAllParents] = useState<any[]>([]);
+  const [selectedExistingParents, setSelectedExistingParents] = useState<any[]>([]);
+  const [parentSearch, setParentSearch] = useState('');
 
   useEffect(() => {
     if (!schoolId) return;
@@ -60,6 +64,14 @@ export default function StudentsPage() {
       setArchivedCount(Array.isArray(s) ? s.length : 0);
     }).catch(() => {});
   }, [schoolId]);
+
+  // Load parents list when create modal opens
+  useEffect(() => {
+    if (!showCreate || !schoolId) return;
+    parentsApi.list(schoolId).then((data: any) => {
+      setAllParents(Array.isArray(data) ? data : []);
+    }).catch(() => {});
+  }, [showCreate, schoolId]);
 
   // Build teacher list from classes
   const teachers = useMemo(() => {
@@ -102,12 +114,21 @@ export default function StudentsPage() {
     setSelectedTeacher('');
   }
 
+  function resetCreateModal() {
+    setShowCreate(false);
+    setNewStudent({ fullName: '', dob: '', levelId: '', classId: '', notes: '' });
+    setNewParents([emptyParent()]);
+    setParentMode('new');
+    setSelectedExistingParents([]);
+    setParentSearch('');
+  }
+
   async function handleCreate() {
     if (!newStudent.fullName.trim()) return;
     setCreating(true);
     try {
       const cls = classes.find(c => c.id === newStudent.classId);
-      const validParents = newParents.filter(p => p.fullName.trim());
+      const validParents = parentMode === 'new' ? newParents.filter(p => p.fullName.trim()) : [];
       const created: any = await studentsApi.create(schoolId, {
         fullName: newStudent.fullName.trim(),
         dob: newStudent.dob || undefined,
@@ -120,10 +141,11 @@ export default function StudentsPage() {
           phone: p.phone.trim() || undefined,
           relation: p.relation || 'γονέας',
         })) : undefined,
+        parentIds: parentMode === 'existing' && selectedExistingParents.length
+          ? selectedExistingParents.map((p: any) => ({ userId: p.id, relation: 'γονέας' }))
+          : undefined,
       });
-      setShowCreate(false);
-      setNewStudent({ fullName: '', dob: '', levelId: '', classId: '', notes: '' });
-      setNewParents([emptyParent()]);
+      resetCreateModal();
       router.push(`/school/students/${created.id}`);
     } finally {
       setCreating(false);
@@ -388,7 +410,7 @@ export default function StudentsPage() {
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[92vh] flex flex-col">
               <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100 flex-shrink-0">
                 <h3 className="text-lg font-bold text-gray-900">Νέος Μαθητής</h3>
-                <button onClick={() => { setShowCreate(false); setNewParents([emptyParent()]); }} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
+                <button onClick={resetCreateModal} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
                   <X className="h-5 w-5" />
                 </button>
               </div>
@@ -545,7 +567,7 @@ export default function StudentsPage() {
               </div>
               </div>
               <div className="flex gap-3 px-6 py-4 border-t border-gray-100 flex-shrink-0">
-                <button onClick={() => { setShowCreate(false); setNewParents([emptyParent()]); }} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">
+                <button onClick={resetCreateModal} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">
                   Ακύρωση
                 </button>
                 <button
