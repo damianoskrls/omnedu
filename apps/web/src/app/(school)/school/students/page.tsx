@@ -493,67 +493,72 @@ export default function StudentsPage() {
                 <div className="pt-2 border-t border-gray-100">
                   <div className="flex items-center justify-between mb-3">
                     <label className="text-sm font-semibold text-gray-800">Γονείς / Κηδεμόνες</label>
-                    {newParents.length < 2 && (
-                      <button
-                        type="button"
-                        onClick={() => setNewParents([...newParents, emptyParent()])}
-                        className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium"
-                      >
-                        <Plus className="h-3.5 w-3.5" /> Προσθήκη 2ου γονέα
-                      </button>
-                    )}
-                  </div>
-                  {newParents.map((parent, idx) => (
-                    <div key={idx} className={`rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3 ${idx > 0 ? 'mt-3' : ''}`}>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                          {idx === 0 ? 'Κύριος γονέας' : '2ος γονέας / Κηδεμόνας'}
-                        </span>
-                        {idx > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => setNewParents(newParents.filter((_, i) => i !== idx))}
-                            className="text-gray-400 hover:text-red-500"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </div>
-                      <input
-                        value={parent.fullName}
-                        onChange={e => setNewParents(newParents.map((p, i) => i === idx ? { ...p, fullName: e.target.value } : p))}
-                        placeholder="Ονοματεπώνυμο *"
-                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                      />
-                      <div className="grid grid-cols-2 gap-2">
-                        <input
-                          value={parent.email}
-                          onChange={e => setNewParents(newParents.map((p, i) => i === idx ? { ...p, email: e.target.value } : p))}
-                          placeholder="Email"
-                          type="email"
-                          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                        />
-                        <input
-                          value={parent.phone}
-                          onChange={e => setNewParents(newParents.map((p, i) => i === idx ? { ...p, phone: e.target.value } : p))}
-                          placeholder="Τηλέφωνο"
-                          type="tel"
-                          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                        />
-                      </div>
-                      <select
-                        value={parent.relation}
-                        onChange={e => setNewParents(newParents.map((p, i) => i === idx ? { ...p, relation: e.target.value } : p))}
-                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                      >
-                        <option value="γονέας">Γονέας</option>
-                        <option value="πατέρας">Πατέρας</option>
-                        <option value="μητέρα">Μητέρα</option>
-                        <option value="κηδεμόνας">Κηδεμόνας</option>
-                        <option value="παππούς/γιαγιά">Παππούς / Γιαγιά</option>
-                      </select>
+                    <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
+                      <button type="button" onClick={() => setParentMode('new')} className={`px-3 py-1.5 ${parentMode === 'new' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>Νέος</button>
+                      <button type="button" onClick={() => setParentMode('existing')} className={`px-3 py-1.5 ${parentMode === 'existing' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>Υπάρχων</button>
                     </div>
-                  ))}
+                  </div>
+                  {parentMode === 'new' ? (
+                    <>
+                      {newParents.length < 2 && (
+                        <div className="mb-2 flex justify-end">
+                          <button type="button" onClick={() => setNewParents([...newParents, emptyParent()])} className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium">
+                            <Plus className="h-3.5 w-3.5" /> Προσθήκη 2ου γονέα
+                          </button>
+                        </div>
+                      )}
+                      {newParents.map((parent, idx) => (
+                        <div key={idx} className={`rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3 ${idx > 0 ? 'mt-3' : ''}`}>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{idx === 0 ? 'Κύριος γονέας' : '2ος γονέας / Κηδεμόνας'}</span>
+                            {idx > 0 && (
+                              <button type="button" onClick={() => setNewParents(newParents.filter((_, i) => i !== idx))} className="text-gray-400 hover:text-red-500">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
+                          <input value={parent.fullName} onChange={e => setNewParents(newParents.map((p, i) => i === idx ? { ...p, fullName: e.target.value } : p))} placeholder="Ονοματεπώνυμο *" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                          <div className="grid grid-cols-2 gap-2">
+                            <input value={parent.email} onChange={e => setNewParents(newParents.map((p, i) => i === idx ? { ...p, email: e.target.value } : p))} placeholder="Email" type="email" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                            <input value={parent.phone} onChange={e => setNewParents(newParents.map((p, i) => i === idx ? { ...p, phone: e.target.value } : p))} placeholder="Τηλέφωνο" type="tel" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                          </div>
+                          <select value={parent.relation} onChange={e => setNewParents(newParents.map((p, i) => i === idx ? { ...p, relation: e.target.value } : p))} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                            <option value="γονέας">Γονέας</option>
+                            <option value="πατέρας">Πατέρας</option>
+                            <option value="μητέρα">Μητέρα</option>
+                            <option value="κηδεμόνας">Κηδεμόνας</option>
+                            <option value="παππούς/γιαγιά">Παππούς / Γιαγιά</option>
+                          </select>
+                        </div>
+                      ))}
+                    </>
+                  ) : (
+                    <div className="space-y-2">
+                      <input value={parentSearch} onChange={e => setParentSearch(e.target.value)} placeholder="Αναζήτηση γονέα..." className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                      {selectedExistingParents.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pb-1">
+                          {selectedExistingParents.map((p: any) => (
+                            <span key={p.id} className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-700">
+                              {p.fullName}
+                              <button type="button" onClick={() => setSelectedExistingParents(prev => prev.filter((x: any) => x.id !== p.id))}><X className="h-3 w-3" /></button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="max-h-40 overflow-y-auto rounded-xl border border-gray-100 divide-y divide-gray-50">
+                        {allParents
+                          .filter((p: any) => !selectedExistingParents.some((s: any) => s.id === p.id) && (!parentSearch || p.fullName.toLowerCase().includes(parentSearch.toLowerCase()) || (p.phone || '').includes(parentSearch)))
+                          .slice(0, 20)
+                          .map((p: any) => (
+                            <button key={p.id} type="button" onClick={() => { setSelectedExistingParents(prev => [...prev, p]); setParentSearch(''); }} className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50">
+                              <span className="font-medium text-gray-900">{p.fullName}</span>
+                              {p.phone && <span className="ml-2 text-xs text-gray-500">{p.phone}</span>}
+                            </button>
+                          ))}
+                        {allParents.length === 0 && <p className="px-3 py-3 text-sm text-gray-400">Δεν υπάρχουν γονείς ακόμη</p>}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div>
