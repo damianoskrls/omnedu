@@ -111,9 +111,24 @@ class _PostsList extends ConsumerWidget {
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('Σφάλμα φόρτωσης')),
       data: (posts) {
-        final visible = type == null
-            ? posts.where((row) => row is! Map || row['postType']?.toString() != 'found').toList()
-            : posts;
+        final _pNow = DateTime.now();
+        final _pToday = DateTime(_pNow.year, _pNow.month, _pNow.day);
+        const _celebrationPostTypes = {'birthday', 'nameday', 'celebration'};
+        final visible = posts.where((row) {
+          if (row is! Map) return false;
+          final postType = row['postType']?.toString() ?? '';
+          if (type == null && postType == 'found') return false;
+          if (_celebrationPostTypes.contains(postType)) {
+            final publishedAt = row['publishedAt']?.toString();
+            if (publishedAt != null && publishedAt.isNotEmpty) {
+              final dt = DateTime.tryParse(publishedAt);
+              if (dt != null) {
+                return !DateTime(dt.year, dt.month, dt.day).isBefore(_pToday);
+              }
+            }
+          }
+          return true;
+        }).toList();
         if (visible.isEmpty) {
           return Center(
             child: Column(

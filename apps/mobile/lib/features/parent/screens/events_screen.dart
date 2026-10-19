@@ -104,7 +104,19 @@ class _ParentEventsScreenState extends ConsumerState<ParentEventsScreen> {
       body: eventsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Σφάλμα: $e')),
-        data: (enrollments) {
+        data: (rawEnrollments) {
+          final _evNow = DateTime.now();
+          final _evToday = DateTime(_evNow.year, _evNow.month, _evNow.day);
+          final enrollments = rawEnrollments.where((enr) {
+            if (enr is! Map) return true;
+            final event = enr['event'];
+            if (event is! Map) return true;
+            final dateStr = event['eventDate']?.toString();
+            if (dateStr == null || dateStr.isEmpty) return true;
+            final eventDate = DateTime.tryParse(dateStr);
+            if (eventDate == null) return true;
+            return !DateTime(eventDate.year, eventDate.month, eventDate.day).isBefore(_evToday);
+          }).toList();
           final celebrationCards = _celebrationSections(widget.schoolId, celebrations);
           if (enrollments.isEmpty && celebrationCards.isEmpty) {
             return const Center(
@@ -161,10 +173,17 @@ class _ParentEventsScreenState extends ConsumerState<ParentEventsScreen> {
 }
 
 List<Widget> _celebrationSections(String schoolId, List<dynamic> rows) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
   final grouped = <String, List<Map<String, dynamic>>>{};
   for (final row in rows) {
     if (row is! Map) continue;
     final item = Map<String, dynamic>.from(row);
+    final dateStr = item['eventDate']?.toString();
+    if (dateStr != null && dateStr.isNotEmpty) {
+      final eventDate = DateTime.tryParse(dateStr);
+      if (eventDate != null && DateTime(eventDate.year, eventDate.month, eventDate.day).isBefore(today)) continue;
+    }
     final year = item['academicYear']?.toString() ?? '';
     grouped.putIfAbsent(year, () => []).add(item);
   }

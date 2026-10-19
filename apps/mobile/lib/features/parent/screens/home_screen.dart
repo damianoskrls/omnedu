@@ -150,6 +150,8 @@ class HomeScreen extends ConsumerWidget {
                       .whereType<Map>()
                       .map((row) => Map<String, dynamic>.from(row))
                       .toList();
+                  final _now = DateTime.now();
+                  final isWeekend = _now.weekday == DateTime.saturday || _now.weekday == DateTime.sunday;
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -175,17 +177,19 @@ class HomeScreen extends ConsumerWidget {
                       ),
                       if (cards.any(childHasBus)) BusClosedNotice(schoolId: schoolId),
                       _UpcomingMeetings(children: cards, meetings: meetings),
-                      daySectionTitle(Icons.today_rounded, 'Ενημέρωση Σήμερα', dayHistoryColors),
-                      for (final child in cards)
+                      if (!isWeekend) ...[
+                        daySectionTitle(Icons.today_rounded, 'Ενημέρωση Σήμερα', dayHistoryColors),
+                        for (final child in cards)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                            child: ChildTodayUpdate(schoolId: schoolId, child: child),
+                          ),
+                        daySectionTitle(Icons.restaurant_rounded, 'Διατροφολόγιο Σήμερα', dayHistoryColors),
                         Padding(
                           padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                          child: ChildTodayUpdate(schoolId: schoolId, child: child),
+                          child: SharedTodayMenu(schoolId: schoolId, children: cards),
                         ),
-                      daySectionTitle(Icons.restaurant_rounded, 'Διατροφολόγιο Σήμερα', dayHistoryColors),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                        child: SharedTodayMenu(schoolId: schoolId, children: cards),
-                      ),
+                      ],
                       daySectionTitle(Icons.history_rounded, 'Πρόσφατες Ενημερώσεις', dayHistoryColors),
                       for (final child in cards)
                         Padding(
