@@ -5,12 +5,28 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { join } from 'path';
 import * as fs from 'fs';
+import { PrismaClient } from '@prisma/client';
 import { AppModule } from './app.module';
 import { mountSchoolSite } from './school-site';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 
+async function runStartupRepair() {
+  const prisma = new PrismaClient();
+  try {
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "school_members" ADD COLUMN IF NOT EXISTS "notes" TEXT',
+    );
+    console.log('[repair] school_members.notes column ensured');
+  } catch (e: any) {
+    console.error('[repair] startup repair failed:', e?.message);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
 async function bootstrap() {
+  await runStartupRepair();
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   const uploadsDir = join(process.cwd(), 'uploads', 'avatars');
