@@ -416,7 +416,19 @@ bool childHasInstructions(Map<String, dynamic> child) {
 
 bool childHasEvents(Map<String, dynamic> child) {
   final events = child['eventEnrollments'];
-  return events is List && events.isNotEmpty;
+  if (events is! List || events.isEmpty) return false;
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  return events.any((row) {
+    if (row is! Map) return false;
+    final event = row['event'];
+    if (event is! Map) return true;
+    final dateStr = event['eventDate']?.toString();
+    if (dateStr == null || dateStr.isEmpty) return true;
+    final d = DateTime.tryParse(dateStr);
+    if (d == null) return true;
+    return !DateTime(d.year, d.month, d.day).isBefore(today);
+  });
 }
 
 int childPendingEvents(Map<String, dynamic> child) {
@@ -453,6 +465,7 @@ class ChildEventCards extends StatelessWidget {
       colors: dayHistoryColors,
       showTitle: false,
       maxItems: maxItems,
+      filterPast: true,
     );
   }
 }
@@ -579,17 +592,33 @@ class _EventsBlock extends StatelessWidget {
   final List<Color> colors;
   final bool showTitle;
   final int? maxItems;
+  final bool filterPast;
   const _EventsBlock({
     required this.schoolId,
     required this.child,
     required this.colors,
     this.showTitle = true,
     this.maxItems,
+    this.filterPast = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final eventEnrollments = child['eventEnrollments'] as List<dynamic>? ?? [];
+    var eventEnrollments = child['eventEnrollments'] as List<dynamic>? ?? [];
+    if (filterPast) {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      eventEnrollments = eventEnrollments.where((enr) {
+        if (enr is! Map) return true;
+        final event = enr['event'];
+        if (event is! Map) return true;
+        final dateStr = event['eventDate']?.toString();
+        if (dateStr == null || dateStr.isEmpty) return true;
+        final d = DateTime.tryParse(dateStr);
+        if (d == null) return true;
+        return !DateTime(d.year, d.month, d.day).isBefore(today);
+      }).toList();
+    }
     if (eventEnrollments.isEmpty) return const SizedBox.shrink();
     final pending = childPendingEvents(child);
     final ordered = [...eventEnrollments]..sort((a, b) => _eventRank(a).compareTo(_eventRank(b)));

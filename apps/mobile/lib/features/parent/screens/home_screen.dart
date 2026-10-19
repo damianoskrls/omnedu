@@ -36,7 +36,19 @@ final _recentPostsProvider = FutureProvider.family<List<dynamic>, String>(
       final resp = await dio.get('/schools/$schoolId/posts');
       final data = resp.data;
       if (data is! List) return [];
-      return data.where((row) => row is! Map || row['postType']?.toString() != 'found').take(3).toList();
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      const _celebTypes = {'birthday', 'nameday', 'celebration'};
+      return data.where((row) {
+        if (row is! Map) return false;
+        final t = row['postType']?.toString() ?? '';
+        if (t == 'found') return false;
+        if (_celebTypes.contains(t)) {
+          final dt = DateTime.tryParse(row['publishedAt']?.toString() ?? '');
+          if (dt != null) return !DateTime(dt.year, dt.month, dt.day).isBefore(today);
+        }
+        return true;
+      }).take(3).toList();
     } catch (_) {
       return [];
     }
