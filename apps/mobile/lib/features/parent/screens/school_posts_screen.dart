@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:video_player/video_player.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/widgets/app_image.dart';
 import '../../../core/widgets/person_face.dart';
@@ -292,19 +293,57 @@ class _MediaPreview extends StatelessWidget {
   }
 }
 
-class _PostThumb extends StatelessWidget {
+class _PostThumb extends StatefulWidget {
   final String url;
   const _PostThumb({required this.url});
 
   @override
-  Widget build(BuildContext context) {
-    if (postMediaIsVideo(url)) {
-      return const ColoredBox(
-        color: Color(0xFF3D1152),
-        child: Center(child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 42)),
-      );
+  State<_PostThumb> createState() => _PostThumbState();
+}
+
+class _PostThumbState extends State<_PostThumb> {
+  VideoPlayerController? _controller;
+  bool _initialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (postMediaIsVideo(widget.url)) {
+      _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url))
+        ..initialize().then((_) {
+          if (mounted) setState(() => _initialized = true);
+        }).catchError((_) {});
     }
-    return AppImage(url, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: const Color(0xFFF3F4F6)));
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!postMediaIsVideo(widget.url)) {
+      return AppImage(widget.url, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: const Color(0xFFF3F4F6)));
+    }
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (_initialized && _controller != null)
+          FittedBox(
+            fit: BoxFit.cover,
+            child: SizedBox(
+              width: _controller!.value.size.width,
+              height: _controller!.value.size.height,
+              child: VideoPlayer(_controller!),
+            ),
+          )
+        else
+          const ColoredBox(color: Color(0xFF3D1152)),
+        const Center(child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 42)),
+      ],
+    );
   }
 }
 

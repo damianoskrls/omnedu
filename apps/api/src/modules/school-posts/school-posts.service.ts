@@ -151,7 +151,7 @@ export class SchoolPostsService {
         screen: post.postType === 'found' ? 'found' : 'posts',
         postId: post.id,
         postType: post.postType,
-        ...(post.mediaUrls[0] ? { imageUrl: post.mediaUrls[0] } : {}),
+        ...(post.mediaUrls.find((url) => !isVideoUrl(url)) ? { imageUrl: post.mediaUrls.find((url) => !isVideoUrl(url)) } : {}),
       },
     });
   }
