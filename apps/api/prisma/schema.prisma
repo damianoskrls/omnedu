@@ -78,10 +78,13 @@ model SchoolCelebration {
   arrivalTime  String?   @map("arrival_time")
   place        String?
   details      String?   @db.Text
-  items        String    @default("[]")
-  imageUrl     String?   @map("image_url")
-  audienceType String    @default("all") @map("audience_type")
-  audienceIds  String    @default("[]") @map("audience_ids")
+  items         String    @default("[]")
+  imageUrl      String?   @map("image_url")
+  closedClasses String?   @map("closed_classes") @db.Text
+  dressCode     String?   @map("dress_code") @db.Text
+  theme         String?
+  audienceType  String    @default("all") @map("audience_type")
+  audienceIds   String    @default("[]") @map("audience_ids")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 

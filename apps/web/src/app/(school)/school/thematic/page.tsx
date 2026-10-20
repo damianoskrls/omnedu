@@ -1,12 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { classesApi, thematicPlansApi } from '@/lib/api';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { classesApi, levelsApi, thematicPlansApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
 import { APRIL_MAY_2026 } from '@/lib/thematic-april-may-2026';
-import { Save, Sparkles, Trash2 } from 'lucide-react';
+import { Save, Sparkles, Trash2, Upload, X } from 'lucide-react';
 
-type ClassRow = { id: string; name: string };
+type ClassRow = { id: string; name: string; level?: { id: string; name: string } };
+type LevelRow = { id: string; name: string };
 type Plan = {
   id: string;
   classId: string;
@@ -57,23 +58,32 @@ export default function ThematicPage() {
   const canEdit = user?.role === 'school_admin' || user?.role === 'teacher';
 
   const [classes, setClasses] = useState<ClassRow[]>([]);
+  const [levels, setLevels] = useState<LevelRow[]>([]);
+  const [levelFilter, setLevelFilter] = useState('');
   const [classId, setClassId] = useState('');
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [plans, setPlans] = useState<Plan[]>([]);
   const [form, setForm] = useState({ ...EMPTY });
   const [planId, setPlanId] = useState<string | null>(null);
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [alsoClasses, setAlsoClasses] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [holdSample, setHoldSample] = useState(false);
+  const imgRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     if (!schoolId) return;
     try {
-      const classRows = await classesApi.list(schoolId);
+      const [classRows, levelRows] = await Promise.all([
+        classesApi.list(schoolId),
+        levelsApi.list(schoolId).catch(() => []),
+      ]);
       const nextClasses = Array.isArray(classRows) ? classRows as ClassRow[] : [];
+      const nextLevels = Array.isArray(levelRows) ? levelRows as LevelRow[] : [];
       setClasses(nextClasses);
+      setLevels(nextLevels);
       setClassId((current) => current || nextClasses[0]?.id || '');
       setError('');
     } catch {
@@ -105,9 +115,11 @@ export default function ThematicPage() {
         signature: existing.signature,
         throughMonth: existing.throughMonth ?? '',
       });
+      setImageUrls((existing as any).imageUrls ?? []);
     } else {
       setPlanId(null);
       setForm({ ...EMPTY, title: `Διαθεματικό ${monthName(month)}` });
+      setImageUrls([]);
     }
     setAlsoClasses([]);
   }, [classId, plans, month, holdSample]);
@@ -129,6 +141,7 @@ export default function ThematicPage() {
       extras: form.extras,
       closing: form.closing,
       signature: form.signature,
+      imageUrls,
     };
     try {
       await thematicPlansApi.save(schoolId, { ...payload, classId });
@@ -176,6 +189,20 @@ export default function ThematicPage() {
     setMessage('Μπήκε το κείμενο Απριλίου-Μαΐου 2026. Διάλεξε την τάξη και πάτα αποθήκευση.');
   };
 
+  const filteredClasses = levelFilter
+    ? classes.filter((c) => c.level?.id === levelFilter)
+    : classes;
+
+  const uploadImage = async (file: File) => {
+    try {
+      const result = await thematicPlansApi.uploadMedia(schoolId, file) as any;
+      const url = result?.url || result?.data?.url;
+      if (url) setImageUrls((prev) => [...prev, url]);
+    } catch {
+      setError('Η εικόνα δεν ανέβηκε. Δοκίμασε ξανά.');
+    }
+  };
+
   const className = classes.find((item) => item.id === classId)?.name ?? 'Τάξη';
   const period = form.throughMonth && form.throughMonth !== month
     ? `${monthName(month)} – ${monthName(form.throughMonth)}`
@@ -196,11 +223,20 @@ export default function ThematicPage() {
       </div>
 
       <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-4 grid gap-3 md:grid-cols-3">
+        {levels.length > 0 && (
+          <label className="text-sm">
+            <span className="block font-medium text-gray-700 mb-1">Βαθμίδα</span>
+            <select value={levelFilter} onChange={(e) => { setLevelFilter(e.target.value); setHoldSample(false); const first = e.target.value ? classes.find((c) => c.level?.id === e.target.value) : classes[0]; if (first) setClassId(first.id); }} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              <option value="">Όλες</option>
+              {levels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          </label>
+        )}
         <label className="text-sm">
           <span className="block font-medium text-gray-700 mb-1">Τάξη</span>
           <select value={classId} onChange={(e) => { setHoldSample(false); setClassId(e.target.value); }} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-            {classes.length === 0 && <option value="">Δεν υπάρχουν τάξεις</option>}
-            {classes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            {filteredClasses.length === 0 && <option value="">Δεν υπάρχουν τάξεις</option>}
+            {filteredClasses.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
         </label>
         <MonthField label="Μήνας" value={month} onChange={(value) => { setHoldSample(false); setMonth(value); }} />
@@ -208,7 +244,7 @@ export default function ThematicPage() {
       </div>
 
       <div className="flex flex-wrap gap-2 mb-4">
-        {classes.map((item) => {
+        {filteredClasses.map((item) => {
           const filled = plans.some((plan) => plan.classId === item.id);
           return (
             <button
@@ -235,11 +271,11 @@ export default function ThematicPage() {
           <Area label="Κλείσιμο" value={form.closing} onChange={(value) => setField('closing', value)} rows={3} />
           <Area label="Υπογραφή" value={form.signature} onChange={(value) => setField('signature', value)} rows={2} />
 
-          {canEdit && classes.filter((item) => item.id !== classId).length > 0 && (
+          {canEdit && filteredClasses.filter((item) => item.id !== classId).length > 0 && (
             <div>
               <p className="text-xs font-medium text-gray-600 mb-2">Αντίγραφο και σε άλλες τάξεις (το αλλάζεις μετά ξεχωριστά)</p>
               <div className="flex flex-wrap gap-2">
-                {classes.filter((item) => item.id !== classId).map((item) => (
+                {filteredClasses.filter((item) => item.id !== classId).map((item) => (
                   <button
                     key={item.id}
                     type="button"
@@ -249,6 +285,29 @@ export default function ThematicPage() {
                     {item.name}
                   </button>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {canEdit && (
+            <div>
+              <p className="text-xs font-medium text-gray-600 mb-2">Εικόνες</p>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {imageUrls.map((url, i) => (
+                  <div key={url} className="relative">
+                    <img src={url} alt="" className="w-16 h-16 rounded-lg object-cover border border-gray-200" />
+                    <button type="button" onClick={() => setImageUrls((prev) => prev.filter((_, j) => j !== i))}
+                      className="absolute -top-1 -right-1 bg-white rounded-full border border-gray-200 p-0.5 text-gray-500 hover:text-red-500">
+                      <X size={10} />
+                    </button>
+                  </div>
+                ))}
+                <button type="button" onClick={() => imgRef.current?.click()}
+                  className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-400 hover:border-indigo-300 hover:text-indigo-500">
+                  <Upload size={16} />
+                </button>
+                <input ref={imgRef} type="file" accept="image/*" hidden
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImage(f); e.target.value = ''; }} />
               </div>
             </div>
           )}
@@ -293,6 +352,13 @@ export default function ThematicPage() {
           )}
           {form.closing && <p className="text-sm text-gray-700 mt-4 whitespace-pre-wrap">{form.closing}</p>}
           {form.signature && <p className="text-sm text-gray-800 mt-4 whitespace-pre-wrap">{form.signature}</p>}
+          {imageUrls.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-4">
+              {imageUrls.map((url) => (
+                <img key={url} src={url} alt="" className="h-24 rounded-lg object-cover" />
+              ))}
+            </div>
+          )}
         </article>
       </div>
     </div>

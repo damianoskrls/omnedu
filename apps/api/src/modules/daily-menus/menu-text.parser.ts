@@ -11,6 +11,7 @@ export type ParsedMenu = {
   month?: string;
   days: ParsedMenuDay[];
   warnings: string[];
+  monthNotes?: string;
 };
 
 const MONTHS: [string, number][] = [
@@ -103,7 +104,9 @@ function mealField(block: string, label: string) {
 
 export function parseMenuText(raw: string, fallbackMonth?: string): ParsedMenu {
   const warnings: string[] = [];
-  const text = raw.replace(/\u00a0/g, ' ').replace(/\r/g, '');
+  // pdfjs-dist sometimes inserts spaces inside two-digit day numbers (e.g. "1 3" instead of "13")
+  const normalizedRaw = raw.replace(/(\u0394\u03b5\u03c5\u03c4\u03ad\u03c1\u03b1|\u03a4\u03c1\u03af\u03c4\u03b7|\u03a4\u03b5\u03c4\u03ac\u03c1\u03c4\u03b7|\u03a0\u03ad\u03bc\u03c0\u03c4\u03b7|\u03a0\u03b1\u03c1\u03b1\u03c3\u03ba\u03b5\u03c5\u03ae)\s+(\d)\s+(\d)/gi, '$1 $2$3');
+  const text = normalizedRaw.replace(/\u00a0/g, ' ').replace(/\r/g, '');
   const month = detectMonth(text, fallbackMonth);
   if (!month) warnings.push('Δεν αναγνωρίστηκε μήνας. Διάλεξε μήνα πριν την αποθήκευση.');
 
@@ -155,7 +158,8 @@ export function parseMenuText(raw: string, fallbackMonth?: string): ParsedMenu {
   });
 
   if (!days.length) warnings.push('Δεν βρέθηκαν ημέρες με δεκατιανό ή μεσημεριανό.');
-  return { month, days, warnings };
+  const monthNotes = noteBlock.replace(/\s+/g, ' ').trim() || undefined;
+  return { month, days, warnings, monthNotes };
 }
 
 export function parseMenuJson(raw: string, fallbackMonth?: string): ParsedMenu {

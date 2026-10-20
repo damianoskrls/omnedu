@@ -60,6 +60,17 @@ export class DailyMenusController {
     return this.svc.upsert(schoolId, body);
   }
 
+  @Delete('month')
+  @Roles('school_admin')
+  clearMonth(
+    @Param('schoolId') schoolId: string,
+    @Query('month') month: string,
+    @Query('audienceType') audienceType?: string,
+    @Query('audienceIds') audienceIds?: string,
+  ) {
+    return this.svc.clearMonth(schoolId, month, audienceType, audienceIds);
+  }
+
   @Delete(':id')
   @Roles('school_admin')
   remove(@Param('id') id: string) {

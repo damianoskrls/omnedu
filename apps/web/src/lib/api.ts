@@ -334,6 +334,8 @@ export const dailyMenusApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+  clearMonth: (schoolId: string, month: string, audienceType?: string, audienceIds?: string[]) =>
+    api.delete(`/schools/${schoolId}/daily-menus/month`, { params: { month, audienceType, audienceIds: audienceIds ? JSON.stringify(audienceIds) : undefined } }),
   remove: (schoolId: string, id: string) =>
     api.delete(`/schools/${schoolId}/daily-menus/${id}`),
 };

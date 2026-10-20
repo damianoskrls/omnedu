@@ -203,6 +203,21 @@ export class DailyMenusService implements OnModuleInit {
     return parsed;
   }
 
+  async clearMonth(schoolId: string, month: string, audienceType?: string, audienceIds?: unknown) {
+    if (!/^\d{4}-\d{2}$/.test(month)) throw new BadRequestException('Δώσε μήνα σε μορφή yyyy-MM.');
+    const audience = normalizeAudience(audienceType, audienceIds);
+    const start = dateOnly(`${month}-01`);
+    const end = dateOnly(`${month}-31`);
+    const result = await this.prisma.dailyMenu.deleteMany({
+      where: {
+        schoolId,
+        ...audience,
+        date: { gte: start, lte: end },
+      },
+    });
+    return { deleted: result.count };
+  }
+
   async remove(id: string) {
     await this.prisma.dailyMenu.delete({ where: { id } });
   }

@@ -17,9 +17,20 @@ type Celebration = {
   details?: string | null;
   items?: string;
   imageUrl?: string | null;
+  closedClasses?: string | null;
+  dressCode?: string | null;
+  theme?: string | null;
   audienceType?: string;
   audienceIds?: string;
 };
+
+const THEMES = [
+  { value: '', label: 'Προεπιλογή ⭐' },
+  { value: 'christmas', label: 'Χριστούγεννα 🎄' },
+  { value: 'easter', label: 'Πάσχα 🐣' },
+  { value: 'carnival', label: 'Αποκριές 🎭' },
+  { value: 'graduation', label: 'Λήξη 🎓' },
+];
 
 function audienceKind(value?: string | null): AudienceValue['audienceType'] {
   if (value === 'class' || value === 'level' || value === 'teachers') return value;
@@ -63,6 +74,9 @@ const emptyForm = (year: string) => ({
   place: '',
   details: '',
   items: [] as ItemDraft[],
+  closedClasses: '',
+  dressCode: '',
+  theme: '',
   audienceType: audienceKind('all'),
   audienceIds: [] as string[],
   imageUrl: '',
@@ -134,6 +148,9 @@ export default function CelebrationsPage() {
         items: form.items
           .map(item => ({ name: item.name.trim(), cost: item.cost === '' ? null : Number(item.cost), phase: item.phase }))
           .filter(item => item.name),
+        closedClasses: form.closedClasses || null,
+        dressCode: form.dressCode || null,
+        theme: form.theme || null,
         audienceType: form.audienceType,
         audienceIds: form.audienceIds,
       };
@@ -225,6 +242,9 @@ export default function CelebrationsPage() {
                           place: row.place ?? '',
                           details: row.details ?? '',
                           items: parseItems(row.items),
+                          closedClasses: row.closedClasses ?? '',
+                          dressCode: row.dressCode ?? '',
+                          theme: row.theme ?? '',
                           audienceType: audienceKind(row.audienceType),
                           audienceIds: parseIds(row.audienceIds),
                           imageUrl: row.imageUrl ?? '',
@@ -235,7 +255,12 @@ export default function CelebrationsPage() {
                     </div>
                   )}
                 </div>
+                {row.theme && (
+                  <p className="text-xs mt-1">{THEMES.find(t => t.value === row.theme)?.label ?? row.theme}</p>
+                )}
                 {row.details && <p className="text-sm text-gray-700 mt-3 whitespace-pre-line">{row.details}</p>}
+                {row.closedClasses && <p className="text-sm text-amber-700 mt-2 bg-amber-50 rounded-lg px-3 py-2">{row.closedClasses}</p>}
+                {row.dressCode && <p className="text-sm text-purple-700 mt-2 bg-purple-50 rounded-lg px-3 py-2">{row.dressCode}</p>}
                 <ItemList title="Πριν τη γιορτή" items={before} />
                 <ItemList title="Μετά τη γιορτή" items={after} />
               </div>
@@ -282,6 +307,24 @@ export default function CelebrationsPage() {
                 value={form.place} onChange={e => setForm({ ...form, place: e.target.value })} />
               <textarea rows={4} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none" placeholder="Λεπτομέρειες, π.χ. το παιδί να είναι εκεί στις 17:30"
                 value={form.details} onChange={e => setForm({ ...form, details: e.target.value })} />
+              <div>
+                <p className="text-xs font-medium text-gray-600 mb-1">Θέμα / Template</p>
+                <div className="flex flex-wrap gap-2">
+                  {THEMES.map(t => (
+                    <button key={t.value} type="button"
+                      onClick={() => setForm({ ...form, theme: t.value })}
+                      className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${form.theme === t.value ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}`}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <textarea rows={2} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none"
+                placeholder="Κλειστά τμήματα, π.χ. Τα τμήματα προνηπίων θα παραμείνουν κλειστά"
+                value={form.closedClasses} onChange={e => setForm({ ...form, closedClasses: e.target.value })} />
+              <textarea rows={2} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none"
+                placeholder="Dress code, π.χ. Τα παιδιά να έρθουν ντυμένα με..."
+                value={form.dressCode} onChange={e => setForm({ ...form, dressCode: e.target.value })} />
               <div className="flex items-center justify-between">
                 <p className="text-xs font-medium text-gray-600">Στολή, USB και άλλα κόστη</p>
                 <button type="button" className="text-xs text-[#77328D] font-medium"

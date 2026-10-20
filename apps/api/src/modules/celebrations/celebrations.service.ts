@@ -35,6 +35,9 @@ export class CelebrationsService implements OnModuleInit {
       await this.prisma.$executeRawUnsafe(`ALTER TABLE "school_celebrations" ADD COLUMN IF NOT EXISTS "image_url" TEXT`);
       await this.prisma.$executeRawUnsafe(`ALTER TABLE "school_celebrations" ADD COLUMN IF NOT EXISTS "audience_type" TEXT NOT NULL DEFAULT 'all'`);
       await this.prisma.$executeRawUnsafe(`ALTER TABLE "school_celebrations" ADD COLUMN IF NOT EXISTS "audience_ids" TEXT NOT NULL DEFAULT '[]'`);
+      await this.prisma.$executeRawUnsafe(`ALTER TABLE "school_celebrations" ADD COLUMN IF NOT EXISTS "closed_classes" TEXT`);
+      await this.prisma.$executeRawUnsafe(`ALTER TABLE "school_celebrations" ADD COLUMN IF NOT EXISTS "dress_code" TEXT`);
+      await this.prisma.$executeRawUnsafe(`ALTER TABLE "school_celebrations" ADD COLUMN IF NOT EXISTS "theme" TEXT`);
       await this.prisma.$executeRawUnsafe(`
         CREATE INDEX IF NOT EXISTS "school_celebrations_school_id_academic_year_idx"
         ON "school_celebrations"("school_id", "academic_year")
@@ -170,6 +173,9 @@ export class CelebrationsService implements OnModuleInit {
       place: this.textOrNull(data.place),
       details: this.textOrNull(data.details),
       items: JSON.stringify(this.cleanItems(data.items)),
+      closedClasses: this.textOrNull(data.closedClasses),
+      dressCode: this.textOrNull(data.dressCode),
+      theme: this.textOrNull(data.theme),
       ...this.audienceData(data),
     };
   }

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { classesApi, dailyMenusApi, levelsApi, menuTemplatesApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
-import { ChevronLeft, ChevronRight, Save, X, LayoutTemplate, Plus, Trash2, CheckCircle, Upload, Copy, Sparkles } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Save, X, LayoutTemplate, Plus, Trash2, CheckCircle, Upload, Copy } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, isToday, getDay } from 'date-fns';
 import { el } from 'date-fns/locale';
 import { AudienceSelector, AudienceValue, audienceLabel } from '@/components/AudienceSelector';
@@ -29,7 +29,7 @@ type Template = {
   audienceIds?: string;
   entries: { dayOfWeek: number; breakfast?: string; midMorning?: string; lunch?: string; afternoon?: string; notes?: string }[];
 };
-type ImportPreview = { month?: string; days: DayMenu[]; warnings?: string[] };
+type ImportPreview = { month?: string; days: DayMenu[]; warnings?: string[]; monthNotes?: string };
 
 const DAYS_EL = ['Δευ', 'Τρί', 'Τετ', 'Πέμ', 'Παρ', 'Σάβ', 'Κυρ'];
 const DOW_EL = ['', 'Δευτέρα', 'Τρίτη', 'Τετάρτη', 'Πέμπτη', 'Παρασκευή'];
@@ -76,6 +76,7 @@ export default function MenuPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
+  const [monthNotes, setMonthNotes] = useState('');
 
   const monthKey = format(currentMonth, 'yyyy-MM');
   const monthLabel = format(currentMonth, 'LLLL yyyy', { locale: el });
@@ -236,14 +237,13 @@ export default function MenuPage() {
     } finally { setSaving(false); }
   };
 
-  const loadSeptember = async () => {
+  const clearMonth = async () => {
+    if (!window.confirm(`Να διαγραφεί όλο το διατροφολόγιο του ${monthLabel};`)) return;
     setSaving(true);
     setPageError('');
     try {
-      const template = await menuTemplatesApi.ensureSeptember(schoolId, audience) as unknown as Template;
-      await menuTemplatesApi.apply(schoolId, template.id, monthKey, audience);
-      setShowTemplates(true);
-      loadTemplates();
+      await dailyMenusApi.clearMonth(schoolId, monthKey, audience.audienceType, audience.audienceIds);
+      setMonthNotes('');
       loadMenus();
     } catch (err) {
       setPageError(errorText(err));
@@ -271,6 +271,7 @@ export default function MenuPage() {
     setPageError('');
     try {
       await dailyMenusApi.bulk(schoolId, { days: preview.days, ...audience });
+      if (preview.monthNotes) setMonthNotes(preview.monthNotes);
       if (preview.month && preview.month !== monthKey) {
         const [year, month] = preview.month.split('-').map(Number);
         setCurrentMonth(new Date(year, month - 1, 1));
@@ -316,8 +317,8 @@ export default function MenuPage() {
               <Upload size={15} /> Ανέβασμα JPG / PDF
             </button>
             <input ref={fileRef} type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,image/jpeg,image/png,image/webp,application/pdf" hidden onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ''; }} />
-            <button onClick={loadSeptember} disabled={saving} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border border-indigo-200 text-indigo-700 hover:bg-indigo-50 disabled:opacity-50">
-              <Sparkles size={15} /> Σεπτέμβριος 2026
+            <button onClick={clearMonth} disabled={saving} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50">
+              <Trash2 size={15} /> Καθαρισμός μήνα
             </button>
             <button onClick={saveMonthAsTemplate} disabled={saving} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50">
               <LayoutTemplate size={15} /> Αποθήκευση μήνα ως πρότυπο
@@ -335,6 +336,13 @@ export default function MenuPage() {
           <p className="text-xs text-gray-500">
             Το PDF με κείμενο συμπληρώνει τις ημέρες αυτόματα. Η φωτογραφία διαβάζεται με AI όταν υπάρχει OPENAI_API_KEY. Πριν την αποθήκευση βλέπεις προεπισκόπηση.
           </p>
+        </div>
+      )}
+
+      {monthNotes && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <p className="font-medium mb-1">Σημειώσεις μήνα</p>
+          <p className="whitespace-pre-wrap">{monthNotes}</p>
         </div>
       )}
 

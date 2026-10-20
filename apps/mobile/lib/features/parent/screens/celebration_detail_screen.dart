@@ -89,44 +89,110 @@ class _CelebrationBody extends StatelessWidget {
     final before = items.where((item) => item['phase'] != 'after').toList();
     final after = items.where((item) => item['phase'] == 'after').toList();
     final image = celebration['imageUrl']?.toString() ?? '';
+    final theme = celebration['theme']?.toString() ?? '';
+    final closedClasses = celebration['closedClasses']?.toString() ?? '';
+    final dressCode = celebration['dressCode']?.toString() ?? '';
+    final banner = celebrationThemeBanner(theme);
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE9D5FF)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (image.isNotEmpty)
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFE9D5FF)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (banner != null)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(gradient: LinearGradient(colors: banner.$1)),
+                child: Row(
+                  children: [
+                    Text(banner.$2, style: const TextStyle(fontSize: 22)),
+                    const SizedBox(width: 8),
+                    Text(banner.$3, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
+                  ],
+                ),
+              ),
             Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: AppImage(image, height: 220, width: double.infinity, fit: BoxFit.cover),
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (image.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: AppImage(image, height: 220, width: double.infinity, fit: BoxFit.cover),
+                      ),
+                    ),
+                  Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20, color: Color(0xFF111827))),
+                  const SizedBox(height: 4),
+                  Text(celebrationAudienceLabel(celebration['audienceType']?.toString()), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF77328D))),
+                  if (date.isNotEmpty || arrival.isNotEmpty || place.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      [date, if (arrival.isNotEmpty) 'Προσέλευση $arrival', place].where((part) => part.isNotEmpty).join('\n'),
+                      style: const TextStyle(fontSize: 15, height: 1.45, color: Color(0xFF374151)),
+                    ),
+                  ],
+                  if (details.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Text(details, style: const TextStyle(fontSize: 15, height: 1.5, color: Color(0xFF2C2422))),
+                  ],
+                  if (closedClasses.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(color: const Color(0xFFFFFBEB), borderRadius: BorderRadius.circular(10)),
+                      child: Row(children: [
+                        const Text('⚠️', style: TextStyle(fontSize: 16)),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(closedClasses, style: const TextStyle(fontSize: 14, color: Color(0xFF92400E)))),
+                      ]),
+                    ),
+                  ],
+                  if (dressCode.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(color: const Color(0xFFF5F3FF), borderRadius: BorderRadius.circular(10)),
+                      child: Row(children: [
+                        const Text('👗', style: TextStyle(fontSize: 16)),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(dressCode, style: const TextStyle(fontSize: 14, color: Color(0xFF4C1D95)))),
+                      ]),
+                    ),
+                  ],
+                  CelebrationItemBlock(title: 'Πριν τη γιορτή', items: before),
+                  CelebrationItemBlock(title: 'Μετά τη γιορτή', items: after),
+                ],
               ),
             ),
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20, color: Color(0xFF111827))),
-          const SizedBox(height: 4),
-          Text(celebrationAudienceLabel(celebration['audienceType']?.toString()), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF77328D))),
-          if (date.isNotEmpty || arrival.isNotEmpty || place.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(
-              [date, if (arrival.isNotEmpty) 'Προσέλευση $arrival', place].where((part) => part.isNotEmpty).join('\n'),
-              style: const TextStyle(fontSize: 15, height: 1.45, color: Color(0xFF374151)),
-            ),
           ],
-          if (details.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text(details, style: const TextStyle(fontSize: 15, height: 1.5, color: Color(0xFF2C2422))),
-          ],
-          CelebrationItemBlock(title: 'Πριν τη γιορτή', items: before),
-          CelebrationItemBlock(title: 'Μετά τη γιορτή', items: after),
-        ],
+        ),
       ),
     );
+  }
+}
+
+(List<Color>, String, String)? celebrationThemeBanner(String theme) {
+  switch (theme) {
+    case 'christmas':
+      return ([const Color(0xFFB91C1C), const Color(0xFF166534)], '🎄', 'Χριστουγεννιάτικη Γιορτή');
+    case 'easter':
+      return ([const Color(0xFF0369A1), const Color(0xFF65A30D)], '🐣', 'Πασχαλινή Γιορτή');
+    case 'carnival':
+      return ([const Color(0xFF7C3AED), const Color(0xFFEA580C)], '🎭', 'Αποκριάτικη Γιορτή');
+    case 'graduation':
+      return ([const Color(0xFF77328D), const Color(0xFF3B82F6)], '🎓', 'Γιορτή Λήξης');
+    default:
+      return null;
   }
 }
 

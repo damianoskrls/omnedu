@@ -215,6 +215,8 @@ class _CelebrationCard extends StatelessWidget {
     final items = _items(celebration['items']);
     final before = items.where((item) => item['phase'] != 'after').toList();
     final after = items.where((item) => item['phase'] == 'after').toList();
+    final theme = celebration['theme']?.toString() ?? '';
+    final banner = celebrationThemeBanner(theme);
 
     return Material(
       color: Colors.white,
@@ -235,41 +237,62 @@ class _CelebrationCard extends StatelessWidget {
             ),
           );
         },
-        child: Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE9D5FF)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if ((celebration['imageUrl']?.toString() ?? '').isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: AppImage(celebration['imageUrl'].toString(), height: 160, width: double.infinity, fit: BoxFit.cover),
-              ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE9D5FF)),
             ),
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF111827))),
-          Text(_audienceLabel(celebration['audienceType']?.toString()), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF77328D))),
-          if (date.isNotEmpty || arrival.isNotEmpty || place.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(
-              [date, if (arrival.isNotEmpty) 'προσέλευση $arrival', place].where((part) => part.isNotEmpty).join(' · '),
-              style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (banner != null)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(gradient: LinearGradient(colors: banner.$1)),
+                    child: Row(children: [
+                      Text(banner.$2, style: const TextStyle(fontSize: 18)),
+                      const SizedBox(width: 6),
+                      Text(banner.$3, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+                    ]),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if ((celebration['imageUrl']?.toString() ?? '').isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: AppImage(celebration['imageUrl'].toString(), height: 160, width: double.infinity, fit: BoxFit.cover),
+                          ),
+                        ),
+                      Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF111827))),
+                      Text(_audienceLabel(celebration['audienceType']?.toString()), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF77328D))),
+                      if (date.isNotEmpty || arrival.isNotEmpty || place.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          [date, if (arrival.isNotEmpty) 'προσέλευση $arrival', place].where((part) => part.isNotEmpty).join(' · '),
+                          style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+                        ),
+                      ],
+                      if (details.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(details, style: const TextStyle(fontSize: 13, height: 1.4, color: Color(0xFF374151))),
+                      ],
+                      _ItemBlock(title: 'Πριν τη γιορτή', items: before),
+                      _ItemBlock(title: 'Μετά τη γιορτή', items: after),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
-          if (details.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(details, style: const TextStyle(fontSize: 13, height: 1.4, color: Color(0xFF374151))),
-          ],
-          _ItemBlock(title: 'Πριν τη γιορτή', items: before),
-          _ItemBlock(title: 'Μετά τη γιορτή', items: after),
-        ],
-      ),
+          ),
         ),
       ),
     );

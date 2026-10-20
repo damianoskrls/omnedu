@@ -17,6 +17,7 @@ type PlanInput = {
   extras?: string;
   closing?: string;
   signature?: string;
+  imageUrls?: string[];
 };
 
 @Injectable()
@@ -116,6 +117,7 @@ export class ThematicPlansService implements OnModuleInit {
       extras: data.extras ?? '',
       closing: data.closing ?? '',
       signature: data.signature ?? '',
+      ...(data.imageUrls !== undefined ? { imageUrls: data.imageUrls } : {}),
     };
 
     const existing = await this.prisma.thematicPlan.findUnique({
