@@ -6,7 +6,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api/api_client.dart';
+import '../../../core/providers/auth_provider.dart';
 import '../../../core/widgets/app_image.dart';
+import '../../messages/conversation_ui.dart';
 
 final classAssignmentsProvider = FutureProvider.family<List<dynamic>, ({String schoolId, String? classId, String? studentId})>(
   (ref, key) async {
@@ -208,12 +210,24 @@ class _AssignmentComposerState extends ConsumerState<AssignmentComposer> {
   final _files = <_PickedFile>[];
   bool _sending = false;
   String _progress = '';
+  DateTime? _dueDate;
 
   @override
   void dispose() {
     _title.dispose();
     _instructions.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dueDate ?? now.add(const Duration(days: 7)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 365)),
+    );
+    if (picked != null && mounted) setState(() => _dueDate = picked);
   }
 
   Future<void> _addPhoto() async {
@@ -278,6 +292,7 @@ class _AssignmentComposerState extends ConsumerState<AssignmentComposer> {
         'title': title,
         'instructions': instructions,
         'fileUrls': urls,
+        if (_dueDate != null) 'dueDate': _dueDate!.toIso8601String(),
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Η εργασία στάλθηκε στους γονείς της τάξης.')));
@@ -324,6 +339,20 @@ class _AssignmentComposerState extends ConsumerState<AssignmentComposer> {
             minLines: 4,
             maxLines: 8,
             decoration: _field('Οδηγίες', 'Τι θα τυπώσουν και πώς θα το κάνουν τα παιδιά'),
+          ),
+          const SizedBox(height: 12),
+          InkWell(
+            onTap: _sending ? null : _pickDate,
+            borderRadius: BorderRadius.circular(16),
+            child: InputDecorator(
+              decoration: _field('Προθεσμία', ''),
+              child: Text(
+                _dueDate == null
+                    ? 'Χωρίς προθεσμία (προαιρετικό)'
+                    : '${_dueDate!.day.toString().padLeft(2, '0')}/${_dueDate!.month.toString().padLeft(2, '0')}/${_dueDate!.year}',
+                style: TextStyle(color: _dueDate == null ? const Color(0xFF9CA3AF) : null),
+              ),
+            ),
           ),
           const SizedBox(height: 16),
           Wrap(
@@ -379,7 +408,9 @@ class _AssignmentComposerState extends ConsumerState<AssignmentComposer> {
 class AssignmentCard extends StatelessWidget {
   final Map<String, dynamic> assignment;
   final VoidCallback? onDelete;
-  const AssignmentCard({super.key, required this.assignment, this.onDelete});
+  final String? schoolId;
+  final String? currentUserId;
+  const AssignmentCard({super.key, required this.assignment, this.onDelete, this.schoolId, this.currentUserId});
 
   @override
   Widget build(BuildContext context) {
@@ -390,37 +421,64 @@ class AssignmentCard extends StatelessWidget {
     final urls = assignment['fileUrls'] is List ? (assignment['fileUrls'] as List).map((item) => item.toString()).where((url) => url.isNotEmpty).toList() : <String>[];
     final created = DateTime.tryParse(assignment['createdAt']?.toString() ?? '');
     final when = created == null ? '' : '${created.day.toString().padLeft(2, '0')}/${created.month.toString().padLeft(2, '0')}/${created.year}';
+    final dueDate = DateTime.tryParse(assignment['dueDate']?.toString() ?? '');
+    final dueDateStr = dueDate == null ? null : '${dueDate.day.toString().padLeft(2, '0')}/${dueDate.month.toString().padLeft(2, '0')}/${dueDate.year}';
+
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(18),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.assignment_rounded, color: Color(0xFF77328D)),
-                const SizedBox(width: 8),
-                Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
-                if (onDelete != null) IconButton(onPressed: onDelete, icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFB42318))),
-              ],
-            ),
-            if (klass.isNotEmpty || author.isNotEmpty || when.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  [if (klass.isNotEmpty) 'Τάξη $klass', if (author.isNotEmpty) author, if (when.isNotEmpty) when].join(' · '),
-                  style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12),
-                ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (_) => _AssignmentDetailSheet(
+            assignment: assignment,
+            schoolId: schoolId,
+            currentUserId: currentUserId,
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.assignment_rounded, color: Color(0xFF77328D)),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+                  if (onDelete != null) IconButton(onPressed: onDelete, icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFB42318))),
+                ],
               ),
-            if (instructions.isNotEmpty)
-              Text(instructions, style: const TextStyle(height: 1.4, color: Color(0xFF2C2422))),
-            if (urls.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              for (final url in urls) AssignmentFile(url: url),
+              if (klass.isNotEmpty || author.isNotEmpty || when.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    [if (klass.isNotEmpty) 'Τάξη $klass', if (author.isNotEmpty) author, if (when.isNotEmpty) when].join(' · '),
+                    style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12),
+                  ),
+                ),
+              if (dueDateStr != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.event_rounded, size: 14, color: Color(0xFF77328D)),
+                      const SizedBox(width: 4),
+                      Text('Προθεσμία: $dueDateStr', style: const TextStyle(fontSize: 12, color: Color(0xFF77328D), fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+              if (instructions.isNotEmpty)
+                Text(instructions, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(height: 1.4, color: Color(0xFF2C2422))),
+              if (urls.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                for (final url in urls) AssignmentFile(url: url),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -474,6 +532,217 @@ class AssignmentFile extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AssignmentDetailSheet extends ConsumerStatefulWidget {
+  final Map<String, dynamic> assignment;
+  final String? schoolId;
+  final String? currentUserId;
+  const _AssignmentDetailSheet({required this.assignment, this.schoolId, this.currentUserId});
+
+  @override
+  ConsumerState<_AssignmentDetailSheet> createState() => _AssignmentDetailSheetState();
+}
+
+class _AssignmentDetailSheetState extends ConsumerState<_AssignmentDetailSheet> {
+  bool _messaging = false;
+
+  Future<void> _askTeacher() async {
+    final sId = widget.schoolId;
+    final cId = widget.currentUserId;
+    if (sId == null || cId == null || _messaging) return;
+    final authorMap = widget.assignment['author'];
+    final authorId = authorMap is Map ? authorMap['id']?.toString() : null;
+    if (authorId == null) return;
+    setState(() => _messaging = true);
+    try {
+      final conv = await openScopedConversation(
+        ref,
+        schoolId: sId,
+        kind: 'teacher',
+        withUserId: authorId,
+        participantIds: [cId, authorId],
+      );
+      final id = conv?['id'] as String?;
+      if (id == null || !mounted) return;
+      final authorName = authorMap is Map ? authorMap['fullName']?.toString() ?? 'Εκπαιδευτικός' : 'Εκπαιδευτικός';
+      Navigator.pop(context);
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChatScreen(
+            schoolId: sId,
+            convId: id,
+            title: authorName,
+            subtitle: 'Εκπαιδευτικός',
+            currentUserId: cId,
+            startedByMe: conversationStartedByMe(conv, cId),
+          ),
+        ),
+      );
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Δεν ήταν δυνατή η έναρξη συνομιλίας.')));
+    } finally {
+      if (mounted) setState(() => _messaging = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final assignment = widget.assignment;
+    final title = assignment['title']?.toString() ?? 'Εργασία';
+    final instructions = assignment['instructions']?.toString() ?? '';
+    final author = assignment['author'] is Map ? (assignment['author'] as Map)['fullName']?.toString() ?? '' : '';
+    final klass = assignment['class'] is Map ? (assignment['class'] as Map)['name']?.toString() ?? '' : '';
+    final urls = assignment['fileUrls'] is List ? (assignment['fileUrls'] as List).map((item) => item.toString()).where((url) => url.isNotEmpty).toList() : <String>[];
+    final dueDate = DateTime.tryParse(assignment['dueDate']?.toString() ?? '');
+    final dueDateStr = dueDate == null ? null : '${dueDate.day.toString().padLeft(2, '0')}/${dueDate.month.toString().padLeft(2, '0')}/${dueDate.year}';
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.75,
+      maxChildSize: 0.95,
+      minChildSize: 0.4,
+      builder: (_, scroll) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFFF8F4FC),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            const SizedBox(height: 8),
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
+            Expanded(
+              child: ListView(
+                controller: scroll,
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                children: [
+                  Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20, color: Color(0xFF3D1152))),
+                  const SizedBox(height: 6),
+                  if (klass.isNotEmpty || author.isNotEmpty)
+                    Text(
+                      [if (klass.isNotEmpty) 'Τάξη $klass', if (author.isNotEmpty) author].join(' · '),
+                      style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13),
+                    ),
+                  if (dueDateStr != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(color: const Color(0xFFF3E8F7), borderRadius: BorderRadius.circular(12)),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.event_rounded, size: 16, color: Color(0xFF77328D)),
+                          const SizedBox(width: 6),
+                          Text('Προθεσμία: $dueDateStr', style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w700)),
+                        ],
+                      ),
+                    ),
+                  ],
+                  if (instructions.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Text(instructions, style: const TextStyle(height: 1.55, fontSize: 15, color: Color(0xFF2C2422))),
+                  ],
+                  if (urls.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    for (final url in urls) _DetailFile(url: url),
+                  ],
+                  if (widget.schoolId != null && widget.currentUserId != null) ...[
+                    const SizedBox(height: 24),
+                    FilledButton.icon(
+                      style: FilledButton.styleFrom(backgroundColor: const Color(0xFF77328D), minimumSize: const Size.fromHeight(48)),
+                      onPressed: _messaging ? null : _askTeacher,
+                      icon: const Icon(Icons.chat_bubble_outline_rounded),
+                      label: Text(_messaging ? 'Φόρτωση...' : 'Ρώτα τον εκπαιδευτικό'),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailFile extends StatelessWidget {
+  final String url;
+  const _DetailFile({required this.url});
+
+  bool get _pdf => url.toLowerCase().contains('.pdf') || url.toLowerCase().contains('/raw/upload/');
+
+  Future<void> _open(BuildContext context) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Το αρχείο δεν άνοιξε.')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_pdf) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => _ImageLightbox(url: url))),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: AppImage(url, height: 200, width: double.infinity, fit: BoxFit.cover),
+          ),
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: const Color(0xFFF3E8F7),
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => _open(context),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            child: Row(
+              children: [
+                Icon(Icons.picture_as_pdf_rounded, color: Color(0xFF77328D)),
+                SizedBox(width: 8),
+                Expanded(child: Text('Άνοιγμα PDF', style: TextStyle(fontWeight: FontWeight.w700))),
+                Icon(Icons.open_in_new_rounded, size: 16, color: Color(0xFF6B7280)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ImageLightbox extends StatelessWidget {
+  final String url;
+  const _ImageLightbox({required this.url});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.close_rounded),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: InteractiveViewer(
+        child: Center(
+          child: AppImage(url, fit: BoxFit.contain),
         ),
       ),
     );

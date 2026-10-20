@@ -29,7 +29,7 @@ export class AssignmentsController {
   create(
     @Param('schoolId') schoolId: string,
     @CurrentUser() user: JwtPayload,
-    @Body() body: { classId?: string; title?: string; instructions?: string; fileUrls?: string[] },
+    @Body() body: { classId?: string; title?: string; instructions?: string; fileUrls?: string[]; dueDate?: string | null },
   ) {
     return this.service.create(schoolId, user.sub, user.role, body);
   }

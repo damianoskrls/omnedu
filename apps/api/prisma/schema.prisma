@@ -25,6 +25,7 @@ model School {
   isActive              Boolean   @default(true) @map("is_active")
   operatingRegulation   String?   @map("operating_regulation") @db.Text
   financialRegulation   String?   @map("financial_regulation") @db.Text
+  billingDueDay         Int?      @map("billing_due_day")
   createdAt             DateTime  @default(now()) @map("created_at")
 
   members            SchoolMember[]
@@ -321,14 +322,15 @@ model Class {
 }
 
 model ClassAssignment {
-  id           String   @id @default(uuid())
-  schoolId     String   @map("school_id")
-  classId      String   @map("class_id")
-  authorId     String   @map("author_id")
+  id           String    @id @default(uuid())
+  schoolId     String    @map("school_id")
+  classId      String    @map("class_id")
+  authorId     String    @map("author_id")
   title        String
-  instructions String?  @db.Text
-  fileUrls     String[] @default([]) @map("file_urls")
-  createdAt    DateTime @default(now()) @map("created_at")
+  instructions String?   @db.Text
+  fileUrls     String[]  @default([]) @map("file_urls")
+  dueDate      DateTime? @map("due_date") @db.Date
+  createdAt    DateTime  @default(now()) @map("created_at")
 
   school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   class  Class  @relation(fields: [classId], references: [id], onDelete: Cascade)
@@ -893,6 +895,7 @@ model ThematicPlan {
   extras       String   @db.Text
   closing      String   @db.Text
   signature    String   @db.Text
+  imageUrls    String[] @default([]) @map("image_urls")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 

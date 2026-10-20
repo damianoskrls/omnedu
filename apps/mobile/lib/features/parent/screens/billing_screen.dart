@@ -13,6 +13,13 @@ final myChargesProvider = FutureProvider.family<List<dynamic>, String>(
   },
 );
 
+final _schoolInfoProvider = FutureProvider.family<Map<String, dynamic>?, String>((ref, schoolId) async {
+  final dio = ref.read(dioProvider);
+  final resp = await dio.get('/schools/$schoolId');
+  final data = resp.data;
+  return data is Map ? Map<String, dynamic>.from(data) : null;
+});
+
 class BillingScreen extends ConsumerWidget {
   final String schoolId;
   const BillingScreen({super.key, required this.schoolId});
@@ -20,6 +27,7 @@ class BillingScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final chargesAsync = ref.watch(myChargesProvider(schoolId));
+    final billingDueDay = ref.watch(_schoolInfoProvider(schoolId)).valueOrNull?['billingDueDay'] as int?;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAFB),
@@ -86,6 +94,10 @@ class BillingScreen extends ConsumerWidget {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                if (billingDueDay != null) ...[
+                  _NextPaymentBanner(billingDueDay: billingDueDay),
+                  const SizedBox(height: 12),
+                ],
                 ParentReceipts(schoolId: schoolId),
                 const SizedBox(height: 8),
                 if (data.isEmpty)
@@ -637,6 +649,81 @@ class _DetailLine extends StatelessWidget {
               fontSize: 12,
               fontWeight: FontWeight.w600,
               color: isSubsidy ? const Color(0xFF16A34A) : const Color(0xFF374151),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NextPaymentBanner extends StatelessWidget {
+  final int billingDueDay;
+  const _NextPaymentBanner({required this.billingDueDay});
+
+  int _daysUntil() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    DateTime next;
+    if (today.day <= billingDueDay) {
+      try {
+        next = DateTime(today.year, today.month, billingDueDay);
+      } catch (_) {
+        next = DateTime(today.year, today.month + 1, 1).subtract(const Duration(days: 1));
+      }
+    } else {
+      final nextMonth = today.month == 12 ? 1 : today.month + 1;
+      final nextYear = today.month == 12 ? today.year + 1 : today.year;
+      try {
+        next = DateTime(nextYear, nextMonth, billingDueDay);
+      } catch (_) {
+        next = DateTime(nextYear, nextMonth + 1, 1).subtract(const Duration(days: 1));
+      }
+    }
+    return next.difference(today).inDays;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final days = _daysUntil();
+    final isUrgent = days <= 3;
+    final isToday = days == 0;
+
+    String message;
+    if (isToday) {
+      message = 'Σήμερα είναι η ημέρα εξόφλησης. Παρακαλούμε τακτοποιήστε την πληρωμή σας.';
+    } else if (days < 0) {
+      message = 'Η ημερομηνία εξόφλησης πέρασε. Παρακαλούμε τακτοποιήστε άμεσα.';
+    } else {
+      message = '$days ${days == 1 ? 'ημέρα' : 'ημέρες'} μέχρι την εξόφληση (${billingDueDay}η του μήνα). Παρακαλούμε τακτοποιήστε εγκαίρως.';
+    }
+
+    final color = (isUrgent || days < 0) ? const Color(0xFFDC2626) : const Color(0xFF77328D);
+    final bgColor = (isUrgent || days < 0) ? const Color(0xFFFEF2F2) : const Color(0xFFF3E8F7);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.event_note_rounded, color: color, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isToday || days < 0 ? 'Εξόφληση' : '$days ${days == 1 ? 'ημέρα' : 'ημέρες'} μέχρι την πληρωμή',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: color),
+                ),
+                const SizedBox(height: 2),
+                Text(message, style: TextStyle(fontSize: 12, color: color.withOpacity(0.85), height: 1.4)),
+              ],
             ),
           ),
         ],

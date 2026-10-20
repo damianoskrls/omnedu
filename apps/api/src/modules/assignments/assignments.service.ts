@@ -25,6 +25,7 @@ export class AssignmentsService {
     title?: string;
     instructions?: string;
     fileUrls?: string[];
+    dueDate?: string | null;
   }) {
     if (!staffRoles.has(role ?? '')) throw new ForbiddenException('Οι γονείς δεν ανεβάζουν εργασίες.');
     const classId = data.classId?.trim() ?? '';
@@ -38,7 +39,12 @@ export class AssignmentsService {
     if (!klass) throw new NotFoundException('Η τάξη δεν βρέθηκε.');
 
     const created = await this.prisma.classAssignment.create({
-      data: { schoolId, classId, authorId, title, instructions: instructions || null, fileUrls },
+      data: {
+        schoolId, classId, authorId, title,
+        instructions: instructions || null,
+        fileUrls,
+        dueDate: data.dueDate ? new Date(data.dueDate) : undefined,
+      },
       include: this.include(),
     });
     await this.notifyParents(schoolId, created);
@@ -56,7 +62,7 @@ export class AssignmentsService {
   private include() {
     return {
       class: { select: { id: true, name: true } },
-      author: { select: { id: true, fullName: true, avatarUrl: true } },
+      author: { select: { id: true, fullName: true, avatarUrl: true, bio: true, specialization: true, education: true } },
     } as const;
   }
 

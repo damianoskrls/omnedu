@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/widgets/person_face.dart';
+import 'bulletin_screen.dart';
 import 'event_instructions.dart';
 import 'events_screen.dart';
 
@@ -165,7 +166,7 @@ class ChildTodayUpdate extends ConsumerWidget {
         if (todayReport == null) {
           return DayHistoryEmptyCard('Δεν υπάρχει ενημέρωση για σήμερα ακόμα', child: child);
         }
-        return DayDiaryCard(report: todayReport, colors: colors, child: child);
+        return DayDiaryCard(report: todayReport, colors: colors, child: child, schoolId: schoolId);
       },
     );
   }
@@ -249,6 +250,7 @@ class ChildRecentUpdates extends ConsumerWidget {
                     report: Map<String, dynamic>.from(raw as Map),
                     colors: colors,
                     child: child,
+                    schoolId: schoolId,
                   ),
                 ),
             if (archive) ...[
@@ -381,6 +383,7 @@ class UpdateArchiveScreen extends ConsumerWidget {
                     report: Map<String, dynamic>.from(older[index] as Map),
                     colors: dayHistoryColors,
                     child: child,
+                    schoolId: schoolId,
                   ),
                 );
               },
@@ -740,7 +743,8 @@ class DayDiaryCard extends StatelessWidget {
   final Map<String, dynamic> report;
   final List<Color> colors;
   final Map<String, dynamic>? child;
-  const DayDiaryCard({super.key, required this.report, required this.colors, this.child});
+  final String? schoolId;
+  const DayDiaryCard({super.key, required this.report, required this.colors, this.child, this.schoolId});
 
   static const _moodEmojis = {
     'χαρούμενος': '😊', 'happy': '😊', 'ήρεμος': '😌', 'calm': '😌',
@@ -788,16 +792,30 @@ class DayDiaryCard extends StatelessWidget {
     final hasActivities = activities.isNotEmpty;
     final hasDetails = hasMeals || hasBathroom || hasSleep || hasActivities;
 
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
+    final cardChild = child;
+    final reportDate = date;
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      shadowColor: colors[0].withOpacity(0.08),
+      elevation: 4,
+      child: InkWell(
         borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(color: colors[0].withOpacity(0.08), blurRadius: 16, offset: const Offset(0, 4)),
-        ],
-      ),
-      child: Column(
+        onTap: (schoolId != null && cardChild != null)
+            ? () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => BulletinScreen(
+                      schoolId: schoolId!,
+                      child: cardChild,
+                      initialDay: reportDate != null ? DateTime.tryParse(reportDate) : null,
+                    ),
+                  ),
+                )
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (child != null) _childLabel(child!),
@@ -876,6 +894,8 @@ class DayDiaryCard extends StatelessWidget {
             ),
           ],
         ],
+          ),
+        ),
       ),
     );
   }

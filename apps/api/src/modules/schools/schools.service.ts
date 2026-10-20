@@ -121,10 +121,11 @@ export class SchoolsService implements OnModuleInit {
     isActive?: boolean;
     operatingRegulation?: string | null;
     financialRegulation?: string | null;
+    billingDueDay?: number | null;
   }) {
     const allowed = [
       'name', 'logoUrl', 'primaryColor', 'subscriptionPlan', 'isActive',
-      'operatingRegulation', 'financialRegulation',
+      'operatingRegulation', 'financialRegulation', 'billingDueDay',
     ] as const;
     const payload: Record<string, unknown> = {};
     for (const key of allowed) {

@@ -299,6 +299,13 @@ export const thematicPlansApi = {
     api.get(`/schools/${schoolId}/thematic-plans`, { params }),
   save: (schoolId: string, data: any) => api.post(`/schools/${schoolId}/thematic-plans`, data),
   remove: (schoolId: string, id: string) => api.delete(`/schools/${schoolId}/thematic-plans/${id}`),
+  uploadMedia: (schoolId: string, file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post(`/schools/${schoolId}/assignments/media`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
 };
 
 export const parentMeetingsApi = {

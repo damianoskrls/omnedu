@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { billingApi, levelsApi, schoolEventsApi, broadcastsApi } from '@/lib/api';
+import { billingApi, levelsApi, schoolEventsApi, broadcastsApi, schoolsApi } from '@/lib/api';
 import { eventDisplayStatus } from '@/lib/event-status';
 import { payerOptions, paymentNote } from '@/lib/payment-note';
 import { PaymentConfirmModal, PaymentPrompt } from '@/components/PaymentConfirmModal';
@@ -71,6 +71,11 @@ export default function BillingPage() {
   const [markingPayment, setMarkingPayment] = useState<string | null>(null);
   const [sendingNotif, setSendingNotif] = useState<string | null>(null);
 
+  // Billing due day
+  const [billingDueDay, setBillingDueDay] = useState('');
+  const [savingDueDay, setSavingDueDay] = useState(false);
+  const [dueDaySaved, setDueDaySaved] = useState(false);
+
   // Settings modals
   const [editingLevelFee, setEditingLevelFee] = useState<any>(null); // { levelId, levelName, monthlyFee }
   const [editingOverride, setEditingOverride] = useState<any>(null); // student charge selected for override/subsidy management
@@ -86,17 +91,19 @@ export default function BillingPage() {
     if (!schoolId) return;
     setLoading(true);
     try {
-      const [ch, st, lv, lf] = await Promise.all([
+      const [ch, st, lv, lf, school] = await Promise.all([
         billingApi.getCharges(schoolId, month, year),
         billingApi.stats(schoolId),
         levelsApi.list(schoolId),
         billingApi.getLevelFees(schoolId),
+        schoolsApi.get(schoolId),
       ]);
       const chargesArr = Array.isArray(ch) ? ch : [];
       setCharges(chargesArr);
       setStats(st);
       setLevels(Array.isArray(lv) ? lv : []);
       setLevelFees(Array.isArray(lf) ? lf : []);
+      if ((school as any)?.billingDueDay != null) setBillingDueDay(String((school as any).billingDueDay));
 
       // Auto-generate for the current month if no charges exist yet
       const now = new Date();
@@ -272,6 +279,19 @@ export default function BillingPage() {
     setCharges(prev => prev.filter(c => c.id !== charge.id));
   }
 
+  async function saveBillingDueDay() {
+    const day = parseInt(billingDueDay);
+    if (isNaN(day) || day < 1 || day > 28) return;
+    setSavingDueDay(true);
+    try {
+      await schoolsApi.update(schoolId, { billingDueDay: day });
+      setDueDaySaved(true);
+      setTimeout(() => setDueDaySaved(false), 2000);
+    } finally {
+      setSavingDueDay(false);
+    }
+  }
+
   async function saveLevelFee() {
     if (!editingLevelFee) return;
     await billingApi.upsertLevelFee(schoolId, editingLevelFee.levelId, {
@@ -405,6 +425,11 @@ export default function BillingPage() {
           editingLevelFee={editingLevelFee}
           setEditingLevelFee={setEditingLevelFee}
           saveLevelFee={saveLevelFee}
+          billingDueDay={billingDueDay}
+          setBillingDueDay={setBillingDueDay}
+          saveBillingDueDay={saveBillingDueDay}
+          savingDueDay={savingDueDay}
+          dueDaySaved={dueDaySaved}
         />
       ) : tab === 'events' ? (
         /* ---- Events tab ---- */
@@ -839,11 +864,36 @@ export default function BillingPage() {
   );
 }
 
-function SettingsTab({ levels, levelFees, editingLevelFee, setEditingLevelFee, saveLevelFee }: any) {
+function SettingsTab({ levels, levelFees, editingLevelFee, setEditingLevelFee, saveLevelFee, billingDueDay, setBillingDueDay, saveBillingDueDay, savingDueDay, dueDaySaved }: any) {
   const feeMap: Record<string, any> = {};
   levelFees.forEach((lf: any) => { feeMap[lf.levelId] = lf; });
 
   return (
+    <div className="space-y-4">
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+      <h2 className="text-base font-bold text-gray-900 mb-1">Ημερομηνία Εξόφλησης</h2>
+      <p className="text-sm text-gray-500 mb-4">Ορίστε την ημέρα του μήνα που πρέπει να εξοφλούν οι γονείς (π.χ. 10 = κάθε 10η του μήνα). Εμφανίζεται στην εφαρμογή ως αντίστροφη μέτρηση.</p>
+      <div className="flex items-center gap-3 max-w-xs">
+        <input
+          type="number"
+          min={1}
+          max={28}
+          value={billingDueDay}
+          onChange={(e) => setBillingDueDay(e.target.value)}
+          placeholder="π.χ. 10"
+          className="w-24 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+        />
+        <span className="text-sm text-gray-500">η του μήνα</span>
+        <button
+          onClick={saveBillingDueDay}
+          disabled={savingDueDay || !billingDueDay}
+          className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+        >
+          {dueDaySaved ? <Check className="h-3.5 w-3.5" /> : null}
+          {dueDaySaved ? 'Αποθηκεύτηκε' : savingDueDay ? 'Αποθήκευση...' : 'Αποθήκευση'}
+        </button>
+      </div>
+    </div>
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
       <h2 className="text-base font-bold text-gray-900 mb-1">Τιμολόγηση ανά Βαθμίδα</h2>
       <p className="text-sm text-gray-500 mb-5">Μηνιαία δίδακτρα + εφάπαξ εγγραφή για κάθε βαθμίδα</p>
@@ -924,6 +974,7 @@ function SettingsTab({ levels, levelFees, editingLevelFee, setEditingLevelFee, s
           );
         })}
       </div>
+    </div>
     </div>
   );
 }

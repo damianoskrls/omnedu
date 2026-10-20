@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/providers/auth_provider.dart';
 import '../../teacher/screens/assignments_screen.dart';
 
 class ParentAssignmentsScreen extends ConsumerWidget {
@@ -48,7 +49,11 @@ class ParentAssignmentsScreen extends ConsumerWidget {
               separatorBuilder: (_, __) => const SizedBox(height: 12),
               itemBuilder: (_, index) {
                 final row = rows[index] is Map ? Map<String, dynamic>.from(rows[index] as Map) : <String, dynamic>{};
-                return AssignmentCard(assignment: row);
+                return AssignmentCard(
+                  assignment: row,
+                  schoolId: schoolId,
+                  currentUserId: ref.read(authProvider).user?.id,
+                );
               },
             ),
           );

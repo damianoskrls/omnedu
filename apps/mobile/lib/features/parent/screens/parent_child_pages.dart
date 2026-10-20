@@ -831,14 +831,14 @@ class TeachersScreen extends ConsumerWidget {
       body: live.when(
         loading: () => fallback.isEmpty
             ? const Center(child: CircularProgressIndicator(color: Color(0xFF77328D)))
-            : _TeacherList(teachers: fallback, onMessage: (teacher) => _message(context, ref, teacher)),
+            : _TeacherList(schoolId: schoolId, teachers: fallback, onMessage: (teacher) => _message(context, ref, teacher)),
         error: (_, __) => fallback.isEmpty
             ? const ParentEmptyState(
                 icon: Icons.groups_outlined,
                 title: 'Χωρίς εκπαιδευτικούς',
                 message: 'Δεν έχουν οριστεί εκπαιδευτικοί στην τάξη του παιδιού.',
               )
-            : _TeacherList(teachers: fallback, onMessage: (teacher) => _message(context, ref, teacher)),
+            : _TeacherList(schoolId: schoolId, teachers: fallback, onMessage: (teacher) => _message(context, ref, teacher)),
         data: (teachers) {
           final rows = teachers.isNotEmpty ? teachers : fallback;
           if (rows.isEmpty) {
@@ -851,7 +851,7 @@ class TeachersScreen extends ConsumerWidget {
           return RefreshIndicator(
             color: const Color(0xFF77328D),
             onRefresh: () => ref.refresh(parentTeachersProvider(key).future),
-            child: _TeacherList(teachers: rows, onMessage: (teacher) => _message(context, ref, teacher)),
+            child: _TeacherList(schoolId: schoolId, teachers: rows, onMessage: (teacher) => _message(context, ref, teacher)),
           );
         },
       ),
@@ -860,9 +860,10 @@ class TeachersScreen extends ConsumerWidget {
 }
 
 class _TeacherList extends StatelessWidget {
+  final String schoolId;
   final List<_ClassTeacher> teachers;
   final ValueChanged<_ClassTeacher> onMessage;
-  const _TeacherList({required this.teachers, required this.onMessage});
+  const _TeacherList({required this.schoolId, required this.teachers, required this.onMessage});
 
   @override
   Widget build(BuildContext context) {
@@ -879,7 +880,16 @@ class _TeacherList extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           child: InkWell(
             borderRadius: BorderRadius.circular(16),
-            onTap: () => onMessage(teacher),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => _TeacherProfileScreen(
+                  schoolId: schoolId,
+                  teacher: teacher,
+                  onMessage: () => onMessage(teacher),
+                ),
+              ),
+            ),
             child: Padding(
               padding: const EdgeInsets.all(14),
               child: Row(
@@ -910,7 +920,7 @@ class _TeacherList extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const Icon(Icons.chat_bubble_outline_rounded, color: Color(0xFF77328D)),
+                  const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF)),
                 ],
               ),
             ),
@@ -932,6 +942,194 @@ Widget _teacherLetter(String name) {
       style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w800, fontSize: 18),
     ),
   );
+}
+
+final _teacherStaffProfileProvider = FutureProvider.family<Map<String, dynamic>?, ({String schoolId, String userId})>(
+  (ref, key) async {
+    final dio = ref.read(dioProvider);
+    final resp = await dio.get('/schools/${key.schoolId}/staff');
+    final list = resp.data is List ? resp.data as List<dynamic> : <dynamic>[];
+    for (final item in list) {
+      if (item is! Map) continue;
+      final user = item['user'];
+      if (user is Map && user['id']?.toString() == key.userId) {
+        return Map<String, dynamic>.from(item);
+      }
+    }
+    return null;
+  },
+);
+
+class _TeacherProfileScreen extends ConsumerWidget {
+  final String schoolId;
+  final _ClassTeacher teacher;
+  final VoidCallback onMessage;
+  const _TeacherProfileScreen({required this.schoolId, required this.teacher, required this.onMessage});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profileAsync = ref.watch(_teacherStaffProfileProvider((schoolId: schoolId, userId: teacher.id)));
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF6F3FA),
+      appBar: AppBar(
+        title: const Text('Εκπαιδευτικός'),
+        backgroundColor: Colors.white,
+      ),
+      body: profileAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFF77328D))),
+        error: (_, __) => _TeacherProfileBody(teacher: teacher, profile: null, onMessage: onMessage),
+        data: (profile) => _TeacherProfileBody(teacher: teacher, profile: profile, onMessage: onMessage),
+      ),
+    );
+  }
+}
+
+class _TeacherProfileBody extends StatelessWidget {
+  final _ClassTeacher teacher;
+  final Map<String, dynamic>? profile;
+  final VoidCallback onMessage;
+  const _TeacherProfileBody({required this.teacher, required this.profile, required this.onMessage});
+
+  @override
+  Widget build(BuildContext context) {
+    final tp = profile?['teacherProfile'] as Map<String, dynamic>?;
+    final bio = tp?['bio'] as String? ?? '';
+    final specialization = tp?['specialization'] as String? ?? '';
+    final rawEdu = tp?['education'];
+    final education = rawEdu is List ? rawEdu.whereType<Map>().toList() : <Map>[];
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
+      children: [
+        Center(
+          child: Column(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(40),
+                child: teacher.avatarUrl != null && teacher.avatarUrl!.isNotEmpty
+                    ? AppImage(teacher.avatarUrl!, width: 80, height: 80, fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _bigLetter(teacher.name))
+                    : _bigLetter(teacher.name),
+              ),
+              const SizedBox(height: 12),
+              Text(teacher.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20, color: Color(0xFF2C2422))),
+              if (teacher.className.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text('Τάξη ${teacher.className}', style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w600)),
+              ],
+              if (specialization.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(specialization, style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13)),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        if (bio.isNotEmpty) _ProfileCard(
+          icon: Icons.person_outline_rounded,
+          title: 'Βιογραφικό',
+          child: Text(bio, style: const TextStyle(height: 1.5, color: Color(0xFF374151))),
+        ),
+        if (education.isNotEmpty) _ProfileCard(
+          icon: Icons.school_outlined,
+          title: 'Σπουδές',
+          child: Column(
+            children: education.map((entry) {
+              final degree = entry['degree']?.toString() ?? '';
+              final institution = entry['institution']?.toString() ?? '';
+              final year = entry['year']?.toString() ?? '';
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.circle, size: 6, color: Color(0xFF77328D)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (degree.isNotEmpty) Text(degree, style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF2C2422))),
+                          if (institution.isNotEmpty || year.isNotEmpty)
+                            Text([institution, year].where((s) => s.isNotEmpty).join(' · '),
+                                style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: onMessage,
+            icon: const Icon(Icons.chat_bubble_outline_rounded),
+            label: const Text('Στείλε μήνυμα'),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF77328D),
+              foregroundColor: Colors.white,
+              minimumSize: const Size.fromHeight(50),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _bigLetter(String name) {
+    return Container(
+      width: 80,
+      height: 80,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        color: Color(0xFFF3E8F7),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        name.isNotEmpty ? name[0].toUpperCase() : '?',
+        style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w800, fontSize: 30),
+      ),
+    );
+  }
+}
+
+class _ProfileCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final Widget child;
+  const _ProfileCard({required this.icon, required this.title, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 3))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(icon, size: 16, color: const Color(0xFFE95926)),
+            const SizedBox(width: 6),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF77328D))),
+          ]),
+          const SizedBox(height: 10),
+          child,
+        ],
+      ),
+    );
+  }
 }
 
 class RegulationsScreen extends ConsumerWidget {

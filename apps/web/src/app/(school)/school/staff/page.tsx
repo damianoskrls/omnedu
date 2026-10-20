@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { staffApi } from '@/lib/api';
+import { staffApi, classesApi, levelsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
 import { Plus, ChevronRight, GraduationCap } from 'lucide-react';
 import Link from 'next/link';
@@ -37,11 +37,22 @@ export default function StaffPage() {
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState('teacher');
+  const [classes, setClasses] = useState<any[]>([]);
+  const [levels, setLevels] = useState<any[]>([]);
+  const [selectedClassId, setSelectedClassId] = useState('');
+  const [selectedLevelId, setSelectedLevelId] = useState('');
+  const [isCoordinator, setIsCoordinator] = useState(false);
 
   useEffect(() => {
     if (!schoolId) return;
-    staffApi.list(schoolId).then((data: any) => {
-      setMembers(Array.isArray(data) ? data : []);
+    Promise.all([
+      staffApi.list(schoolId),
+      classesApi.list(schoolId),
+      levelsApi.list(schoolId),
+    ]).then(([staff, cls, lvl]: any[]) => {
+      setMembers(Array.isArray(staff) ? staff : []);
+      setClasses(Array.isArray(cls) ? cls : []);
+      setLevels(Array.isArray(lvl) ? lvl : []);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [schoolId]);
@@ -71,12 +82,24 @@ export default function StaffPage() {
               setSaving(true);
               setFormError('');
               try {
-                await staffApi.create(schoolId, { fullName, phone, role });
+                const created: any = await staffApi.create(schoolId, { fullName, phone, role });
+                const newUserId = created?.user?.id ?? created?.userId;
+                if (role === 'teacher' && newUserId) {
+                  if (selectedClassId) {
+                    await classesApi.assignTeacher(schoolId, selectedClassId, newUserId).catch(() => null);
+                  }
+                  if (selectedLevelId && isCoordinator) {
+                    await levelsApi.update(schoolId, selectedLevelId, { coordinatorId: newUserId }).catch(() => null);
+                  }
+                }
                 const data: any = await staffApi.list(schoolId);
                 setMembers(Array.isArray(data) ? data : []);
                 setFullName('');
                 setPhone('');
                 setRole('teacher');
+                setSelectedClassId('');
+                setSelectedLevelId('');
+                setIsCoordinator(false);
                 setAdding(false);
               } catch (error: any) {
                 const message = error?.message;
@@ -105,6 +128,36 @@ export default function StaffPage() {
               Κινητό
               <input value={phone} onChange={(event) => setPhone(event.target.value)} inputMode="tel" className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2" placeholder="69XXXXXXXX" />
             </label>
+            {role === 'teacher' && (
+              <>
+                {levels.length > 0 && (
+                  <label className="mt-3 block text-sm font-medium text-gray-700">
+                    Βαθμίδα <span className="text-gray-400 font-normal">(προαιρετικό)</span>
+                    <select value={selectedLevelId} onChange={(e) => { setSelectedLevelId(e.target.value); setSelectedClassId(''); }} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2">
+                      <option value="">— Χωρίς βαθμίδα —</option>
+                      {levels.map((lv: any) => <option key={lv.id} value={lv.id}>{lv.name}</option>)}
+                    </select>
+                  </label>
+                )}
+                {classes.length > 0 && (
+                  <label className="mt-3 block text-sm font-medium text-gray-700">
+                    Τάξη <span className="text-gray-400 font-normal">(προαιρετικό)</span>
+                    <select value={selectedClassId} onChange={(e) => setSelectedClassId(e.target.value)} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2">
+                      <option value="">— Χωρίς τάξη —</option>
+                      {classes
+                        .filter((cls: any) => !selectedLevelId || cls.levelId === selectedLevelId)
+                        .map((cls: any) => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
+                    </select>
+                  </label>
+                )}
+                {selectedLevelId && (
+                  <label className="mt-3 flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+                    <input type="checkbox" checked={isCoordinator} onChange={(e) => setIsCoordinator(e.target.checked)} className="rounded" />
+                    Υπεύθυνος βαθμίδας
+                  </label>
+                )}
+              </>
+            )}
             {formError && <p className="mt-3 text-sm text-red-600">{formError}</p>}
             <div className="mt-4 flex gap-2">
               <button type="submit" disabled={saving} className="rounded-xl bg-[#77328D] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
