@@ -500,7 +500,10 @@ export default function StaffProfilePage() {
               </div>
             )}
           </div>
-          <div className="flex gap-2 mt-5">
+          {formError && (
+            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{formError}</div>
+          )}
+          <div className="flex gap-2 mt-4">
             <button
               onClick={saveProfile}
               disabled={saving}
