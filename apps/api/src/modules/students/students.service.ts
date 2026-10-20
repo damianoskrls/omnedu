@@ -565,7 +565,7 @@ export class StudentsService {
 
   /** Same phone is the same parent, even if a second account was created. Siblings of those children count too. */
   async listParents(schoolId: string) {
-    const [links, members] = await Promise.all([
+    const [links, members, deactivated] = await Promise.all([
       this.prisma.studentParent.findMany({
         where: { student: { schoolId } },
         include: { user: { select: parentUserSelect }, student: { select: parentChildSelect } },
@@ -574,13 +574,19 @@ export class StudentsService {
         where: { schoolId, role: 'parent', isActive: true },
         select: { userId: true, notes: true, user: { select: parentUserSelect } },
       }),
+      this.prisma.schoolMember.findMany({
+        where: { schoolId, role: 'parent', isActive: false },
+        select: { userId: true },
+      }),
     ]);
+    const deletedIds = new Set(deactivated.map((m) => m.userId));
     const notesMap = new Map(members.map((m) => [m.userId, m.notes ?? null]));
     const grouped = new Map<string, ParentCard>();
     for (const member of members) {
       grouped.set(member.userId, parentCard(member.user, member.notes));
     }
     for (const link of links) {
+      if (deletedIds.has(link.userId)) continue;
       if (!grouped.has(link.userId)) grouped.set(link.userId, parentCard(link.user, notesMap.get(link.userId)));
       grouped.get(link.userId)!.children.push(parentChild(link));
     }
