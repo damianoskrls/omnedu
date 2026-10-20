@@ -110,7 +110,8 @@ export function parseMenuText(raw: string, fallbackMonth?: string): ParsedMenu {
   const month = detectMonth(text, fallbackMonth);
   if (!month) warnings.push('Δεν αναγνωρίστηκε μήνας. Διάλεξε μήνα πριν την αποθήκευση.');
 
-  const noteIndex = fold(text).search(/σημειωση/);
+  // pdfjs-dist sometimes splits words mid-word (e.g. "Σημε ιώσεις"); allow optional spaces within the keyword
+  const noteIndex = fold(text).search(/σημε\s*ι\s*ω\s*σ/);
   const body = noteIndex >= 0 ? text.slice(0, noteIndex) : text;
   const noteBlock = noteIndex >= 0 ? text.slice(noteIndex) : '';
   const afternoons = parseAfternoons(noteBlock);
