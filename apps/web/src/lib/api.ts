@@ -213,8 +213,8 @@ export const parentsApi = {
     api.patch(`/schools/${schoolId}/parents/${userId}`, data),
   delete: (schoolId: string, userId: string) =>
     api.delete(`/schools/${schoolId}/parents/${userId}`),
-  linkChild: (schoolId: string, userId: string, studentId: string) =>
-    api.post(`/schools/${schoolId}/parents/${userId}/children`, { studentId }),
+  linkChild: (schoolId: string, userId: string, studentId: string, options?: { relation?: string; isPrimary?: boolean }) =>
+    api.post(`/schools/${schoolId}/parents/${userId}/children`, { studentId, ...options }),
   unlinkChild: (schoolId: string, userId: string, studentId: string) =>
     api.delete(`/schools/${schoolId}/parents/${userId}/children/${studentId}`),
 };

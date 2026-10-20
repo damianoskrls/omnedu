@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { studentsApi, billingApi, classesApi, activitiesApi, extraServicesApi, medicationRequestsApi, studentFormsApi, broadcastsApi, schoolEventsApi, questionnairesApi } from '@/lib/api';
+import { studentsApi, billingApi, classesApi, activitiesApi, extraServicesApi, medicationRequestsApi, studentFormsApi, broadcastsApi, schoolEventsApi, questionnairesApi, parentsApi } from '@/lib/api';
 import { StudentStatement } from './student-statement';
 import { buildStudentQuoteInput, chargeMatchesQuote, currentMonthKey, findStationeryCharge, isOpenMonth, quoteStudentMonth, schoolYearMonths, schoolYearOf } from '@/lib/month-quote';
 import { noteWithoutPayment, payerOptions, paymentNote, PaymentInfo } from '@/lib/payment-note';
@@ -188,6 +188,10 @@ export default function StudentProfilePage() {
   const [parentForm, setParentForm] = useState<any>(null);
   const [savingParent, setSavingParent] = useState(false);
   const [showAddParent, setShowAddParent] = useState(false);
+  const [schoolParents, setSchoolParents] = useState<any[]>([]);
+  const [parentSearchQuery, setParentSearchQuery] = useState('');
+  const [selectedExistingParentId, setSelectedExistingParentId] = useState<string | null>(null);
+  const [showParentDropdown, setShowParentDropdown] = useState(false);
 
   const SUBSIDY_TYPES: Record<string, string> = {
     bank: 'Τράπεζα', voucher: 'Voucher/Επίδομα', other: 'Άλλο',
@@ -1207,7 +1211,17 @@ export default function StudentProfilePage() {
             <h3 className="font-semibold text-gray-700">Γονείς / Κηδεμόνες</h3>
             {isAdmin && (
               <button
-                onClick={() => { setParentForm({ fullName: '', email: '', phone: '', relation: 'γονέας', isPrimary: false }); setShowAddParent(true); }}
+                onClick={async () => {
+                  setParentForm({ fullName: '', email: '', phone: '', relation: 'γονέας', isPrimary: false });
+                  setShowAddParent(true);
+                  setParentSearchQuery('');
+                  setSelectedExistingParentId(null);
+                  setShowParentDropdown(false);
+                  try {
+                    const list: any = await parentsApi.list(schoolId);
+                    setSchoolParents(Array.isArray(list) ? list : []);
+                  } catch { setSchoolParents([]); }
+                }}
                 className="flex items-center gap-1.5 text-xs text-indigo-600 font-medium hover:text-indigo-800 border border-indigo-200 rounded-lg px-3 py-1.5 hover:bg-indigo-50"
               >
                 <Plus className="h-3.5 w-3.5" /> Προσθήκη Γονέα
@@ -3036,11 +3050,66 @@ export default function StudentProfilePage() {
               <h3 className="text-lg font-bold text-gray-900">
                 {showAddParent ? 'Προσθήκη Γονέα' : 'Επεξεργασία Γονέα'}
               </h3>
-              <button onClick={() => setParentForm(null)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
+              <button onClick={() => { setParentForm(null); setSelectedExistingParentId(null); setParentSearchQuery(''); }} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
                 <X className="h-5 w-5" />
               </button>
             </div>
             <div className="space-y-4">
+              {showAddParent && (
+                <div className="relative">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Αναζήτηση υπάρχοντος γονέα</label>
+                  <input
+                    value={parentSearchQuery}
+                    onChange={e => {
+                      const q = e.target.value;
+                      setParentSearchQuery(q);
+                      setSelectedExistingParentId(null);
+                      setParentForm((f: any) => ({ ...f, fullName: q, phone: '', email: '' }));
+                      setShowParentDropdown(q.length >= 1);
+                    }}
+                    onFocus={() => { if (parentSearchQuery.length >= 1) setShowParentDropdown(true); }}
+                    onBlur={() => setTimeout(() => setShowParentDropdown(false), 150)}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    placeholder="Αναζήτηση ονόματος ή τηλεφώνου..."
+                  />
+                  {showParentDropdown && (() => {
+                    const q = parentSearchQuery.toLowerCase();
+                    const currentParentIds = new Set((student?.parents ?? []).map((p: any) => p.userId));
+                    const filtered = schoolParents.filter((p: any) =>
+                      !currentParentIds.has(p.id) &&
+                      (p.fullName?.toLowerCase().includes(q) || p.phone?.includes(q))
+                    ).slice(0, 6);
+                    if (!filtered.length) return null;
+                    return (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                        {filtered.map((p: any) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onMouseDown={() => {
+                              setSelectedExistingParentId(p.id);
+                              setParentSearchQuery(p.fullName);
+                              setParentForm((f: any) => ({ ...f, fullName: p.fullName, phone: p.phone ?? '', email: p.email ?? '' }));
+                              setShowParentDropdown(false);
+                            }}
+                            className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 text-sm border-b border-gray-100 last:border-0"
+                          >
+                            <div className="font-medium text-gray-900">{p.fullName}</div>
+                            {p.phone && <div className="text-xs text-gray-500">{p.phone}</div>}
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                  {selectedExistingParentId && (
+                    <div className="mt-1.5 flex items-center gap-1.5 text-xs text-green-700 font-medium">
+                      <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+                      Υπάρχων γονέας — θα συνδεθεί στο παιδί
+                    </div>
+                  )}
+                </div>
+              )}
+              {!selectedExistingParentId && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Ονοματεπώνυμο *</label>
                 <input
@@ -3050,17 +3119,34 @@ export default function StudentProfilePage() {
                   placeholder="π.χ. Μαρία Παπαδοπούλου"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Τηλέφωνο</label>
-                  <input
-                    value={parentForm.phone}
-                    onChange={e => setParentForm({ ...parentForm, phone: e.target.value })}
-                    type="tel"
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                    placeholder="69xxxxxxxx"
-                  />
+              )}
+              {!selectedExistingParentId && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Τηλέφωνο</label>
+                    <input
+                      value={parentForm.phone}
+                      onChange={e => setParentForm({ ...parentForm, phone: e.target.value })}
+                      type="tel"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                      placeholder="69xxxxxxxx"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Σχέση</label>
+                    <select
+                      value={parentForm.relation}
+                      onChange={e => setParentForm({ ...parentForm, relation: e.target.value })}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    >
+                      {['γονέας', 'μητέρα', 'πατέρας', 'παππούς', 'γιαγιά', 'κηδεμόνας', 'θείος', 'θεία', 'άλλο'].map(r => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
+              )}
+              {selectedExistingParentId && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Σχέση</label>
                   <select
@@ -3073,8 +3159,8 @@ export default function StudentProfilePage() {
                     ))}
                   </select>
                 </div>
-              </div>
-              {showAddParent && (
+              )}
+              {showAddParent && !selectedExistingParentId && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Email (προαιρετικό)</label>
                   <input
@@ -3097,15 +3183,20 @@ export default function StudentProfilePage() {
               </label>
             </div>
             <div className="flex gap-3 mt-6">
-              <button onClick={() => setParentForm(null)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">
+              <button onClick={() => { setParentForm(null); setSelectedExistingParentId(null); setParentSearchQuery(''); }} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">
                 Ακύρωση
               </button>
               <button
-                disabled={savingParent || !parentForm.fullName.trim()}
+                disabled={savingParent || (!selectedExistingParentId && !parentForm.fullName.trim())}
                 onClick={async () => {
                   setSavingParent(true);
                   try {
-                    if (showAddParent) {
+                    if (showAddParent && selectedExistingParentId) {
+                      await parentsApi.linkChild(schoolId, selectedExistingParentId, id, {
+                        relation: parentForm.relation,
+                        isPrimary: parentForm.isPrimary,
+                      });
+                    } else if (showAddParent) {
                       await studentsApi.addParent(schoolId, id, {
                         fullName: parentForm.fullName,
                         email: parentForm.email || undefined,
@@ -3124,6 +3215,8 @@ export default function StudentProfilePage() {
                     const fresh: any = await studentsApi.get(schoolId, id);
                     setStudent(fresh);
                     setParentForm(null);
+                    setSelectedExistingParentId(null);
+                    setParentSearchQuery('');
                   } finally { setSavingParent(false); }
                 }}
                 className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
