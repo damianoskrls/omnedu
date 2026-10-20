@@ -33,7 +33,10 @@ export class SchoolEventsService implements OnModuleInit, OnModuleDestroy {
       where: { schoolId, ...(status ? { status } : {}) },
       include: {
         createdBy: { select: { id: true, fullName: true } },
-        teachers: { include: { user: { select: { id: true, fullName: true, avatarUrl: true } } } },
+        teachers: {
+          where: { user: { schoolMembers: { some: { schoolId, isActive: true } } } },
+          include: { user: { select: { id: true, fullName: true, avatarUrl: true } } },
+        },
         _count: { select: { enrollments: true, postMedia: true } },
       },
       orderBy: { eventDate: 'asc' },
@@ -46,7 +49,10 @@ export class SchoolEventsService implements OnModuleInit, OnModuleDestroy {
       where: { id: eventId, schoolId },
       include: {
         createdBy: { select: { id: true, fullName: true } },
-        teachers: { include: { user: { select: { id: true, fullName: true, avatarUrl: true } } } },
+        teachers: {
+          where: { user: { schoolMembers: { some: { schoolId, isActive: true } } } },
+          include: { user: { select: { id: true, fullName: true, avatarUrl: true } } },
+        },
         enrollments: {
           include: {
             student: { select: { id: true, fullName: true, avatarUrl: true } },
@@ -406,7 +412,10 @@ export class SchoolEventsService implements OnModuleInit, OnModuleDestroy {
         event: {
           include: {
             postMedia: { orderBy: { createdAt: 'asc' } },
-            teachers: { include: { user: { select: { id: true, fullName: true } } } },
+            teachers: {
+              where: { user: { schoolMembers: { some: { schoolId, isActive: true } } } },
+              include: { user: { select: { id: true, fullName: true } } },
+            },
           },
         },
         student: { select: { id: true, fullName: true, avatarUrl: true } },
@@ -483,7 +492,10 @@ export class SchoolEventsService implements OnModuleInit, OnModuleDestroy {
           orderBy: { createdAt: 'asc' },
         },
         postMedia: { orderBy: { createdAt: 'asc' } },
-        teachers: { include: { user: { select: { id: true, fullName: true } } } },
+        teachers: {
+          where: { user: { schoolMembers: { some: { schoolId, isActive: true } } } },
+          include: { user: { select: { id: true, fullName: true } } },
+        },
       },
       orderBy: { eventDate: 'desc' },
     });
