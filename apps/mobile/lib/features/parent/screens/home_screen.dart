@@ -467,7 +467,7 @@ class _UpcomingMeetings extends StatelessWidget {
         for (final row in rows)
           GestureDetector(
             onTap: () => Navigator.push(context, MaterialPageRoute(
-              builder: (_) => ParentMeetingsScreen(schoolId: schoolId),
+              builder: (_) => ParentMeetingsScreen(schoolId: schoolId, classId: ''),
             )),
             child: _HomeChildLine(
               row.key,

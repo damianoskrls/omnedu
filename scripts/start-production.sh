@@ -19,6 +19,18 @@ const { PrismaClient } = require('@prisma/client');
     console.error('[repair] school_members.notes failed:', e.message);
   }
   try {
+    await p.$executeRawUnsafe('ALTER TABLE "class_assignments" ADD COLUMN IF NOT EXISTS "due_date" DATE');
+    console.log('[repair] class_assignments.due_date column ensured');
+  } catch(e) {
+    console.error('[repair] class_assignments.due_date failed:', e.message);
+  }
+  try {
+    await p.$executeRawUnsafe('ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "billing_due_day" INTEGER');
+    console.log('[repair] schools.billing_due_day column ensured');
+  } catch(e) {
+    console.error('[repair] schools.billing_due_day failed:', e.message);
+  }
+  try {
     await p.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "party_invitations" (
         "id" TEXT NOT NULL,
@@ -48,6 +60,7 @@ NODEREPAIR
   node_modules/.bin/prisma migrate resolve --rolled-back 20261008160000_conversation_delete || true
   node_modules/.bin/prisma migrate resolve --rolled-back 20261008170000_owner_role || true
   node_modules/.bin/prisma migrate resolve --rolled-back 20261019120000_add_parent_notes || true
+  node_modules/.bin/prisma migrate resolve --rolled-back 20261020120000_assignment_due_date_billing_due_day || true
   node_modules/.bin/prisma migrate resolve --rolled-back 20261020200000_party_invitations || true
   node_modules/.bin/prisma migrate deploy || echo 'migration failed, starting api anyway'
 })
