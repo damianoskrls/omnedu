@@ -3,7 +3,7 @@ import {
   MessageSquare, CreditCard, Settings,
   Layers, Utensils, ClipboardList, Pill, BellRing, Zap, Bus, Wrench,
   Newspaper, CalendarDays, ScrollText, NotebookPen, PartyPopper, TreePalm,
-  BarChart3, Shirt, FileText, CalendarPlus,
+  BarChart3, Shirt, FileText, CalendarPlus, Cake,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -54,6 +54,7 @@ export const schoolNav: NavGroup[] = [
       { href: '/school/posts', label: 'Ανακοινώσεις', icon: Newspaper },
       { href: '/school/events', label: 'Εκδρομές & Εκδηλώσεις', icon: CalendarDays },
       { href: '/school/celebrations', label: 'Γιορτές', icon: PartyPopper },
+      { href: '/school/party-invitations', label: 'Προσκλήσεις Πάρτυ', icon: Cake },
       { href: '/school/questionnaires', label: 'Ερωτηματολόγιο', icon: ClipboardList },
       { href: '/school/notifications', label: 'Ειδοποιήσεις', icon: BellRing },
       { href: '/school/messages', label: 'Μηνύματα', icon: MessageSquare },

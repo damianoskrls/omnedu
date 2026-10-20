@@ -10,12 +10,36 @@ import '../../../core/widgets/person_face.dart';
 import '../parent_children.dart';
 import 'billing_screen.dart';
 import 'bus_closure.dart';
+import 'party_invitation_screen.dart';
 import 'child_hub_screen.dart';
 import 'day_history.dart';
 import 'parent_meetings_screen.dart';
 import 'school_posts_screen.dart';
 import 'teacher_absences_screen.dart';
 import 'thematic_screen.dart';
+
+final _receivedInvitationsProvider = FutureProvider.family<List<dynamic>, String>(
+  (ref, schoolId) async {
+    final dio = ref.read(dioProvider);
+    try {
+      final resp = await dio.get('/schools/$schoolId/party-invitations/received');
+      final data = resp.data;
+      if (data is! List) return [];
+      final now = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+      return data.where((row) {
+        if (row is! Map) return false;
+        final eventDateStr = row['eventDate']?.toString();
+        if (eventDateStr == null || eventDateStr.isEmpty) return true;
+        final eventDate = DateTime.tryParse(eventDateStr);
+        if (eventDate == null) return true;
+        final eventDay = DateTime(eventDate.year, eventDate.month, eventDate.day);
+        return !eventDay.isBefore(now);
+      }).toList();
+    } catch (_) {
+      return [];
+    }
+  },
+);
 
 final monthThematicProvider = FutureProvider.family<List<dynamic>, String>((ref, schoolId) async {
   final dio = ref.read(dioProvider);
@@ -82,6 +106,7 @@ class HomeScreen extends ConsumerWidget {
     final meetingsAsync = ref.watch(parentMeetingsProvider(schoolId));
     final absencesAsync = ref.watch(teacherAbsencesProvider(schoolId));
     final chargesAsync = ref.watch(myChargesProvider(schoolId));
+    final invitationsAsync = ref.watch(_receivedInvitationsProvider(schoolId));
     final user = ref.watch(authProvider).user;
     final firstName = user?.fullName.split(' ').first ?? '';
     final cards = _childMaps(childrenAsync.asData?.value ?? const []);
@@ -100,6 +125,7 @@ class HomeScreen extends ConsumerWidget {
           ref.invalidate(parentMeetingsProvider(schoolId));
           ref.invalidate(teacherAbsencesProvider(schoolId));
           ref.invalidate(myChargesProvider(schoolId));
+          ref.invalidate(_receivedInvitationsProvider(schoolId));
         },
         child: CustomScrollView(
           slivers: [
@@ -175,6 +201,10 @@ class HomeScreen extends ConsumerWidget {
                   }
                   final plans = thematicAsync.asData?.value ?? const [];
                   final meetings = meetingsAsync.asData?.value ?? const [];
+                  final invitations = (invitationsAsync.asData?.value ?? const [])
+                      .whereType<Map>()
+                      .map((row) => Map<String, dynamic>.from(row))
+                      .toList();
                   final posts = (postsAsync.asData?.value ?? const [])
                       .whereType<Map>()
                       .map((row) => Map<String, dynamic>.from(row))
@@ -205,7 +235,8 @@ class HomeScreen extends ConsumerWidget {
                         ),
                       ),
                       if (cards.any(childHasBus)) BusClosedNotice(schoolId: schoolId),
-                      _UpcomingMeetings(children: cards, meetings: meetings),
+                      _UpcomingMeetings(children: cards, meetings: meetings, schoolId: schoolId),
+                      _UpcomingPartyInvitations(schoolId: schoolId, invitations: invitations),
                       if (!isWeekend) ...[
                         daySectionTitle(Icons.today_rounded, 'Ενημέρωση Σήμερα', dayHistoryColors),
                         for (final child in cards)
@@ -410,7 +441,8 @@ class _ChildEntryCard extends StatelessWidget {
 class _UpcomingMeetings extends StatelessWidget {
   final List<Map<String, dynamic>> children;
   final List<dynamic> meetings;
-  const _UpcomingMeetings({required this.children, required this.meetings});
+  final String schoolId;
+  const _UpcomingMeetings({required this.children, required this.meetings, required this.schoolId});
 
   @override
   Widget build(BuildContext context) {
@@ -433,9 +465,85 @@ class _UpcomingMeetings extends StatelessWidget {
       children: [
         daySectionTitle(Icons.event_available_rounded, 'Επερχόμενη συνάντηση', dayHistoryColors),
         for (final row in rows)
-          _HomeChildLine(
-            row.key,
-            '${meetingDay(row.value['meetingDate'])} στις ${row.value['acceptedSlot'] ?? ''}',
+          GestureDetector(
+            onTap: () => Navigator.push(context, MaterialPageRoute(
+              builder: (_) => ParentMeetingsScreen(schoolId: schoolId),
+            )),
+            child: _HomeChildLine(
+              row.key,
+              '${meetingDay(row.value['meetingDate'])} στις ${row.value['acceptedSlot'] ?? ''}',
+              trailing: const Icon(Icons.chevron_right_rounded, size: 18, color: Color(0xFF9CA3AF)),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _UpcomingPartyInvitations extends StatelessWidget {
+  final String schoolId;
+  final List<Map<String, dynamic>> invitations;
+  const _UpcomingPartyInvitations({required this.schoolId, required this.invitations});
+
+  @override
+  Widget build(BuildContext context) {
+    if (invitations.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        daySectionTitle(Icons.cake_rounded, 'Προσκλήσεις Πάρτυ', dayHistoryColors),
+        for (final inv in invitations.take(3))
+          GestureDetector(
+            onTap: () => Navigator.push(context, MaterialPageRoute(
+              builder: (_) => PartyInvitationScreen(
+                schoolId: schoolId,
+                invitationId: inv['id']?.toString() ?? '',
+              ),
+            )),
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFFCE7F3)),
+                boxShadow: [BoxShadow(color: const Color(0xFFDB2777).withOpacity(0.06), blurRadius: 8, offset: const Offset(0, 2))],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFDF2F8),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Text('🎂', style: TextStyle(fontSize: 18)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          inv['title']?.toString() ?? 'Πρόσκληση Πάρτυ',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF111827)),
+                        ),
+                        if ((inv['eventDate']?.toString() ?? '').isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            '📅 ${inv['eventDate']}',
+                            style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right_rounded, size: 18, color: Color(0xFFDB2777)),
+                ],
+              ),
+            ),
           ),
       ],
     );
@@ -470,7 +578,8 @@ class _GroupedExtras extends StatelessWidget {
 class _HomeChildLine extends StatelessWidget {
   final Map<String, dynamic> child;
   final String value;
-  const _HomeChildLine(this.child, this.value);
+  final Widget? trailing;
+  const _HomeChildLine(this.child, this.value, {this.trailing});
 
   @override
   Widget build(BuildContext context) {
@@ -484,14 +593,21 @@ class _HomeChildLine extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color(0xFFF0E6F4)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          if (mention != null) ...[
-            ChildMentions(people: [mention]),
-            const SizedBox(height: 8),
-          ],
-          Text(value, style: const TextStyle(fontSize: 13, color: Color(0xFF374151))),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (mention != null) ...[
+                  ChildMentions(people: [mention]),
+                  const SizedBox(height: 8),
+                ],
+                Text(value, style: const TextStyle(fontSize: 13, color: Color(0xFF374151))),
+              ],
+            ),
+          ),
+          if (trailing != null) trailing!,
         ],
       ),
     );

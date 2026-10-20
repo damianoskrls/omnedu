@@ -65,6 +65,7 @@ model School {
   thematicPlans        ThematicPlan[]
   regulations          SchoolRegulation[]
   celebrations         SchoolCelebration[]
+  partyInvitations     PartyInvitation[]
 
   @@map("schools")
 }
@@ -405,6 +406,7 @@ model Student {
   documents             StudentDocument[]
   siblingLinks          StudentSibling[]   @relation("StudentSiblingA")
   siblingOf             StudentSibling[]   @relation("StudentSiblingB")
+  partyInvitationsAsHost PartyInvitation[] @relation("PartyInvitationBirthdayStudent")
 
   @@index([schoolId])
   @@map("students")
@@ -1451,4 +1453,23 @@ model SchoolEventMedia {
 
   @@index([eventId])
   @@map("school_event_media")
+}
+
+model PartyInvitation {
+  id                  String    @id @default(uuid())
+  schoolId            String    @map("school_id")
+  birthdayStudentId   String    @map("birthday_student_id")
+  title               String
+  body                String?   @db.Text
+  imageUrl            String?   @map("image_url")
+  eventDate           String?   @map("event_date")
+  recipientStudentIds Json      @default("[]") @map("recipient_student_ids")
+  sentAt              DateTime? @map("sent_at")
+  reminderSentAt      DateTime? @map("reminder_sent_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  school          School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  birthdayStudent Student @relation("PartyInvitationBirthdayStudent", fields: [birthdayStudentId], references: [id], onDelete: Cascade)
+
+  @@map("party_invitations")
 }

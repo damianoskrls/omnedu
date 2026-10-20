@@ -13,6 +13,7 @@ import '../../features/messages/conversation_ui.dart';
 import '../../features/parent/screens/assignments_screen.dart';
 import '../../features/parent/screens/celebration_detail_screen.dart';
 import '../../features/parent/screens/events_screen.dart';
+import '../../features/parent/screens/party_invitation_screen.dart';
 import '../../features/parent/screens/school_posts_screen.dart';
 import '../../features/parent/screens/teacher_absences_screen.dart';
 import '../../features/teacher/screens/assignments_screen.dart';
@@ -407,6 +408,21 @@ Future<void> openNotification(BuildContext context, WidgetRef ref, Map<String, d
       context,
       MaterialPageRoute(
         builder: (_) => CelebrationDetailScreen(schoolId: schoolId, celebrationId: celebrationId),
+      ),
+    );
+    return;
+  }
+
+  if (type == 'party_invitation') {
+    final invitationId = data['invitationId'] as String? ?? '';
+    if (invitationId.isEmpty) {
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => PartyInvitationsListScreen(schoolId: schoolId)));
+      return;
+    }
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PartyInvitationScreen(schoolId: schoolId, invitationId: invitationId),
       ),
     );
     return;

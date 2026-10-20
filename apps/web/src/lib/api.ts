@@ -219,6 +219,18 @@ export const parentsApi = {
     api.delete(`/schools/${schoolId}/parents/${userId}/children/${studentId}`),
 };
 
+export const partyInvitationsApi = {
+  list: (schoolId: string) => api.get(`/schools/${schoolId}/party-invitations`),
+  get: (schoolId: string, id: string) => api.get(`/schools/${schoolId}/party-invitations/${id}`),
+  create: (schoolId: string, data: { birthdayStudentId: string; title: string; body?: string; imageUrl?: string; eventDate?: string; recipientStudentIds: string[] }) =>
+    api.post(`/schools/${schoolId}/party-invitations`, data),
+  update: (schoolId: string, id: string, data: object) => api.put(`/schools/${schoolId}/party-invitations/${id}`, data),
+  delete: (schoolId: string, id: string) => api.delete(`/schools/${schoolId}/party-invitations/${id}`),
+  send: (schoolId: string, id: string) => api.post(`/schools/${schoolId}/party-invitations/${id}/send`, {}),
+  remind: (schoolId: string, id: string) => api.post(`/schools/${schoolId}/party-invitations/${id}/remind`, {}),
+  received: (schoolId: string) => api.get(`/schools/${schoolId}/party-invitations/received`),
+};
+
 export const schoolReportsApi = {
   overview: (schoolId: string) => api.get(`/schools/${schoolId}/reports/overview`),
 };
