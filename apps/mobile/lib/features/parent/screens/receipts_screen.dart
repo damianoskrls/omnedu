@@ -1,7 +1,5 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api/api_client.dart';
@@ -172,23 +170,14 @@ Future<void> downloadReceipt(BuildContext context, String url, String title) asy
     _say(context, 'Η απόδειξη δεν έχει αρχείο.');
     return;
   }
-  try {
-    final downloads = await getDownloadsDirectory();
-    final dir = downloads ?? await getApplicationDocumentsDirectory();
-    final safe = title.replaceAll(RegExp(r'[\\/:*?"<>|]'), ' ').trim();
-    final stamp = DateTime.now().millisecondsSinceEpoch;
-    final segments = Uri.tryParse(resolved)?.pathSegments ?? const <String>[];
-    final last = segments.isEmpty ? '' : segments.last;
-    final ext = last.contains('.') ? last.split('.').last : 'pdf';
-    final path = '${dir.path}/${safe.isEmpty ? 'apodeixi' : safe}-$stamp.$ext';
-    await Dio().download(resolved, path);
-    if (context.mounted) _say(context, 'Η απόδειξη αποθηκεύτηκε στο κινητό.');
-  } catch (_) {
-    if (context.mounted) _say(context, 'Το αρχείο δεν αποθηκεύτηκε. Ανοίγει για κατέβασμα.');
-  }
   final uri = Uri.tryParse(resolved);
-  if (uri != null) {
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  if (uri == null) {
+    _say(context, 'Μη έγκυρο αρχείο.');
+    return;
+  }
+  final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+  if (!ok && context.mounted) {
+    _say(context, 'Δεν ήταν δυνατό το άνοιγμα της απόδειξης.');
   }
 }
 

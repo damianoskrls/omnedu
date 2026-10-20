@@ -156,7 +156,7 @@ class _SummaryCard extends StatelessWidget {
               const Icon(Icons.account_balance_wallet_outlined, color: Colors.white70, size: 18),
               const SizedBox(width: 8),
               Text(
-                allPaid ? 'Εξοφλημένος ✓' : 'Εκκρεμεί πληρωμή',
+                allPaid ? 'Εξοφλήθη ✓' : 'Εκκρεμεί πληρωμή',
                 style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500),
               ),
             ],
@@ -306,7 +306,7 @@ class _StudentBillingSectionState extends State<_StudentBillingSection> {
                       border: Border.all(color: const Color(0xFFBBF7D0)),
                     ),
                     child: const Text(
-                      'Εξοφλημένος ✓',
+                      'Εξοφλήθη ✓',
                       style: TextStyle(color: Color(0xFF16A34A), fontSize: 12, fontWeight: FontWeight.w600),
                     ),
                   ),
@@ -426,7 +426,7 @@ class _StudentBillingSectionState extends State<_StudentBillingSection> {
                       const statusLabels = {
                         'pending_consent': 'Αναμονή Συναίνεσης',
                         'pending_payment': 'Αναμονή Πληρωμής',
-                        'paid': 'Εξοφλημένο ✓',
+                        'paid': 'Εξοφλήθη ✓',
                         'consent_given': 'Συναίνεση ✓',
                         'consent_declined': 'Άρνηση',
                       };
@@ -534,7 +534,7 @@ class _MonthlyRow extends StatelessWidget {
     switch (status) {
       case 'paid':
         statusColor = const Color(0xFF16A34A);
-        statusLabel = 'Πληρώθηκε';
+        statusLabel = 'Εξοφλήθη';
         break;
       case 'partial':
         statusColor = const Color(0xFF2563EB);

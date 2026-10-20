@@ -241,11 +241,36 @@ class _BusWhereButton extends ConsumerWidget {
     return null;
   }
 
+  /// Returns true if [now] is within 60 minutes of [timeStr] (HH:mm).
+  bool _nearRouteTime(DateTime now, String? timeStr) {
+    if (timeStr == null || timeStr.isEmpty) return true; // no schedule → always show on weekdays
+    final parts = timeStr.split(':');
+    if (parts.length < 2) return true;
+    final h = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    if (h == null || m == null) return true;
+    final route = DateTime(now.year, now.month, now.day, h, m);
+    return now.difference(route).abs().inMinutes <= 60;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final studentId = child['id']?.toString() ?? '';
     final bus = _bus(child);
     if (bus == null) return const SizedBox.shrink();
+
+    // Only show on weekdays
+    final now = DateTime.now();
+    if (now.weekday >= DateTime.saturday) return const SizedBox.shrink();
+
+    // Only show within ±1 hour of pickup or dropoff time
+    final stop = bus['stop'];
+    final stopMap = stop is Map ? Map<String, dynamic>.from(stop) : const <String, dynamic>{};
+    final pickupTime = stopMap['pickupTime']?.toString();
+    final dropoffTime = stopMap['dropoffTime']?.toString();
+    final nearRoute = _nearRouteTime(now, pickupTime) || _nearRouteTime(now, dropoffTime);
+    if (!nearRoute) return const SizedBox.shrink();
+
     final closure = ref.watch(busClosureTodayProvider(schoolId)).asData?.value;
     if (closure != null) {
       return Padding(

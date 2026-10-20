@@ -296,7 +296,7 @@ class DailyBulletinCard extends StatelessWidget {
         ),
         _Section(
           icon: Icons.bedtime_rounded,
-          title: 'Κοίμηση',
+          title: 'Ύπνος',
           child: Column(
             children: [
               _Line('1η φορά', nap1),

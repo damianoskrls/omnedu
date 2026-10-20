@@ -414,10 +414,18 @@ class _UpcomingMeetings extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     final rows = <MapEntry<Map<String, dynamic>, Map<String, dynamic>>>[];
     for (final child in children) {
       final meeting = acceptedMeetingFor(meetings, child['id']?.toString());
-      if (meeting != null) rows.add(MapEntry(child, meeting));
+      if (meeting != null) {
+        final dateStr = meeting['meetingDate'] as String? ?? '';
+        final date = DateTime.tryParse(dateStr);
+        if (date != null && !date.isBefore(today)) {
+          rows.add(MapEntry(child, meeting));
+        }
+      }
     }
     if (rows.isEmpty) return const SizedBox.shrink();
     return Column(

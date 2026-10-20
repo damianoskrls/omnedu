@@ -161,42 +161,50 @@ class ParentMessagesScreen extends ConsumerWidget {
       body: convsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator(color: brandPurple)),
         error: (e, _) => Center(child: Text(apiErrorText(e))),
-        data: (convs) => convs.isEmpty
-            ? const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(32),
-                  child: Text(
-                    'Στείλτε μήνυμα στη διαχείριση ή στη δασκάλα του παιδιού.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 15),
-                  ),
-                ),
-              )
-            : RefreshIndicator(
-                onRefresh: () => ref.refresh(conversationsProvider(schoolId).future),
-                child: ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemCount: convs.length,
-                  itemBuilder: (_, i) {
-                    final conv = Map<String, dynamic>.from(convs[i] as Map);
-                    final phrase = typingPhrase(typing[conv['id']?.toString() ?? ''] ?? const []);
-                    return ConversationTile(
-                      conv: conv,
-                      userId: userId,
-                      typingLabel: phrase.isEmpty ? null : phrase,
-                      onTap: () => openChat(context, ref, schoolId: schoolId, userId: userId, conv: conv),
-                      onDelete: () => confirmRemoveConversation(
-                        context,
-                        ref,
-                        schoolId: schoolId,
-                        conversationId: conv['id']?.toString() ?? '',
-                        startedByMe: conv['startedByMe'] == true,
-                      ),
-                    );
-                  },
+        data: (convs) {
+          final filtered = convs
+              .whereType<Map>()
+              .map((c) => Map<String, dynamic>.from(c))
+              .where((conv) => conversationSubtitle(conv, userId) != 'Γονέας')
+              .toList();
+          if (filtered.isEmpty) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(32),
+                child: Text(
+                  'Στείλτε μήνυμα στη διαχείριση ή στη δασκάλα του παιδιού.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 15),
                 ),
               ),
+            );
+          }
+          return RefreshIndicator(
+            onRefresh: () => ref.refresh(conversationsProvider(schoolId).future),
+            child: ListView.separated(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemCount: filtered.length,
+              itemBuilder: (_, i) {
+                final conv = filtered[i];
+                final phrase = typingPhrase(typing[conv['id']?.toString() ?? ''] ?? const []);
+                return ConversationTile(
+                  conv: conv,
+                  userId: userId,
+                  typingLabel: phrase.isEmpty ? null : phrase,
+                  onTap: () => openChat(context, ref, schoolId: schoolId, userId: userId, conv: conv),
+                  onDelete: () => confirmRemoveConversation(
+                    context,
+                    ref,
+                    schoolId: schoolId,
+                    conversationId: conv['id']?.toString() ?? '',
+                    startedByMe: conv['startedByMe'] == true,
+                  ),
+                );
+              },
+            ),
+          );
+        },
       ),
     );
   }
