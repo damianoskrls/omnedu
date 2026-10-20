@@ -34,7 +34,7 @@ export class SchoolEventsService implements OnModuleInit, OnModuleDestroy {
       include: {
         createdBy: { select: { id: true, fullName: true } },
         teachers: {
-          where: { user: { schoolMembers: { some: { schoolId, isActive: true } } } },
+          where: { user: { schoolMemberships: { some: { schoolId, isActive: true } } } },
           include: { user: { select: { id: true, fullName: true, avatarUrl: true } } },
         },
         _count: { select: { enrollments: true, postMedia: true } },
@@ -50,7 +50,7 @@ export class SchoolEventsService implements OnModuleInit, OnModuleDestroy {
       include: {
         createdBy: { select: { id: true, fullName: true } },
         teachers: {
-          where: { user: { schoolMembers: { some: { schoolId, isActive: true } } } },
+          where: { user: { schoolMemberships: { some: { schoolId, isActive: true } } } },
           include: { user: { select: { id: true, fullName: true, avatarUrl: true } } },
         },
         enrollments: {
@@ -413,7 +413,7 @@ export class SchoolEventsService implements OnModuleInit, OnModuleDestroy {
           include: {
             postMedia: { orderBy: { createdAt: 'asc' } },
             teachers: {
-              where: { user: { schoolMembers: { some: { schoolId, isActive: true } } } },
+              where: { user: { schoolMemberships: { some: { schoolId, isActive: true } } } },
               include: { user: { select: { id: true, fullName: true } } },
             },
           },
@@ -493,7 +493,7 @@ export class SchoolEventsService implements OnModuleInit, OnModuleDestroy {
         },
         postMedia: { orderBy: { createdAt: 'asc' } },
         teachers: {
-          where: { user: { schoolMembers: { some: { schoolId, isActive: true } } } },
+          where: { user: { schoolMemberships: { some: { schoolId, isActive: true } } } },
           include: { user: { select: { id: true, fullName: true } } },
         },
       },

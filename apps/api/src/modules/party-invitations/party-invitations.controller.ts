@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Request, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PartyInvitationsService } from './party-invitations.service';
 
 @Controller('schools/:schoolId/party-invitations')
