@@ -13,8 +13,20 @@ CREATE TABLE IF NOT EXISTS "party_invitations" (
   CONSTRAINT "party_invitations_pkey" PRIMARY KEY ("id")
 );
 
-ALTER TABLE "party_invitations" ADD CONSTRAINT "party_invitations_school_id_fkey"
-  FOREIGN KEY ("school_id") REFERENCES "schools"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'party_invitations_school_id_fkey'
+  ) THEN
+    ALTER TABLE "party_invitations" ADD CONSTRAINT "party_invitations_school_id_fkey"
+      FOREIGN KEY ("school_id") REFERENCES "schools"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
 
-ALTER TABLE "party_invitations" ADD CONSTRAINT "party_invitations_birthday_student_id_fkey"
-  FOREIGN KEY ("birthday_student_id") REFERENCES "students"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'party_invitations_birthday_student_id_fkey'
+  ) THEN
+    ALTER TABLE "party_invitations" ADD CONSTRAINT "party_invitations_birthday_student_id_fkey"
+      FOREIGN KEY ("birthday_student_id") REFERENCES "students"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;

@@ -16,7 +16,28 @@ const { PrismaClient } = require('@prisma/client');
     await p.$executeRawUnsafe('ALTER TABLE "school_members" ADD COLUMN IF NOT EXISTS "notes" TEXT');
     console.log('[repair] school_members.notes column ensured');
   } catch(e) {
-    console.error('[repair] failed:', e.message);
+    console.error('[repair] school_members.notes failed:', e.message);
+  }
+  try {
+    await p.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "party_invitations" (
+        "id" TEXT NOT NULL,
+        "school_id" TEXT NOT NULL,
+        "birthday_student_id" TEXT NOT NULL,
+        "title" TEXT NOT NULL,
+        "body" TEXT,
+        "image_url" TEXT,
+        "event_date" TEXT,
+        "recipient_student_ids" JSONB NOT NULL DEFAULT '[]',
+        "sent_at" TIMESTAMP(3),
+        "reminder_sent_at" TIMESTAMP(3),
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "party_invitations_pkey" PRIMARY KEY ("id")
+      )
+    `);
+    console.log('[repair] party_invitations table ensured');
+  } catch(e) {
+    console.error('[repair] party_invitations failed:', e.message);
   } finally {
     await p.$disconnect();
   }
@@ -27,6 +48,7 @@ NODEREPAIR
   node_modules/.bin/prisma migrate resolve --rolled-back 20261008160000_conversation_delete || true
   node_modules/.bin/prisma migrate resolve --rolled-back 20261008170000_owner_role || true
   node_modules/.bin/prisma migrate resolve --rolled-back 20261019120000_add_parent_notes || true
+  node_modules/.bin/prisma migrate resolve --rolled-back 20261020200000_party_invitations || true
   node_modules/.bin/prisma migrate deploy || echo 'migration failed, starting api anyway'
 })
 cd "$ROOT"
