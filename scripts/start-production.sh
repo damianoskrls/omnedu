@@ -53,7 +53,7 @@ const { PrismaClient } = require('@prisma/client');
   } finally {
     await p.$disconnect();
   }
-})();
+})().then(() => process.exit(0)).catch(e => { console.error('[repair] fatal:', e.message); process.exit(1); });
 NODEREPAIR
 
 (node_modules/.bin/prisma migrate deploy || {
