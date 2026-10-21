@@ -85,7 +85,7 @@ export default function PartyInvitationsPage() {
       ...f,
       recipientStudentIds: allSelected
         ? f.recipientStudentIds.filter(id => !ids.includes(id))
-        : [...new Set([...f.recipientStudentIds, ...ids])],
+        : Array.from(new Set([...f.recipientStudentIds, ...ids])),
     }));
   };
 

@@ -344,10 +344,12 @@ export class StudentsService {
               },
             });
           }
-          // Add as school member (parent role) if not already
-          const existing = await tx.schoolMember.findFirst({ where: { schoolId, userId: user.id } });
+          // Add as school member (parent role) if not already; reactivate if previously deactivated
+          const existing = await tx.schoolMember.findFirst({ where: { schoolId, userId: user.id, role: 'parent' } });
           if (!existing) {
             await tx.schoolMember.create({ data: { schoolId, userId: user.id, role: 'parent' } });
+          } else if (!existing.isActive) {
+            await tx.schoolMember.update({ where: { id: existing.id }, data: { isActive: true } });
           }
           const alreadyLinked = await tx.studentParent.findFirst({ where: { studentId: student.id, userId: user.id } });
           if (!alreadyLinked) {
@@ -439,8 +441,12 @@ export class StudentsService {
       } else if (data.phone) {
         user = await tx.user.update({ where: { id: user.id }, data: { phone: normalizePhone(data.phone), fullName: data.fullName || user.fullName } });
       }
-      const existing = await tx.schoolMember.findFirst({ where: { schoolId, userId: user.id } });
-      if (!existing) await tx.schoolMember.create({ data: { schoolId, userId: user.id, role: 'parent' } });
+      const existing = await tx.schoolMember.findFirst({ where: { schoolId, userId: user.id, role: 'parent' } });
+      if (!existing) {
+        await tx.schoolMember.create({ data: { schoolId, userId: user.id, role: 'parent' } });
+      } else if (!existing.isActive) {
+        await tx.schoolMember.update({ where: { id: existing.id }, data: { isActive: true } });
+      }
 
       const alreadyLinked = await tx.studentParent.findFirst({ where: { studentId, userId: user.id } });
       if (alreadyLinked) return alreadyLinked;
@@ -611,11 +617,14 @@ export class StudentsService {
           data: { email, fullName: data.fullName, phone: normalizePhone(data.phone), passwordHash: randomBytes(32).toString('hex') },
         });
       }
-      const existing = await tx.schoolMember.findFirst({ where: { schoolId, userId: user.id } });
+      const existing = await tx.schoolMember.findFirst({ where: { schoolId, userId: user.id, role: 'parent' } });
       if (!existing) {
         await tx.schoolMember.create({ data: { schoolId, userId: user.id, role: 'parent', notes: data.notes } });
-      } else if (data.notes !== undefined) {
-        await tx.schoolMember.update({ where: { id: existing.id }, data: { notes: data.notes } });
+      } else if (!existing.isActive || data.notes !== undefined) {
+        await tx.schoolMember.update({
+          where: { id: existing.id },
+          data: { isActive: true, ...(data.notes !== undefined ? { notes: data.notes } : {}) },
+        });
       }
       return this.getParent(schoolId, user.id);
     });
