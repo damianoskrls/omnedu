@@ -57,11 +57,11 @@ const { PrismaClient } = require('@prisma/client');
 NODEREPAIR
 
 (node_modules/.bin/prisma migrate deploy || {
-  node_modules/.bin/prisma migrate resolve --rolled-back 20261008160000_conversation_delete || true
-  node_modules/.bin/prisma migrate resolve --rolled-back 20261008170000_owner_role || true
-  node_modules/.bin/prisma migrate resolve --rolled-back 20261019120000_add_parent_notes || true
-  node_modules/.bin/prisma migrate resolve --rolled-back 20261020120000_assignment_due_date_billing_due_day || true
-  node_modules/.bin/prisma migrate resolve --rolled-back 20261020200000_party_invitations || true
+  node_modules/.bin/prisma migrate resolve --applied 20261008160000_conversation_delete || true
+  node_modules/.bin/prisma migrate resolve --applied 20261008170000_owner_role || true
+  node_modules/.bin/prisma migrate resolve --applied 20261019120000_add_parent_notes || true
+  node_modules/.bin/prisma migrate resolve --applied 20261020120000_assignment_due_date_billing_due_day || true
+  node_modules/.bin/prisma migrate resolve --applied 20261020200000_party_invitations || true
   node_modules/.bin/prisma migrate deploy || echo 'migration failed, starting api anyway'
 })
 cd "$ROOT"
