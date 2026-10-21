@@ -12,6 +12,28 @@ export class StorageService {
     });
   }
 
+  generateSignedDownloadUrl(storedUrl: string, expiresInSeconds = 3600): string {
+    try {
+      const match = storedUrl.match(/\/(?:image|raw|video)\/upload\/(?:v\d+\/)?(.+)$/);
+      if (!match) return storedUrl;
+      const publicIdWithExt = match[1];
+      const dotIdx = publicIdWithExt.lastIndexOf('.');
+      const format = dotIdx !== -1 ? publicIdWithExt.slice(dotIdx + 1) : '';
+      const publicId = dotIdx !== -1 ? publicIdWithExt.slice(0, dotIdx) : publicIdWithExt;
+      const resourceType = storedUrl.includes('/raw/upload/') ? 'raw' : storedUrl.includes('/video/upload/') ? 'video' : 'image';
+
+      return cloudinary.url(publicId, {
+        resource_type: resourceType as 'raw' | 'image' | 'video',
+        format,
+        sign_url: true,
+        type: 'upload',
+        expires_at: Math.floor(Date.now() / 1000) + expiresInSeconds,
+      });
+    } catch {
+      return storedUrl;
+    }
+  }
+
   async upload(file: Express.Multer.File, folder: string, resourceType: 'auto' | 'image' | 'raw' = 'auto'): Promise<string> {
     const raw = resourceType === 'raw' || file.mimetype === 'application/pdf';
     return new Promise((resolve, reject) => {

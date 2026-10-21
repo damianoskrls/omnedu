@@ -71,7 +71,7 @@ class ParentReceipts extends ConsumerWidget {
                 child: Text('Δεν έχουν εκδοθεί αποδείξεις ακόμα.', style: TextStyle(color: Color(0xFF9CA3AF))),
               )
             else
-              ...mine.map((receipt) => _ReceiptCard(receipt: receipt)),
+              ...mine.map((receipt) => _ReceiptCard(receipt: receipt, schoolId: schoolId)),
           ],
         );
       },
@@ -81,8 +81,9 @@ class ParentReceipts extends ConsumerWidget {
 
 class ReceiptList extends StatelessWidget {
   final List<Map<String, dynamic>> receipts;
+  final String schoolId;
   final void Function(Map<String, dynamic> receipt)? onDownload;
-  const ReceiptList({super.key, required this.receipts, this.onDownload});
+  const ReceiptList({super.key, required this.receipts, required this.schoolId, this.onDownload});
 
   @override
   Widget build(BuildContext context) {
@@ -91,19 +92,48 @@ class ReceiptList extends StatelessWidget {
     }
     return Column(
       children: [
-        for (final receipt in receipts) _ReceiptCard(receipt: receipt, onDownload: onDownload),
+        for (final receipt in receipts) _ReceiptCard(receipt: receipt, schoolId: schoolId, onDownload: onDownload),
       ],
     );
   }
 }
 
-class _ReceiptCard extends StatelessWidget {
+class _ReceiptCard extends ConsumerStatefulWidget {
   final Map<String, dynamic> receipt;
+  final String schoolId;
   final void Function(Map<String, dynamic> receipt)? onDownload;
-  const _ReceiptCard({required this.receipt, this.onDownload});
+  const _ReceiptCard({required this.receipt, required this.schoolId, this.onDownload});
+
+  @override
+  ConsumerState<_ReceiptCard> createState() => _ReceiptCardState();
+}
+
+class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
+  bool _downloading = false;
+
+  Future<void> _download() async {
+    if (widget.onDownload != null) { widget.onDownload!(widget.receipt); return; }
+    final docId = widget.receipt['id']?.toString() ?? '';
+    if (docId.isEmpty) { _say(context, 'Η απόδειξη δεν έχει αρχείο.'); return; }
+    setState(() => _downloading = true);
+    try {
+      final resp = await ref.read(dioProvider).get('/schools/${widget.schoolId}/billing/receipts/$docId/download');
+      final url = resp.data['url']?.toString() ?? '';
+      if (url.isEmpty) { _say(context, 'Η απόδειξη δεν έχει αρχείο.'); return; }
+      final uri = Uri.tryParse(url);
+      if (uri == null) { _say(context, 'Μη έγκυρο αρχείο.'); return; }
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok && mounted) _say(context, 'Δεν ήταν δυνατό το άνοιγμα της απόδειξης.');
+    } catch (_) {
+      if (mounted) _say(context, 'Σφάλμα κατά το κατέβασμα.');
+    } finally {
+      if (mounted) setState(() => _downloading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final receipt = widget.receipt;
     final title = receipt['title']?.toString().trim().isNotEmpty == true ? receipt['title'].toString() : 'Απόδειξη';
     final child = receipt['studentName']?.toString() ?? '';
     final when = _receiptDate(receipt['uploadedAt']?.toString());
@@ -132,15 +162,9 @@ class _ReceiptCard extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
-              onPressed: () {
-                if (onDownload != null) {
-                  onDownload!(receipt);
-                  return;
-                }
-                downloadReceipt(context, receipt['fileUrl']?.toString() ?? '', title);
-              },
-              icon: const Icon(Icons.download_rounded),
-              label: const Text('Κατέβασμα'),
+              onPressed: _downloading ? null : _download,
+              icon: _downloading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.download_rounded),
+              label: Text(_downloading ? 'Φόρτωση...' : 'Κατέβασμα'),
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF77328D),
                 foregroundColor: Colors.white,

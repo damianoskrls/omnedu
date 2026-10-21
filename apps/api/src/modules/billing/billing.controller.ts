@@ -1,15 +1,16 @@
-import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, ParseIntPipe, Optional } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, ParseIntPipe, Optional, NotFoundException } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { BillingService } from './billing.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { StorageService } from '../../common/storage/storage.service';
 
 @ApiTags('billing')
 @ApiBearerAuth('access-token')
 @Controller('schools/:schoolId/billing')
 export class BillingController {
-  constructor(private billing: BillingService) {}
+  constructor(private billing: BillingService, private storage: StorageService) {}
 
   // ── Level fees ──────────────────────────────────────────
 
@@ -213,6 +214,14 @@ export class BillingController {
   @Get('receipts/mine')
   myReceipts(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
     return this.billing.myReceipts(user.sub, schoolId);
+  }
+
+  @Get('receipts/:docId/download')
+  async downloadReceipt(@Param('schoolId') schoolId: string, @Param('docId') docId: string, @CurrentUser() user: JwtPayload) {
+    const doc = await this.billing.getReceiptForUser(docId, schoolId, user.sub);
+    if (!doc?.fileUrl) throw new NotFoundException('Δεν βρέθηκε αρχείο για αυτή την απόδειξη.');
+    const url = this.storage.generateSignedDownloadUrl(doc.fileUrl);
+    return { url };
   }
 
   @Get('invoices/mine')

@@ -6,7 +6,7 @@ import '../../messages/conversation_ui.dart';
 final parentMeetingsProvider = FutureProvider.family<List<dynamic>, String>((ref, schoolId) async {
   final dio = ref.read(dioProvider);
   try {
-    final resp = await dio.get('/schools/$schoolId/parent-meetings');
+    final resp = await dio.get('/schools/$schoolId/parent-meetings', queryParameters: {'upcoming': 'true'});
     return resp.data is List ? resp.data as List<dynamic> : [];
   } catch (_) {
     return [];
@@ -64,6 +64,7 @@ class _ParentMeetingsScreenState extends ConsumerState<ParentMeetingsScreen> {
   late String _studentId;
   late String _studentName;
   bool _loading = true;
+  bool _showHistory = false;
   String? _sending;
 
   @override
@@ -77,9 +78,13 @@ class _ParentMeetingsScreenState extends ConsumerState<ParentMeetingsScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
+      final params = <String, dynamic>{
+        if (widget.classId.isNotEmpty) 'classId': widget.classId,
+        if (!_showHistory) 'upcoming': 'true',
+      };
       final resp = await ref.read(dioProvider).get(
         '/schools/${widget.schoolId}/parent-meetings',
-        queryParameters: widget.classId.isEmpty ? null : {'classId': widget.classId},
+        queryParameters: params.isEmpty ? null : params,
       );
       final list = resp.data is List ? resp.data as List : [];
       _meetings = list.map((item) => Map<String, dynamic>.from(item as Map)).toList();
@@ -155,9 +160,44 @@ class _ParentMeetingsScreenState extends ConsumerState<ParentMeetingsScreen> {
                   if (widget.className.isNotEmpty) Text(widget.className, style: const TextStyle(color: Color(0xFF77328D))),
                   const SizedBox(height: 12),
                   if (_meetings.isEmpty)
-                    const Text('Δεν υπάρχει ανοιχτή ενημέρωση για αυτή την τάξη.')
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _showHistory ? 'Δεν υπάρχει ιστορικό συναντήσεων.' : 'Δεν υπάρχει επερχόμενη ενημέρωση.',
+                          style: const TextStyle(color: Color(0xFF6B7280)),
+                        ),
+                        const SizedBox(height: 12),
+                        if (!_showHistory)
+                          TextButton.icon(
+                            onPressed: () { setState(() => _showHistory = true); _load(); },
+                            icon: const Icon(Icons.history, size: 18),
+                            label: const Text('Δες ιστορικό'),
+                          ),
+                      ],
+                    )
                   else
-                    ..._meetings.map(_card),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ..._meetings.map(_card),
+                        const SizedBox(height: 4),
+                        if (!_showHistory)
+                          TextButton.icon(
+                            onPressed: () { setState(() => _showHistory = true); _load(); },
+                            icon: const Icon(Icons.history, size: 18),
+                            label: const Text('Ιστορικό'),
+                            style: TextButton.styleFrom(foregroundColor: const Color(0xFF6B7280)),
+                          )
+                        else
+                          TextButton.icon(
+                            onPressed: () { setState(() => _showHistory = false); _load(); },
+                            icon: const Icon(Icons.arrow_upward, size: 18),
+                            label: const Text('Μόνο επερχόμενες'),
+                            style: TextButton.styleFrom(foregroundColor: const Color(0xFF6B7280)),
+                          ),
+                      ],
+                    ),
                 ],
               ),
             ),

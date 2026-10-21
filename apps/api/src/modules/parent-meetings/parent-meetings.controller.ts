@@ -14,8 +14,9 @@ export class ParentMeetingsController {
     @CurrentUser() user: JwtPayload,
     @Query('classId') classId?: string,
     @Query('levelId') levelId?: string,
+    @Query('upcoming') upcoming?: string,
   ) {
-    return this.svc.findAll(schoolId, user, classId, levelId);
+    return this.svc.findAll(schoolId, user, classId, levelId, upcoming === 'true');
   }
 
   @Post()
@@ -49,8 +50,8 @@ export class ParentMeetingsController {
 
   @Patch(':id')
   @Roles('school_admin', 'teacher')
-  update(@Param('id') id: string, @Param('schoolId') schoolId: string, @Body() body: any) {
-    return this.svc.update(id, schoolId, body);
+  update(@Param('id') id: string, @Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload, @Body() body: any) {
+    return this.svc.update(id, schoolId, user, body);
   }
 
   @Delete(':id')

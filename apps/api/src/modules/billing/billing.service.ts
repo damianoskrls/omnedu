@@ -304,6 +304,17 @@ export class BillingService implements OnModuleInit {
     }));
   }
 
+  async getReceiptForUser(docId: string, schoolId: string, parentUserId: string) {
+    const children = await this.prisma.student.findMany({
+      where: { schoolId, isActive: true, parents: { some: { userId: parentUserId } } },
+      select: { id: true },
+    });
+    return this.prisma.studentDocument.findFirst({
+      where: { id: docId, schoolId, studentId: { in: children.map((c) => c.id) }, category: 'receipt' },
+      select: { id: true, fileUrl: true },
+    });
+  }
+
   async getMyCharges(parentUserId: string, schoolId: string) {
     await this.students.ensureParentChildren(parentUserId, schoolId);
     const children = await this.prisma.student.findMany({

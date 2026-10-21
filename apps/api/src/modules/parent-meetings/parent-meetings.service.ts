@@ -48,15 +48,17 @@ export class ParentMeetingsService implements OnModuleInit {
     }
   }
 
-  async findAll(schoolId: string, user: JwtPayload, classId?: string, levelId?: string) {
+  async findAll(schoolId: string, user: JwtPayload, classId?: string, levelId?: string, upcoming?: boolean) {
     await this.ensureSchema();
     const allowed = await this.allowedClassIds(schoolId, user);
     if (classId && allowed && !allowed.includes(classId)) throw new ForbiddenException('Δεν έχεις πρόσβαση σε αυτή την τάξη.');
+    const todayStart = upcoming ? new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z') : undefined;
     const meetings = await this.prisma.parentMeeting.findMany({
       where: {
         schoolId,
         ...(classId ? { classId } : allowed ? { classId: { in: allowed } } : {}),
         ...(levelId ? { levelId } : {}),
+        ...(todayStart ? { meetingDate: { gte: todayStart } } : {}),
       },
       include: {
         class: { select: { id: true, name: true } },
@@ -197,17 +199,54 @@ export class ParentMeetingsService implements OnModuleInit {
     return saved;
   }
 
-  async update(id: string, schoolId: string, data: Partial<{ title: string; description: string; meetingDate: string }>) {
-    const existing = await this.prisma.parentMeeting.findFirst({ where: { id, schoolId } });
+  async update(id: string, schoolId: string, user: JwtPayload, data: Partial<{ title: string; description: string; meetingDate: string; windowStart: string; windowEnd: string; durationMinutes: number }>) {
+    const existing = await this.prisma.parentMeeting.findFirst({
+      where: { id, schoolId },
+      include: { class: { select: { id: true, name: true } } },
+    });
     if (!existing) throw new NotFoundException('Η ενημέρωση δεν βρέθηκε.');
-    return this.prisma.parentMeeting.update({
+    if (existing.classId) await this.assertCanManage(schoolId, user, existing.classId);
+
+    const windowStart = data.windowStart ? this.time(data.windowStart, 'Από') : undefined;
+    const windowEnd = data.windowEnd ? this.time(data.windowEnd, 'Έως') : undefined;
+    const durationMinutes = data.durationMinutes ? this.duration(data.durationMinutes) : undefined;
+
+    const dateChanged = data.meetingDate && this.parseDay(data.meetingDate).toISOString() !== existing.meetingDate.toISOString();
+    const timeChanged = (windowStart && windowStart !== existing.windowStart) || (windowEnd && windowEnd !== existing.windowEnd);
+
+    const updated = await this.prisma.parentMeeting.update({
       where: { id },
       data: {
         title: data.title,
         description: data.description,
         meetingDate: data.meetingDate ? this.parseDay(data.meetingDate) : undefined,
+        windowStart,
+        windowEnd,
+        durationMinutes,
       },
     });
+
+    if ((dateChanged || timeChanged) && existing.classId) {
+      const affectedRequests = await this.prisma.parentMeetingRequest.findMany({
+        where: { meetingId: id, status: { in: ['requested', 'accepted'] } },
+        select: { parentUserId: true },
+      });
+      const parentIds = [...new Set(affectedRequests.map((r) => r.parentUserId))];
+      if (parentIds.length) {
+        const newDate = data.meetingDate ? this.dayLabel(this.parseDay(data.meetingDate)) : this.dayLabel(existing.meetingDate);
+        const newStart = windowStart ?? existing.windowStart ?? '';
+        const newEnd = windowEnd ?? existing.windowEnd ?? '';
+        await this.notifications.notifyUsers(schoolId, parentIds, {
+          event: 'parent_meeting_rescheduled',
+          type: 'parent_meeting',
+          title: 'Αλλαγή ώρας ενημέρωσης',
+          body: `${existing.class?.name ?? ''}: ${existing.title} μεταφέρθηκε στις ${newDate}${newStart ? ` (${newStart}–${newEnd})` : ''}.`,
+          data: { screen: 'parent_meeting', meetingId: id, classId: existing.classId },
+        });
+      }
+    }
+
+    return updated;
   }
 
   async remove(id: string, schoolId: string) {
