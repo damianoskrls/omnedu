@@ -62,7 +62,7 @@ export class AssignmentsService {
   private include() {
     return {
       class: { select: { id: true, name: true } },
-      author: { select: { id: true, fullName: true, avatarUrl: true, bio: true, specialization: true, education: true } },
+      author: { select: { id: true, fullName: true, avatarUrl: true } },
     } as const;
   }
 
