@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { partyInvitationsApi, studentsApi, classesApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
-import { Plus, X, Send, Bell, Trash2, Cake, Users, ChevronDown, ChevronUp, ImageIcon } from 'lucide-react';
+import { Plus, X, Send, Bell, Trash2, Cake, Users, ChevronDown, ChevronUp, ImageIcon, Pencil } from 'lucide-react';
 
 const inputCls = 'w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300';
 
