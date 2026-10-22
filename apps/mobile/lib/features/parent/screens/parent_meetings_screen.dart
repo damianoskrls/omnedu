@@ -230,14 +230,10 @@ class _ParentMeetingsScreenState extends ConsumerState<ParentMeetingsScreen> {
             Padding(padding: const EdgeInsets.only(top: 6), child: Text(meeting['description'].toString())),
           const SizedBox(height: 10),
           if (accepted)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: const Color(0xFFECFDF5), borderRadius: BorderRadius.circular(12)),
-              child: Text(
-                'Επερχόμενη συνάντηση: ${meetingDay(meeting['meetingDate'])} στις ${mine['slotTime']} με ${teacherName.isEmpty ? 'τον εκπαιδευτικό' : teacherName}.',
-                style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF047857)),
-              ),
+            _AcceptedMeetingBanner(
+              meetingDate: meeting['meetingDate']?.toString() ?? '',
+              slotTime: mine?['slotTime']?.toString() ?? '',
+              teacherName: teacherName,
             )
           else if (slots.isEmpty)
             const Text('Ο εκπαιδευτικός δεν έχει ανοίξει ώρες για κράτηση.')
@@ -261,6 +257,71 @@ class _ParentMeetingsScreenState extends ConsumerState<ParentMeetingsScreen> {
               }).toList(),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AcceptedMeetingBanner extends StatelessWidget {
+  final String meetingDate;
+  final String slotTime;
+  final String teacherName;
+  const _AcceptedMeetingBanner({
+    required this.meetingDate,
+    required this.slotTime,
+    required this.teacherName,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final dateOnly = meetingDate.length >= 10 ? meetingDate.substring(0, 10) : meetingDate;
+    final parsed = DateTime.tryParse(dateOnly);
+    final now = DateTime.now();
+    final isPast = parsed != null && parsed.isBefore(DateTime(now.year, now.month, now.day));
+    final teacher = teacherName.isEmpty ? 'τον εκπαιδευτικό' : teacherName;
+    final formattedDate = meetingDay(meetingDate);
+
+    if (isPast) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF3F4F6),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE5E7EB)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.check_circle_outline_rounded, size: 18, color: Color(0xFF6B7280)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Η συνάντηση πραγματοποιήθηκε $formattedDate στις $slotTime με $teacher.',
+                style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF6B7280)),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: const Color(0xFFECFDF5), borderRadius: BorderRadius.circular(12)),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.event_available_rounded, size: 18, color: Color(0xFF047857)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Επερχόμενη συνάντηση: $formattedDate στις $slotTime με $teacher.',
+              style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF047857)),
+            ),
+          ),
         ],
       ),
     );
