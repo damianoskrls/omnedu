@@ -141,23 +141,10 @@ class _TeacherThematicScreenState extends ConsumerState<TeacherThematicScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF6F3FA),
       appBar: AppBar(title: Text('Διαθεματικό · ${widget.className}')),
-      bottomNavigationBar: _loading
-          ? null
-          : Padding(
-              padding: EdgeInsets.fromLTRB(16, 8, 16, 12 + systemBottomInset(context)),
-              child: FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF77328D),
-                  minimumSize: const Size.fromHeight(48),
-                ),
-                onPressed: _saving ? null : _save,
-                child: Text(_saving ? 'Αποθήκευση...' : 'Αποθήκευση μήνα'),
-              ),
-            ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF77328D)))
           : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 24 + systemBottomInset(context)),
               children: [
                 DropdownButtonFormField<String>(
                   value: _month,
@@ -192,6 +179,15 @@ class _TeacherThematicScreenState extends ConsumerState<TeacherThematicScreen> {
                 _field(_extras, 'Επιπλέον', maxLines: 4),
                 _field(_closing, 'Κλείσιμο', maxLines: 3),
                 _field(_signature, 'Υπογραφή'),
+                const SizedBox(height: 16),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF77328D),
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                  onPressed: _saving ? null : _save,
+                  child: Text(_saving ? 'Αποθήκευση...' : 'Αποθήκευση μήνα'),
+                ),
               ],
             ),
     );

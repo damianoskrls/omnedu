@@ -316,7 +316,7 @@ class HomeScreen extends ConsumerWidget {
                           ),
                       ],
                       _FinancialPendingSection(charges: chargesAsync.asData?.value ?? const []),
-                      _GroupedExtras(children: cards, plans: plans),
+                      _GroupedExtras(schoolId: schoolId, children: cards, plans: plans),
                     ],
                   );
                 },
@@ -557,9 +557,10 @@ class _UpcomingPartyInvitations extends StatelessWidget {
 }
 
 class _GroupedExtras extends StatelessWidget {
+  final String schoolId;
   final List<Map<String, dynamic>> children;
   final List<dynamic> plans;
-  const _GroupedExtras({required this.children, required this.plans});
+  const _GroupedExtras({required this.schoolId, required this.children, required this.plans});
 
   @override
   Widget build(BuildContext context) {
@@ -568,8 +569,30 @@ class _GroupedExtras extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         daySectionTitle(Icons.auto_stories_rounded, 'Διαθεματικό $month', dayHistoryColors),
-        for (final child in children)
-          _HomeChildLine(child, _thematicTitle(_thematicFor(plans, child))),
+        for (final child in children) Builder(builder: (ctx) {
+          final plan = _thematicFor(plans, child);
+          final enrollments = child['enrollments'] as List? ?? [];
+          final klass = enrollments.isNotEmpty && enrollments.first is Map ? enrollments.first['class'] : null;
+          final classId = klass is Map ? klass['id']?.toString() ?? '' : '';
+          final className = klass is Map ? klass['name']?.toString() ?? '' : '';
+          final intro = (plan?['introduction'] as String? ?? '').trim();
+          final snippet = intro.length > 90 ? '${intro.substring(0, 90)}…' : intro;
+          return _HomeChildLine(
+            child,
+            _thematicTitle(plan),
+            subtitle: plan != null && snippet.isNotEmpty ? snippet : null,
+            onTap: plan != null && classId.isNotEmpty
+                ? () => Navigator.push(ctx, MaterialPageRoute(
+                    builder: (_) => ParentThematicScreen(
+                      schoolId: schoolId,
+                      classId: classId,
+                      className: className,
+                      initialMonth: plan['month']?.toString(),
+                    ),
+                  ))
+                : null,
+          );
+        }),
       ],
     );
   }
@@ -585,38 +608,58 @@ class _HomeChildLine extends StatelessWidget {
   final Map<String, dynamic> child;
   final String value;
   final Widget? trailing;
-  const _HomeChildLine(this.child, this.value, {this.trailing});
+  final VoidCallback? onTap;
+  final String? subtitle;
+  const _HomeChildLine(this.child, this.value, {this.trailing, this.onTap, this.subtitle});
 
   @override
   Widget build(BuildContext context) {
     final mention = ChildMention.fromMap(child);
-    return Container(
+    final card = Container(
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color(0xFFF0E6F4)),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
               children: [
-                if (mention != null) ...[
-                  ChildMentions(people: [mention]),
-                  const SizedBox(height: 8),
-                ],
-                Text(value, style: const TextStyle(fontSize: 13, color: Color(0xFF374151))),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (mention != null) ...[
+                        ChildMentions(people: [mention]),
+                        const SizedBox(height: 8),
+                      ],
+                      Text(value, style: const TextStyle(fontSize: 13, color: Color(0xFF374151))),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 4),
+                        Text(subtitle!, style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280), height: 1.4)),
+                        const SizedBox(height: 2),
+                        const Text('Δείτε περισσότερα', style: TextStyle(fontSize: 12, color: Color(0xFF77328D), fontWeight: FontWeight.w600)),
+                      ],
+                    ],
+                  ),
+                ),
+                if (trailing != null) trailing!,
+                if (onTap != null) const Icon(Icons.chevron_right, color: Color(0xFF77328D), size: 18),
               ],
             ),
           ),
-          if (trailing != null) trailing!,
-        ],
+        ),
       ),
     );
+    return card;
   }
 }
 

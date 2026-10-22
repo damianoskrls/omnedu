@@ -19,6 +19,7 @@ export default function PartyInvitationsPage() {
   const [sending, setSending] = useState<string | null>(null);
   const [reminding, setReminding] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const [form, setForm] = useState<{
     birthdayStudentId: string;
@@ -64,7 +65,25 @@ export default function PartyInvitationsPage() {
     : allStudents;
 
   const openCreate = () => {
+    setEditingId(null);
     setForm({ birthdayStudentId: '', birthdayStudentName: '', title: '', body: '', imageUrl: '', eventDate: '', recipientStudentIds: [] });
+    setStudentSearch('');
+    setSelectedClassId('');
+    setExpandedRecipients(false);
+    setShowModal(true);
+  };
+
+  const openEdit = (inv: any) => {
+    setEditingId(inv.id);
+    setForm({
+      birthdayStudentId: inv.birthdayStudentId,
+      birthdayStudentName: inv.birthdayStudent?.fullName ?? '',
+      title: inv.title,
+      body: inv.body ?? '',
+      imageUrl: inv.imageUrl ?? '',
+      eventDate: inv.eventDate ?? '',
+      recipientStudentIds: Array.isArray(inv.recipientStudentIds) ? inv.recipientStudentIds : [],
+    });
     setStudentSearch('');
     setSelectedClassId('');
     setExpandedRecipients(false);
@@ -259,7 +278,7 @@ export default function PartyInvitationsPage() {
               <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                 <Cake className="h-5 w-5 text-pink-500" /> {editingId ? 'Επεξεργασία Πρόσκλησης' : 'Νέα Πρόσκληση Πάρτυ'}
               </h3>
-              <button onClick={() => setShowModal(false)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
+              <button onClick={() => { setShowModal(false); setEditingId(null); }} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -395,7 +414,7 @@ export default function PartyInvitationsPage() {
             </div>
 
             <div className="flex gap-3 p-6 pt-0">
-              <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">
+              <button onClick={() => { setShowModal(false); setEditingId(null); }} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">
                 Ακύρωση
               </button>
               <button disabled={saving || !form.birthdayStudentId || !form.title.trim()} onClick={doSave}
