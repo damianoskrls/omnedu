@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { useParams } from 'next/navigation';
 import { partyInvitationsApi, studentsApi, classesApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
 import { Plus, X, Send, Bell, Trash2, Cake, Users, ChevronDown, ChevronUp, ImageIcon } from 'lucide-react';
@@ -9,8 +8,8 @@ import { Plus, X, Send, Bell, Trash2, Cake, Users, ChevronDown, ChevronUp, Image
 const inputCls = 'w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300';
 
 export default function PartyInvitationsPage() {
-  const { schoolId } = useParams<{ schoolId: string }>();
   const user = useStoredUser();
+  const schoolId = user?.schoolId ?? '';
   const isAdmin = user?.role === 'admin' || user?.role === 'owner';
 
   const [invitations, setInvitations] = useState<any[]>([]);
