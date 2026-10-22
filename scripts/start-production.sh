@@ -11,6 +11,7 @@ cat > /tmp/omnedu_repair.sql << 'REPAIRSQL'
 ALTER TABLE "school_members" ADD COLUMN IF NOT EXISTS "notes" TEXT;
 ALTER TABLE "class_assignments" ADD COLUMN IF NOT EXISTS "due_date" DATE;
 ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "billing_due_day" INTEGER;
+ALTER TABLE "students" ADD COLUMN IF NOT EXISTS "gender" TEXT;
 CREATE TABLE IF NOT EXISTS "party_invitations" (
   "id" TEXT NOT NULL,
   "school_id" TEXT NOT NULL,
@@ -35,6 +36,7 @@ node_modules/.bin/prisma db execute --file /tmp/omnedu_repair.sql && echo '[repa
   node_modules/.bin/prisma migrate resolve --applied 20261020120000_assignment_due_date_billing_due_day || true
   node_modules/.bin/prisma migrate resolve --applied 20261020200000_party_invitations || true
   node_modules/.bin/prisma migrate resolve --applied 20261021000000_repair_billing_due_day_and_assignment_date || true
+  node_modules/.bin/prisma migrate resolve --applied 20261022000000_add_student_gender || true
   node_modules/.bin/prisma migrate deploy || echo 'migration failed, starting api anyway'
 })
 cd "$ROOT"
