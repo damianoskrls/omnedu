@@ -66,6 +66,8 @@ class _ParentMeetingsScreenState extends ConsumerState<ParentMeetingsScreen> {
   bool _loading = true;
   bool _showHistory = false;
   String? _sending;
+  String? _pendingMeetingId;
+  String? _pendingSlot;
 
   @override
   void initState() {
@@ -121,7 +123,11 @@ class _ParentMeetingsScreenState extends ConsumerState<ParentMeetingsScreen> {
     } catch (error) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(apiErrorText(error))));
     } finally {
-      if (mounted) setState(() => _sending = null);
+      if (mounted) setState(() {
+        _sending = null;
+        _pendingMeetingId = null;
+        _pendingSlot = null;
+      });
     }
   }
 
@@ -248,14 +254,42 @@ class _ParentMeetingsScreenState extends ConsumerState<ParentMeetingsScreen> {
               runSpacing: 8,
               children: slots.map((slot) {
                 final taken = acceptedTimes.contains(slot) && mine?['slotTime'] != slot;
-                final selected = mine?['slotTime'] == slot && mine?['status'] == 'requested';
+                final isPending = _pendingMeetingId == meeting['id'].toString() && _pendingSlot == slot;
+                final selected = (mine?['slotTime'] == slot && mine?['status'] == 'requested') || isPending;
                 return ChoiceChip(
                   label: Text(taken ? '$slot κλεισμένη' : slot),
                   selected: selected,
-                  onSelected: taken || _sending != null ? null : (_) => _request(meeting['id'].toString(), slot),
+                  onSelected: taken || _sending != null ? null : (_) {
+                    setState(() {
+                      if (isPending) {
+                        _pendingMeetingId = null;
+                        _pendingSlot = null;
+                      } else {
+                        _pendingMeetingId = meeting['id'].toString();
+                        _pendingSlot = slot;
+                      }
+                    });
+                  },
                 );
               }).toList(),
             ),
+            if (_pendingMeetingId == meeting['id'].toString() && _pendingSlot != null) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _sending != null ? null : () => _request(_pendingMeetingId!, _pendingSlot!),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF77328D),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: _sending != null
+                      ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : Text('Αποστολή αιτήματος για $_pendingSlot'),
+                ),
+              ),
+            ],
           ],
         ],
       ),
