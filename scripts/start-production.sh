@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS "party_invitations" (
   CONSTRAINT "party_invitations_pkey" PRIMARY KEY ("id")
 );
 REPAIRSQL
-node_modules/.bin/prisma db execute --file /tmp/omnedu_repair.sql && echo '[repair] all columns ensured' || echo '[repair] prisma db execute failed, continuing anyway'
+node_modules/.bin/prisma db execute --url "$DATABASE_URL" --file /tmp/omnedu_repair.sql && echo '[repair] all columns ensured' || echo '[repair] prisma db execute failed, continuing anyway'
 
 (node_modules/.bin/prisma migrate deploy || {
   node_modules/.bin/prisma migrate resolve --applied 20261008160000_conversation_delete || true
