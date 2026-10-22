@@ -445,7 +445,7 @@ class _ChildHeaderDelegate extends SliverPersistentHeaderDelegate {
                         ConstrainedBox(
                           constraints: BoxConstraints(maxWidth: (MediaQuery.sizeOf(context).width - 158).clamp(48.0, 2000.0)),
                           child: Text(
-                            name,
+                            name.split(' ').first,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.center,

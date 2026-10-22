@@ -520,6 +520,37 @@ class _EditMeetingSheetState extends ConsumerState<_EditMeetingSheet> {
     }
   }
 
+  Future<void> _cancel() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Ακύρωση ενημέρωσης'),
+        content: const Text('Θέλεις σίγουρα να ακυρώσεις αυτή την ενημέρωση; Οι γονείς που έχουν κλείσει ώρα θα ειδοποιηθούν.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Όχι')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Ακύρωση ενημέρωσης', style: TextStyle(color: Color(0xFFDC2626))),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() => _saving = true);
+    try {
+      await ref.read(dioProvider).delete('/schools/${widget.schoolId}/parent-meetings/${widget.meeting['id']}');
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Η ενημέρωση ακυρώθηκε.')));
+        widget.onSaved();
+      }
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(apiErrorText(error))));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -564,6 +595,12 @@ class _EditMeetingSheetState extends ConsumerState<_EditMeetingSheet> {
             style: FilledButton.styleFrom(backgroundColor: const Color(0xFF77328D), minimumSize: const Size.fromHeight(44)),
             onPressed: _saving ? null : _save,
             child: Text(_saving ? 'Αποθήκευση...' : 'Αποθήκευση αλλαγών'),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: const Color(0xFFDC2626), minimumSize: const Size.fromHeight(40)),
+            onPressed: _saving ? null : _cancel,
+            child: const Text('Ακύρωση ενημέρωσης'),
           ),
         ],
       ),

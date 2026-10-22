@@ -87,6 +87,7 @@ class _MenuDay extends StatelessWidget {
       ('Μεσημεριανό', menu?['lunch']),
       ('Απογευματινό', menu?['afternoon']),
     ];
+    final notes = menu?['notes']?.toString().trim() ?? '';
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
@@ -97,7 +98,7 @@ class _MenuDay extends StatelessWidget {
           const SizedBox(height: 8),
           if (menu == null)
             const Text('Δεν έχει περαστεί μενού.', style: TextStyle(color: Color(0xFF9CA3AF)))
-          else
+          else ...[
             ...rows.map((r) {
               final value = (r.$2 as String?)?.trim() ?? '';
               if (value.isEmpty) return const SizedBox.shrink();
@@ -106,6 +107,24 @@ class _MenuDay extends StatelessWidget {
                 child: Text('${r.$1}: $value'),
               );
             }),
+            if (notes.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF3F4F6),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('📝 ', style: TextStyle(fontSize: 13)),
+                    Expanded(child: Text(notes, style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)))),
+                  ],
+                ),
+              ),
+            ],
+          ],
         ],
       ),
     );

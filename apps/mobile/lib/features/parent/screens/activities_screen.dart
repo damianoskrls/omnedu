@@ -755,6 +755,10 @@ class ActivityDetailScreen extends StatelessWidget {
             expandedHeight: (imageUrl != null && imageUrl.isNotEmpty) ? 280 : 0,
             backgroundColor: purple,
             foregroundColor: Colors.white,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
             title: Text(title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

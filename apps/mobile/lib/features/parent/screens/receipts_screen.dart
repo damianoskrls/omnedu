@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api/api_client.dart';
@@ -117,12 +118,18 @@ class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
     if (docId.isEmpty) { _say(context, 'Η απόδειξη δεν έχει αρχείο.'); return; }
     setState(() => _downloading = true);
     try {
-      final resp = await ref.read(dioProvider).get('/schools/${widget.schoolId}/billing/receipts/$docId/download');
+      final dioClient = ref.read(dioProvider);
+      final resp = await dioClient.get('/schools/${widget.schoolId}/billing/receipts/$docId/download');
       final url = resp.data['url']?.toString() ?? '';
       if (url.isEmpty) { _say(context, 'Η απόδειξη δεν έχει αρχείο.'); return; }
       final uri = Uri.tryParse(url);
       if (uri == null) { _say(context, 'Μη έγκυρο αρχείο.'); return; }
-      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      final dir = await getTemporaryDirectory();
+      final filePath = '${dir.path}/receipt_$docId.pdf';
+      await dioClient.download(url, filePath);
+      if (!mounted) return;
+      final fileUri = Uri.file(filePath);
+      final ok = await launchUrl(fileUri, mode: LaunchMode.platformDefault);
       if (!ok && mounted) _say(context, 'Δεν ήταν δυνατό το άνοιγμα της απόδειξης.');
     } catch (_) {
       if (mounted) _say(context, 'Σφάλμα κατά το κατέβασμα.');
