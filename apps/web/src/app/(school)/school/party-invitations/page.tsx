@@ -10,7 +10,7 @@ const inputCls = 'w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm f
 export default function PartyInvitationsPage() {
   const user = useStoredUser();
   const schoolId = user?.schoolId ?? '';
-  const isAdmin = user?.role === 'admin' || user?.role === 'owner';
+  const isAdmin = user?.role === 'admin' || user?.role === 'owner' || user?.role === 'school_admin';
 
   const [invitations, setInvitations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
