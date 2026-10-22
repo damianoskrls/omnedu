@@ -77,7 +77,7 @@ class AppTopBar extends ConsumerWidget {
                 child: Image.asset('assets/images/school_logo.png', width: 36, height: 36, fit: BoxFit.contain),
               ),
               const Spacer(),
-              if (!owner) ...[
+              if (!owner && !user.isDriver) ...[
                 _TopAction(
                   icon: current == notificationsIndex ? Icons.notifications_rounded : Icons.notifications_outlined,
                   active: current == notificationsIndex,

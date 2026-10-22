@@ -73,6 +73,78 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
     ).then((_) => _load());
   }
 
+  static String _appBarTitle(Map<String, dynamic>? morning, Map<String, dynamic>? afternoon) {
+    final hasMorning = morning != null;
+    final hasAfternoon = afternoon != null;
+    if (hasMorning && hasAfternoon) return 'Οι Διαδρομές μου';
+    if (hasMorning) return 'Πρωινή Παραλαβή';
+    if (hasAfternoon) return 'Απογευματινή Παράδοση';
+    return 'Σήμερα';
+  }
+
+  List<Widget> _buildRouteCards(
+    Map<String, dynamic>? morning,
+    Map<String, dynamic>? afternoon,
+    String today,
+  ) {
+    if (morning == null && afternoon == null) return [];
+    final morningDone = morning?['status'] == 'completed';
+    final afternoonDone = afternoon?['status'] == 'completed';
+    final widgets = <Widget>[];
+
+    if (morning != null) {
+      widgets.add(_RouteCard(
+        label: 'Πρωινή Παραλαβή',
+        badge: 'ΠΡΩΙΝΟ',
+        badgeColor: const Color(0xFF77328D),
+        date: today,
+        startTime: morning['startTime']?.toString(),
+        stopsCount: morning['stopsCount'] as int? ?? 0,
+        studentsCount: morning['studentsCount'] as int? ?? 0,
+        pulseAnim: _pulseAnim,
+        completed: morningDone,
+        onStart: morningDone ? null : () => _startRoute(afternoon: false),
+      ));
+      widgets.add(const SizedBox(height: 12));
+    }
+
+    if (afternoon != null) {
+      if (morningDone || morning == null) {
+        widgets.add(_RouteCard(
+          label: 'Απογευματινή Παράδοση',
+          badge: 'ΑΠΟΓΕΥΜΑ',
+          badgeColor: const Color(0xFFD97706),
+          date: today,
+          startTime: afternoon['startTime']?.toString(),
+          stopsCount: afternoon['stopsCount'] as int? ?? 0,
+          studentsCount: afternoon['studentsCount'] as int? ?? 0,
+          pulseAnim: _pulseAnim,
+          completed: afternoonDone,
+          onStart: afternoonDone ? null : () => _startRoute(afternoon: true),
+        ));
+        widgets.add(const SizedBox(height: 12));
+      } else {
+        widgets.add(_SecondaryRouteRow(
+          label: 'Απογευματινή Παράδοση',
+          subtitle: afternoon['startTime'] != null
+              ? 'Για τις ${afternoon['startTime']}'
+              : 'Αργότερα σήμερα',
+          icon: Icons.directions_bus_outlined,
+          iconColor: const Color(0xFFD97706),
+          locked: true,
+          onTap: null,
+        ));
+        widgets.add(const SizedBox(height: 8));
+      }
+    }
+
+    if (morningDone && afternoonDone) {
+      widgets.add(const _DayCompleteCard());
+    }
+
+    return widgets;
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authProvider).user;
@@ -101,7 +173,7 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
       appBar: AppBar(
         backgroundColor: const Color(0xFF77328D),
         foregroundColor: Colors.white,
-        title: const Text('Ταμπλό Οδηγού', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
+        title: Text(_appBarTitle(morning, afternoon), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
         actions: [
           IconButton(
             icon: Badge(
@@ -117,11 +189,6 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
               ),
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.logout_rounded),
-            tooltip: 'Αποσύνδεση',
-            onPressed: () => ref.read(authProvider.notifier).logout(),
-          ),
         ],
       ),
       body: _loading
@@ -136,32 +203,7 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
                     children: [
                       _GreetingCard(firstName: firstName, busName: busName, busNumber: busNumber),
                       const SizedBox(height: 16),
-                      if (morning != null) ...[
-                        _RouteCard(
-                          label: 'Σημερινό Δρομολόγιο',
-                          badge: 'ΠΡΩΙΝΟ',
-                          badgeColor: const Color(0xFF77328D),
-                          date: today,
-                          startTime: morning['startTime']?.toString(),
-                          stopsCount: morning['stopsCount'] as int? ?? 0,
-                          studentsCount: morning['studentsCount'] as int? ?? 0,
-                          pulseAnim: _pulseAnim,
-                          onStart: () => _startRoute(afternoon: false),
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-                      if (afternoon != null) ...[
-                        _SecondaryRouteRow(
-                          label: 'Απογευματινή Διαδρομή',
-                          subtitle: afternoon['startTime'] != null
-                              ? 'Προγραμματισμένη για τις ${afternoon['startTime']}'
-                              : 'Χωρίς ώρα',
-                          icon: Icons.history_rounded,
-                          iconColor: const Color(0xFFD97706),
-                          onTap: () => _startRoute(afternoon: true),
-                        ),
-                        const SizedBox(height: 8),
-                      ],
+                      ..._buildRouteCards(morning, afternoon, today),
                       if (morning == null && afternoon == null && d != null)
                         _EmptyState(onRetry: _load),
                     ],
@@ -242,7 +284,8 @@ class _RouteCard extends StatelessWidget {
   final int stopsCount;
   final int studentsCount;
   final Animation<double> pulseAnim;
-  final VoidCallback onStart;
+  final bool completed;
+  final VoidCallback? onStart;
 
   const _RouteCard({
     required this.label,
@@ -253,7 +296,8 @@ class _RouteCard extends StatelessWidget {
     required this.stopsCount,
     required this.studentsCount,
     required this.pulseAnim,
-    required this.onStart,
+    this.completed = false,
+    this.onStart,
   });
 
   @override
@@ -300,22 +344,41 @@ class _RouteCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 18),
-          ScaleTransition(
-            scale: pulseAnim,
-            child: SizedBox(
+          if (completed)
+            Container(
               width: double.infinity,
-              height: 58,
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFFE95926),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              height: 52,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFF86EFAC)),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 22),
+                  SizedBox(width: 8),
+                  Text('Ολοκληρώθηκε', style: TextStyle(color: Color(0xFF16A34A), fontWeight: FontWeight.w700, fontSize: 16)),
+                ],
+              ),
+            )
+          else
+            ScaleTransition(
+              scale: pulseAnim,
+              child: SizedBox(
+                width: double.infinity,
+                height: 58,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFE95926),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  icon: const Icon(Icons.play_arrow_rounded, size: 24),
+                  label: const Text('Έναρξη Διαδρομής', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                  onPressed: onStart,
                 ),
-                icon: const Icon(Icons.play_arrow_rounded, size: 24),
-                label: const Text('Έναρξη Διαδρομής', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-                onPressed: onStart,
               ),
             ),
-          ),
         ],
       ),
     );
@@ -352,40 +415,80 @@ class _SecondaryRouteRow extends StatelessWidget {
   final String subtitle;
   final IconData icon;
   final Color iconColor;
-  final VoidCallback onTap;
-  const _SecondaryRouteRow({required this.label, required this.subtitle, required this.icon, required this.iconColor, required this.onTap});
+  final bool locked;
+  final VoidCallback? onTap;
+  const _SecondaryRouteRow({
+    required this.label,
+    required this.subtitle,
+    required this.icon,
+    required this.iconColor,
+    this.locked = false,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final effectiveColor = locked ? const Color(0xFFD1D5DB) : iconColor;
     return Material(
-      color: Colors.white,
+      color: locked ? const Color(0xFFFAFAFA) : Colors.white,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
+        onTap: locked ? null : onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(
             children: [
               Container(
                 width: 40, height: 40,
-                decoration: BoxDecoration(color: iconColor.withOpacity(0.12), borderRadius: BorderRadius.circular(12)),
-                child: Icon(icon, color: iconColor, size: 22),
+                decoration: BoxDecoration(
+                  color: effectiveColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(locked ? Icons.lock_outline_rounded : icon, color: effectiveColor, size: 20),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                    Text(subtitle, style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13)),
+                    Text(label, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: locked ? const Color(0xFF9CA3AF) : const Color(0xFF111827))),
+                    Text(
+                      locked ? 'Διαθέσιμη μετά την παραλαβή' : subtitle,
+                      style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 13),
+                    ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF)),
+              if (!locked) const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF)),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _DayCompleteCard extends StatelessWidget {
+  const _DayCompleteCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0FDF4),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF86EFAC)),
+      ),
+      child: const Column(
+        children: [
+          Text('🎉', style: TextStyle(fontSize: 36)),
+          SizedBox(height: 10),
+          Text('Τέλος ημέρας!', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Color(0xFF15803D))),
+          SizedBox(height: 4),
+          Text('Και οι δύο διαδρομές ολοκληρώθηκαν.', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF6B7280), fontSize: 14)),
+        ],
       ),
     );
   }
