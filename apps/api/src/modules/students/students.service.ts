@@ -592,7 +592,6 @@ export class StudentsService {
       grouped.set(member.userId, parentCard(member.user, member.notes));
     }
     for (const link of links) {
-      if (deletedIds.has(link.userId)) continue;
       if (!grouped.has(link.userId)) grouped.set(link.userId, parentCard(link.user, notesMap.get(link.userId)));
       grouped.get(link.userId)!.children.push(parentChild(link));
     }
