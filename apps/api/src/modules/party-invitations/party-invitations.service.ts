@@ -24,18 +24,27 @@ export class PartyInvitationsService {
     });
     if (!row) throw new NotFoundException('Η πρόσκληση δεν βρέθηκε');
 
-    // Only the organizer's parent and school admins/owners can see the full guest list.
-    const [isOrganizer, isAdmin] = await Promise.all([
+    const recipientIds = Array.isArray(row.recipientStudentIds) ? row.recipientStudentIds as string[] : [];
+
+    const [isOrganizer, isAdmin, isRecipientParent] = await Promise.all([
       this.prisma.studentParent.findFirst({
         where: { userId: requestingUserId, studentId: row.birthdayStudentId },
       }),
       this.prisma.schoolMember.findFirst({
         where: { userId: requestingUserId, schoolId, role: { in: ['school_admin', 'owner'] } as any },
       }),
+      recipientIds.length > 0
+        ? this.prisma.studentParent.findFirst({
+            where: { userId: requestingUserId, studentId: { in: recipientIds } },
+          })
+        : Promise.resolve(null),
     ]);
 
+    if (!isOrganizer && !isAdmin && !isRecipientParent) {
+      throw new NotFoundException('Η πρόσκληση δεν βρέθηκε');
+    }
+
     const canSeeGuestList = !!isOrganizer || !!isAdmin;
-    const recipientIds = Array.isArray(row.recipientStudentIds) ? row.recipientStudentIds as string[] : [];
     const recipientStudents = canSeeGuestList && recipientIds.length > 0
       ? await this.prisma.student.findMany({
           where: { id: { in: recipientIds }, schoolId },
