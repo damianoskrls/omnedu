@@ -191,7 +191,12 @@ class _SchoolActivityCard extends StatelessWidget {
 
     final typeInfo = _typeIcons[type] ?? _typeIcons['other']!;
 
-    return Container(
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => ActivityDetailScreen(activity: activity)),
+      ),
+      child: Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -203,7 +208,7 @@ class _SchoolActivityCard extends StatelessWidget {
           if (imageUrl != null && imageUrl.isNotEmpty)
             ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-              child: AppImage(imageUrl, height: 140, width: double.infinity, fit: BoxFit.cover),
+              child: AppImage(imageUrl, width: double.infinity, fit: BoxFit.contain),
             ),
           Padding(
             padding: const EdgeInsets.all(14),
@@ -290,6 +295,7 @@ class _SchoolActivityCard extends StatelessWidget {
           ],
         ],
       ),
+    ),
     );
   }
 
@@ -579,7 +585,12 @@ class _ActivityTile extends StatelessWidget {
         statusLabel = 'Αναμονή';
     }
 
-    return Container(
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => ActivityDetailScreen(activity: activity)),
+      ),
+      child: Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
@@ -619,6 +630,7 @@ class _ActivityTile extends StatelessWidget {
           ),
         ],
       ),
+    ),
     );
   }
 
@@ -651,6 +663,257 @@ class _ActivityTile extends StatelessWidget {
       if (instructor is! Map) return '';
       return instructor['name']?.toString() ?? '';
     }).where((name) => name.isNotEmpty).join(', ');
+  }
+}
+
+class ActivityDetailScreen extends StatelessWidget {
+  final Map<String, dynamic> activity;
+  const ActivityDetailScreen({super.key, required this.activity});
+
+  static const _typeIcons = {
+    'excursion': (icon: Icons.directions_bus_outlined, color: Color(0xFF059669), label: 'Εκδρομή'),
+    'sport': (icon: Icons.sports_soccer_outlined, color: Color(0xFF2563EB), label: 'Αθλητισμός'),
+    'art': (icon: Icons.palette_outlined, color: Color(0xFF7C3AED), label: 'Τέχνες'),
+    'music': (icon: Icons.music_note_outlined, color: Color(0xFFDB2777), label: 'Μουσική'),
+    'language': (icon: Icons.translate_outlined, color: Color(0xFFD97706), label: 'Γλώσσα'),
+    'other': (icon: Icons.stars_outlined, color: Color(0xFF6B7280), label: 'Άλλο'),
+  };
+
+  static const _dayNames = ['', 'Δευτέρα', 'Τρίτη', 'Τετάρτη', 'Πέμπτη', 'Παρασκευή', 'Σάββατο', 'Κυριακή'];
+
+  String _formatDate(String iso) {
+    try {
+      final dt = DateTime.parse(iso);
+      const months = ['', 'Ιαν', 'Φεβ', 'Μαρ', 'Απρ', 'Μαΐ', 'Ιουν', 'Ιουλ', 'Αυγ', 'Σεπ', 'Οκτ', 'Νοε', 'Δεκ'];
+      return '${dt.day} ${months[dt.month]} ${dt.year}';
+    } catch (_) {
+      return iso;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = activity['title'] as String? ?? '';
+    final description = activity['description'] as String? ?? '';
+    final type = activity['activityType'] as String? ?? 'other';
+    final monthlyCost = activity['monthlyCost'];
+    final startsOn = activity['startsOn'] as String?;
+    final endsOn = activity['endsOn'] as String?;
+    final instructorLinks = (activity['instructorLinks'] as List? ?? [])
+        .whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    final scheduleSlots = (activity['scheduleSlots'] as List? ?? [])
+        .whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    final imageUrl = activity['imageUrl'] as String?;
+    final typeInfo = _typeIcons[type] ?? _typeIcons['other']!;
+    const purple = Color(0xFF77328D);
+    final bottom = MediaQuery.paddingOf(context).bottom;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF9FAFB),
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            pinned: true,
+            expandedHeight: (imageUrl != null && imageUrl.isNotEmpty) ? 280 : 0,
+            backgroundColor: purple,
+            foregroundColor: Colors.white,
+            title: Text(title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 17)),
+            flexibleSpace: (imageUrl != null && imageUrl.isNotEmpty)
+                ? FlexibleSpaceBar(
+                    background: Container(
+                      color: Colors.white,
+                      child: AppImage(imageUrl, width: double.infinity, fit: BoxFit.contain),
+                    ),
+                  )
+                : null,
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16, 20, 16, 24 + bottom),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(title,
+                            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF111827), height: 1.2)),
+                      ),
+                      const SizedBox(width: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: typeInfo.color.withOpacity(0.10),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(typeInfo.icon, size: 13, color: typeInfo.color),
+                            const SizedBox(width: 4),
+                            Text(typeInfo.label,
+                                style: TextStyle(fontSize: 12, color: typeInfo.color, fontWeight: FontWeight.w700)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (description.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(description,
+                        style: const TextStyle(fontSize: 14, color: Color(0xFF6B7280), height: 1.55)),
+                  ],
+                  const SizedBox(height: 20),
+                  if (monthlyCost != null)
+                    _DetailCard(
+                      icon: Icons.euro_rounded,
+                      color: const Color(0xFF7C3AED),
+                      label: 'Κόστος',
+                      child: Text('€$monthlyCost / μήνα',
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF7C3AED))),
+                    ),
+                  if (startsOn != null && endsOn != null) ...[
+                    const SizedBox(height: 12),
+                    _DetailCard(
+                      icon: Icons.calendar_month_rounded,
+                      color: const Color(0xFF0369A1),
+                      label: 'Περίοδος',
+                      child: Text('${_formatDate(startsOn)} – ${_formatDate(endsOn)}',
+                          style: const TextStyle(fontSize: 14, color: Color(0xFF374151), fontWeight: FontWeight.w600)),
+                    ),
+                  ],
+                  if (scheduleSlots.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _DetailCard(
+                      icon: Icons.schedule_rounded,
+                      color: const Color(0xFF059669),
+                      label: 'Πρόγραμμα',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: scheduleSlots.map((slot) {
+                          final dow = slot['dayOfWeek'] as int? ?? 0;
+                          final start = slot['startTime'] as String? ?? '';
+                          final end = slot['endTime'] as String? ?? '';
+                          final day = dow > 0 && dow < _dayNames.length ? _dayNames[dow] : '';
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 3),
+                            child: Text(
+                              end.isNotEmpty ? '$day  $start – $end' : day,
+                              style: const TextStyle(fontSize: 14, color: Color(0xFF374151), fontWeight: FontWeight.w600),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ],
+                  if (instructorLinks.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _DetailCard(
+                      icon: Icons.person_rounded,
+                      color: const Color(0xFFDB2777),
+                      label: 'Εκπαιδευτικοί',
+                      child: Column(
+                        children: instructorLinks.map((link) {
+                          final inst = link['instructor'] as Map<String, dynamic>? ?? link;
+                          final iName = inst['name'] as String? ?? '';
+                          final iTitle = inst['title'] as String? ?? '';
+                          final iPhoto = inst['photoUrl'] as String?;
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Row(
+                              children: [
+                                if (iPhoto != null && iPhoto.isNotEmpty)
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(22),
+                                    child: AppImage(iPhoto, width: 44, height: 44, fit: BoxFit.cover),
+                                  )
+                                else
+                                  Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFCE7F3),
+                                      borderRadius: BorderRadius.circular(22),
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        iName.isNotEmpty ? iName[0].toUpperCase() : '?',
+                                        style: const TextStyle(color: Color(0xFFDB2777), fontWeight: FontWeight.bold, fontSize: 18),
+                                      ),
+                                    ),
+                                  ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(iName,
+                                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF111827))),
+                                      if (iTitle.isNotEmpty)
+                                        Text(iTitle,
+                                            style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailCard extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String label;
+  final Widget child;
+  const _DetailCard({required this.icon, required this.color, required this.label, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: color.withOpacity(0.07), blurRadius: 12, offset: const Offset(0, 3))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(color: color.withOpacity(0.10), borderRadius: BorderRadius.circular(8)),
+                child: Icon(icon, size: 15, color: color),
+              ),
+              const SizedBox(width: 8),
+              Text(label,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color, letterSpacing: 0.5)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    );
   }
 }
 

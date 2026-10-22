@@ -54,6 +54,7 @@ export class ThematicPlansService implements OnModuleInit {
       )`,
       `CREATE UNIQUE INDEX IF NOT EXISTS "thematic_plans_school_id_class_id_month_key" ON "thematic_plans"("school_id", "class_id", "month")`,
       `CREATE INDEX IF NOT EXISTS "thematic_plans_school_id_month_idx" ON "thematic_plans"("school_id", "month")`,
+      `ALTER TABLE "thematic_plans" ADD COLUMN IF NOT EXISTS "image_urls" TEXT[] NOT NULL DEFAULT '{}'`,
     ];
     for (const sql of statements) {
       try {

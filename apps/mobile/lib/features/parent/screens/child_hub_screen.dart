@@ -207,10 +207,10 @@ class ChildHubScreen extends StatelessWidget {
             crossAxisCount: 2,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            childAspectRatio: 1.35,
-            children: tiles.map((t) => _TileCard(tile: t)).toList(),
+            mainAxisSpacing: 14,
+            crossAxisSpacing: 14,
+            childAspectRatio: 0.95,
+            children: tiles.asMap().entries.map((e) => _AnimatedTileCard(tile: e.value, index: e.key)).toList(),
           ),
               ]),
             ),
@@ -549,26 +549,129 @@ class _Tile {
   const _Tile(this.label, this.icon, this.color, this.onTap);
 }
 
-class _TileCard extends StatelessWidget {
+class _AnimatedTileCard extends StatefulWidget {
   final _Tile tile;
-  const _TileCard({required this.tile});
+  final int index;
+  const _AnimatedTileCard({super.key, required this.tile, required this.index});
+
+  @override
+  State<_AnimatedTileCard> createState() => _AnimatedTileCardState();
+}
+
+class _AnimatedTileCardState extends State<_AnimatedTileCard>
+    with TickerProviderStateMixin {
+  late final AnimationController _tapCtrl;
+  late final AnimationController _enterCtrl;
+  bool _pressed = false;
+
+  static final _iconBounce = TweenSequence<double>([
+    TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.78), weight: 35),
+    TweenSequenceItem(tween: Tween(begin: 0.78, end: 1.14), weight: 35),
+    TweenSequenceItem(tween: Tween(begin: 1.14, end: 1.0), weight: 30),
+  ]);
+
+  @override
+  void initState() {
+    super.initState();
+    _tapCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 320));
+    _enterCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 420));
+    Future.delayed(Duration(milliseconds: 55 * widget.index), () {
+      if (mounted) _enterCtrl.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _tapCtrl.dispose();
+    _enterCtrl.dispose();
+    super.dispose();
+  }
+
+  void _handleTap() {
+    _tapCtrl.forward(from: 0);
+    widget.tile.onTap();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: tile.onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(tile.icon, color: tile.color),
-              const Spacer(),
-              Text(tile.label, style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF1F2937))),
-            ],
+    final color = widget.tile.color;
+    final enterCurve = CurvedAnimation(parent: _enterCtrl, curve: Curves.easeOutCubic);
+    final iconAnim = _iconBounce.animate(CurvedAnimation(parent: _tapCtrl, curve: Curves.easeInOut));
+
+    return FadeTransition(
+      opacity: enterCurve,
+      child: SlideTransition(
+        position: Tween<Offset>(begin: const Offset(0, 0.20), end: Offset.zero)
+            .animate(enterCurve),
+        child: GestureDetector(
+          onTapDown: (_) => setState(() => _pressed = true),
+          onTapUp: (_) {
+            setState(() => _pressed = false);
+            _handleTap();
+          },
+          onTapCancel: () => setState(() => _pressed = false),
+          child: AnimatedScale(
+            scale: _pressed ? 0.94 : 1.0,
+            duration: const Duration(milliseconds: 120),
+            curve: Curves.easeOut,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(22),
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withOpacity(0.13),
+                    blurRadius: 18,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  AnimatedBuilder(
+                    animation: iconAnim,
+                    builder: (ctx, child) => Transform.scale(
+                      scale: _tapCtrl.isAnimating ? iconAnim.value : 1.0,
+                      child: child,
+                    ),
+                    child: Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            color.withOpacity(0.09),
+                            color.withOpacity(0.20),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(22),
+                      ),
+                      child: Icon(widget.tile.icon, color: color, size: 34),
+                    ),
+                  ),
+                  const SizedBox(height: 11),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: Text(
+                      widget.tile.label,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14.5,
+                        color: Color(0xFF111827),
+                        height: 1.25,
+                        letterSpacing: -0.1,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),

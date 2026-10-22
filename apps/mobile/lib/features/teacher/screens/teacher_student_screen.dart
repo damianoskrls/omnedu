@@ -179,6 +179,7 @@ class _TeacherStudentScreenState extends ConsumerState<TeacherStudentScreen> {
   Widget build(BuildContext context) {
     final name = widget.student['fullName'] as String? ?? '';
     final firstName = name.split(' ').first;
+    final avatarUrl = widget.student['avatarUrl'] as String? ?? '';
     final enrollments = widget.student['enrollments'] as List<dynamic>? ?? [];
     final className = enrollments.isNotEmpty
         ? (enrollments.first['class']?['name'] as String? ?? '')
@@ -205,6 +206,33 @@ class _TeacherStudentScreenState extends ConsumerState<TeacherStudentScreen> {
               leading: IconButton(
                 icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
                 onPressed: () => Navigator.of(context).pop(),
+              ),
+              title: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (avatarUrl.isNotEmpty)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(11),
+                      child: AppImage(avatarUrl, width: 30, height: 30, fit: BoxFit.cover),
+                    )
+                  else
+                    Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(11),
+                      ),
+                      child: Center(
+                        child: Text(
+                          firstName.isNotEmpty ? firstName[0] : '?',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                      ),
+                    ),
+                  const SizedBox(width: 8),
+                  Text(firstName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16)),
+                ],
               ),
               flexibleSpace: FlexibleSpaceBar(
                 background: Container(

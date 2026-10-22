@@ -23,7 +23,15 @@ export class PartyInvitationsService {
       include: { birthdayStudent: { select: { id: true, fullName: true, avatarUrl: true } } },
     });
     if (!row) throw new NotFoundException('Η πρόσκληση δεν βρέθηκε');
-    return row;
+    const recipientIds = Array.isArray(row.recipientStudentIds) ? row.recipientStudentIds as string[] : [];
+    const recipientStudents = recipientIds.length > 0
+      ? await this.prisma.student.findMany({
+          where: { id: { in: recipientIds }, schoolId },
+          select: { id: true, fullName: true },
+          orderBy: { fullName: 'asc' },
+        })
+      : [];
+    return { ...row, recipientStudents };
   }
 
   async create(schoolId: string, data: {
@@ -113,6 +121,20 @@ export class PartyInvitationsService {
       where: { id },
       data: isReminder ? { reminderSentAt: now } : { sentAt: now },
       include: { birthdayStudent: { select: { id: true, fullName: true, avatarUrl: true } } },
+    });
+  }
+
+  async listSentByMyChild(schoolId: string, parentUserId: string) {
+    const children = await this.prisma.studentParent.findMany({
+      where: { userId: parentUserId, student: { schoolId, isActive: true } },
+      select: { studentId: true },
+    });
+    const childIds = children.map((c) => c.studentId);
+    if (!childIds.length) return [];
+    return this.prisma.partyInvitation.findMany({
+      where: { schoolId, birthdayStudentId: { in: childIds } },
+      include: { birthdayStudent: { select: { id: true, fullName: true, avatarUrl: true } } },
+      orderBy: { createdAt: 'desc' },
     });
   }
 
