@@ -6,28 +6,8 @@ cd "$ROOT"
 
 cd "$ROOT/apps/api"
 
-# Direct repair: add missing DB columns via prisma db execute (synchronous, no async issues).
-cat > /tmp/omnedu_repair.sql << 'REPAIRSQL'
-ALTER TABLE "school_members" ADD COLUMN IF NOT EXISTS "notes" TEXT;
-ALTER TABLE "class_assignments" ADD COLUMN IF NOT EXISTS "due_date" DATE;
-ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "billing_due_day" INTEGER;
-ALTER TABLE "students" ADD COLUMN IF NOT EXISTS "gender" TEXT;
-CREATE TABLE IF NOT EXISTS "party_invitations" (
-  "id" TEXT NOT NULL,
-  "school_id" TEXT NOT NULL,
-  "birthday_student_id" TEXT NOT NULL,
-  "title" TEXT NOT NULL,
-  "body" TEXT,
-  "image_url" TEXT,
-  "event_date" TEXT,
-  "recipient_student_ids" JSONB NOT NULL DEFAULT '[]',
-  "sent_at" TIMESTAMP(3),
-  "reminder_sent_at" TIMESTAMP(3),
-  "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT "party_invitations_pkey" PRIMARY KEY ("id")
-);
-REPAIRSQL
-node_modules/.bin/prisma db execute --url "$DATABASE_URL" --file /tmp/omnedu_repair.sql && echo '[repair] all columns ensured' || echo '[repair] prisma db execute failed, continuing anyway'
+# Direct repair: add missing DB columns using PrismaClient (reliable on Render).
+node repair.js || echo '[repair] repair.js failed, continuing anyway'
 
 (node_modules/.bin/prisma migrate deploy || {
   node_modules/.bin/prisma migrate resolve --applied 20261008160000_conversation_delete || true
