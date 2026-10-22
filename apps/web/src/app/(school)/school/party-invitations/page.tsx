@@ -42,16 +42,19 @@ export default function PartyInvitationsPage() {
 
   useEffect(() => {
     if (!schoolId) return;
-    Promise.all([
+    Promise.allSettled([
       partyInvitationsApi.list(schoolId),
       studentsApi.list(schoolId),
       classesApi.list(schoolId),
-    ]).then(([inv, stu, cls]: any) => {
+    ]).then(([invRes, stuRes, clsRes]) => {
+      const inv = invRes.status === 'fulfilled' ? invRes.value : [];
+      const stu = stuRes.status === 'fulfilled' ? stuRes.value : [];
+      const cls = clsRes.status === 'fulfilled' ? clsRes.value : [];
       setInvitations(Array.isArray(inv) ? inv : []);
-      setAllStudents(Array.isArray(stu) ? stu.filter((s: any) => s.isActive !== false) : []);
+      setAllStudents(Array.isArray(stu) ? (stu as any[]).filter((s: any) => s.isActive !== false) : []);
       setClasses(Array.isArray(cls) ? cls : []);
       setLoading(false);
-    }).catch(() => setLoading(false));
+    });
   }, [schoolId]);
 
   const studentsInClass = selectedClassId
