@@ -17,14 +17,26 @@ export class PartyInvitationsService {
     });
   }
 
-  async get(schoolId: string, id: string) {
+  async get(schoolId: string, id: string, requestingUserId: string) {
     const row = await this.prisma.partyInvitation.findFirst({
       where: { id, schoolId },
       include: { birthdayStudent: { select: { id: true, fullName: true, avatarUrl: true } } },
     });
     if (!row) throw new NotFoundException('Η πρόσκληση δεν βρέθηκε');
+
+    // Only the organizer's parent and school admins/owners can see the full guest list.
+    const [isOrganizer, isAdmin] = await Promise.all([
+      this.prisma.studentParent.findFirst({
+        where: { userId: requestingUserId, studentId: row.birthdayStudentId },
+      }),
+      this.prisma.schoolMember.findFirst({
+        where: { userId: requestingUserId, schoolId, role: { in: ['school_admin', 'owner'] } as any },
+      }),
+    ]);
+
+    const canSeeGuestList = !!isOrganizer || !!isAdmin;
     const recipientIds = Array.isArray(row.recipientStudentIds) ? row.recipientStudentIds as string[] : [];
-    const recipientStudents = recipientIds.length > 0
+    const recipientStudents = canSeeGuestList && recipientIds.length > 0
       ? await this.prisma.student.findMany({
           where: { id: { in: recipientIds }, schoolId },
           select: { id: true, fullName: true },
