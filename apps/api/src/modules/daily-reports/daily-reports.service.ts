@@ -132,17 +132,18 @@ export class DailyReportsService {
 
     const student = await this.prisma.student.findUnique({
       where: { id: studentId },
-      select: { fullName: true },
+      select: { fullName: true, gender: true },
     });
     const day = reportDate.slice(0, 10).split('-').reverse().join('/');
     const name = student?.fullName ?? 'παιδιού';
+    const article = student?.gender === 'female' ? 'της' : 'του';
     await this.notifications.notifyStudentParents(schoolId, studentId, {
       event: 'daily_report',
       type: 'daily_report',
       title: 'Ημερήσιο δελτίο',
       body: created
-        ? `Το δελτίο του ${name} για ${day} είναι έτοιμο.`
-        : `Το δελτίο του ${name} για ${day} ενημερώθηκε.`,
+        ? `Το δελτίο ${article} ${name} για ${day} είναι έτοιμο.`
+        : `Το δελτίο ${article} ${name} για ${day} ενημερώθηκε.`,
       data: {
         screen: 'bulletin',
         studentId,

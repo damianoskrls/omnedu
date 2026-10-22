@@ -121,7 +121,7 @@ class ActivitiesScreen extends ConsumerWidget {
                         child: Text('Εγγεγραμμένες Δραστηριότητες',
                             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF111827))),
                       ),
-                      ...children.map((c) => _ChildServicesSection(child: c as Map<String, dynamic>)),
+                      ...children.map((c) => _ChildActivitiesSection(child: c as Map<String, dynamic>)),
                       const SizedBox(height: 24),
                     ],
                   );
@@ -516,6 +516,44 @@ class _InstructorSheet extends StatelessWidget {
 }
 
 // ─── Child's registered services (kept from original) ───────────────────────
+
+class _ChildActivitiesSection extends StatelessWidget {
+  final Map<String, dynamic> child;
+  const _ChildActivitiesSection({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = child['fullName'] as String? ?? '';
+    final photo = child['avatarUrl'] as String?;
+    final activities = child['activityRegistrations'] as List<dynamic>? ?? [];
+
+    final activeActivities = activities.where((a) {
+      final status = a['status'] as String? ?? '';
+      return status != 'cancelled';
+    }).toList();
+
+    if (activeActivities.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              PersonFace(name: name, photoUrl: photo, size: 24, radius: 12, fontSize: 10),
+              const SizedBox(width: 8),
+              Text(name,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF374151))),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ...activeActivities.map((reg) => _ActivityTile(registration: reg as Map<String, dynamic>)),
+        ],
+      ),
+    );
+  }
+}
 
 class _ChildServicesSection extends StatelessWidget {
   final Map<String, dynamic> child;

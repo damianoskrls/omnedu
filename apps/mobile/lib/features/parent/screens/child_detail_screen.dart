@@ -5,19 +5,49 @@ import '../../../core/providers/auth_provider.dart';
 import '../../../core/widgets/person_face.dart';
 import 'day_history.dart';
 
-class ChildDetailScreen extends ConsumerWidget {
+class ChildDetailScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic> child;
 
   const ChildDetailScreen({super.key, required this.child});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ChildDetailScreen> createState() => _ChildDetailScreenState();
+}
+
+class _ChildDetailScreenState extends ConsumerState<ChildDetailScreen> {
+  final _scrollController = ScrollController();
+  bool _showTitle = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(() {
+      final collapsed = _scrollController.offset > 130;
+      if (collapsed != _showTitle) setState(() => _showTitle = collapsed);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final studentId = widget.child['id'] as String? ?? '';
+      final schoolId = ref.read(authProvider).user?.schoolId ?? '';
+      if (studentId.isNotEmpty && schoolId.isNotEmpty) {
+        ref.invalidate(childDayReportsProvider((schoolId: schoolId, studentId: studentId)));
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final user = ref.watch(authProvider).user!;
     final schoolId = user.schoolId ?? '';
-    final name = child['fullName'] as String? ?? '';
-    final photo = child['avatarUrl'] as String?;
+    final name = widget.child['fullName'] as String? ?? '';
+    final photo = widget.child['avatarUrl'] as String?;
     final firstName = name.split(' ').first;
-    final enrollments = child['enrollments'] as List<dynamic>? ?? [];
+    final enrollments = widget.child['enrollments'] as List<dynamic>? ?? [];
     final className = enrollments.isNotEmpty
         ? (enrollments.first['class']?['name'] as String? ?? '')
         : '';
@@ -27,6 +57,7 @@ class ChildDetailScreen extends ConsumerWidget {
       child: Scaffold(
         backgroundColor: const Color(0xFFF6F3FA),
         body: CustomScrollView(
+          controller: _scrollController,
           slivers: [
             SliverAppBar(
               expandedHeight: 200,
@@ -35,6 +66,12 @@ class ChildDetailScreen extends ConsumerWidget {
               leading: IconButton(
                 icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
                 onPressed: () => Navigator.of(context).pop(),
+              ),
+              title: AnimatedOpacity(
+                opacity: _showTitle ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 200),
+                child: Text(firstName,
+                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
               ),
               flexibleSpace: FlexibleSpaceBar(
                 background: Container(
@@ -56,7 +93,7 @@ class ChildDetailScreen extends ConsumerWidget {
                           size: 80,
                           radius: 26,
                           fontSize: 36,
-                          background: Colors.white.withOpacity(0.25),
+                          background: Colors.white.withValues(alpha: 0.25),
                           foreground: Colors.white,
                         ),
                         const SizedBox(height: 10),
@@ -65,7 +102,7 @@ class ChildDetailScreen extends ConsumerWidget {
                           style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
                         ),
                         if (className.isNotEmpty)
-                          Text(className, style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 13)),
+                          Text(className, style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 13)),
                       ],
                     ),
                   ),
@@ -73,7 +110,7 @@ class ChildDetailScreen extends ConsumerWidget {
               ),
             ),
             SliverToBoxAdapter(
-              child: DayHistoryPanel(schoolId: schoolId, child: child),
+              child: DayHistoryPanel(schoolId: schoolId, child: widget.child),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 40)),
           ],

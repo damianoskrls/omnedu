@@ -375,6 +375,7 @@ model Student {
   id        String    @id @default(uuid())
   schoolId  String    @map("school_id")
   fullName  String    @map("full_name")
+  gender    String?
   dob       DateTime? @db.Date
   avatarUrl String?   @map("avatar_url")
   address   String?

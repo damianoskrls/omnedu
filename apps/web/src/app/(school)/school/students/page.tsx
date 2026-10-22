@@ -36,7 +36,7 @@ export default function StudentsPage() {
   const [archiveModal, setArchiveModal] = useState<{ id: string; name: string; restore?: boolean; permanentDelete?: boolean } | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [newStudent, setNewStudent] = useState({ fullName: '', dob: '', levelId: '', classId: '', notes: '' });
+  const [newStudent, setNewStudent] = useState({ fullName: '', gender: '', dob: '', levelId: '', classId: '', notes: '' });
   const emptyParent = () => ({ fullName: '', email: '', phone: '', relation: 'γονέας' });
   const [newParents, setNewParents] = useState([emptyParent()]);
   const [parentMode, setParentMode] = useState<'new' | 'existing'>('new');
@@ -116,7 +116,7 @@ export default function StudentsPage() {
 
   function resetCreateModal() {
     setShowCreate(false);
-    setNewStudent({ fullName: '', dob: '', levelId: '', classId: '', notes: '' });
+    setNewStudent({ fullName: '', gender: '', dob: '', levelId: '', classId: '', notes: '' });
     setNewParents([emptyParent()]);
     setParentMode('new');
     setSelectedExistingParents([]);
@@ -131,6 +131,7 @@ export default function StudentsPage() {
       const validParents = parentMode === 'new' ? newParents.filter(p => p.fullName.trim()) : [];
       const created: any = await studentsApi.create(schoolId, {
         fullName: newStudent.fullName.trim(),
+        gender: newStudent.gender || undefined,
         dob: newStudent.dob || undefined,
         notes: newStudent.notes || undefined,
         classId: newStudent.classId || undefined,
@@ -425,6 +426,21 @@ export default function StudentsPage() {
                     autoFocus
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
                   />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Φύλο</label>
+                  <div className="flex gap-3">
+                    {[{ value: 'male', label: 'Αγόρι' }, { value: 'female', label: 'Κορίτσι' }].map(opt => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setNewStudent({ ...newStudent, gender: newStudent.gender === opt.value ? '' : opt.value })}
+                        className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-colors ${newStudent.gender === opt.value ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Ημερομηνία Γέννησης</label>

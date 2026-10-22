@@ -94,8 +94,8 @@ class BillingScreen extends ConsumerWidget {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                if (billingDueDay != null) ...[
-                  _NextPaymentBanner(billingDueDay: billingDueDay),
+                if (grandOwed > 0.01) ...[
+                  _NextPaymentBanner(billingDueDay: billingDueDay ?? 10),
                   const SizedBox(height: 12),
                 ],
                 ParentReceipts(schoolId: schoolId),

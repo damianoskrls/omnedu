@@ -476,6 +476,7 @@ export default function StudentProfilePage() {
     const currentClass = classes.find((c: any) => c.id === currentClassId);
     setInfoForm({
       fullName: student.fullName,
+      gender: student.gender ?? '',
       dob: student.dob ? new Date(student.dob).toISOString().slice(0, 10) : '',
       address: student.address ?? '',
       allergies: student.allergies ?? '',
@@ -493,6 +494,7 @@ export default function StudentProfilePage() {
     try {
       const updated: any = await studentsApi.update(schoolId, id, {
         fullName: infoForm.fullName,
+        gender: infoForm.gender || undefined,
         dob: infoForm.dob || undefined,
         address: infoForm.address || undefined,
         allergies: infoForm.allergies || undefined,
@@ -3246,6 +3248,21 @@ export default function StudentProfilePage() {
                   onChange={e => setInfoForm({ ...infoForm, fullName: e.target.value })}
                   className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Φύλο</label>
+                <div className="flex gap-3">
+                  {[{ value: 'male', label: 'Αγόρι' }, { value: 'female', label: 'Κορίτσι' }].map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setInfoForm({ ...infoForm, gender: infoForm.gender === opt.value ? '' : opt.value })}
+                      className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-colors ${infoForm.gender === opt.value ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
