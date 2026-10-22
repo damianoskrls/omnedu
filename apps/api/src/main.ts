@@ -13,11 +13,17 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 
 async function runStartupRepair() {
   const prisma = new PrismaClient();
+  const repairs = [
+    'ALTER TABLE "school_members" ADD COLUMN IF NOT EXISTS "notes" TEXT',
+    'ALTER TABLE "class_assignments" ADD COLUMN IF NOT EXISTS "due_date" DATE',
+    'ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "billing_due_day" INTEGER',
+    'ALTER TABLE "students" ADD COLUMN IF NOT EXISTS "gender" TEXT',
+  ];
   try {
-    await prisma.$executeRawUnsafe(
-      'ALTER TABLE "school_members" ADD COLUMN IF NOT EXISTS "notes" TEXT',
-    );
-    console.log('[repair] school_members.notes column ensured');
+    for (const sql of repairs) {
+      await prisma.$executeRawUnsafe(sql);
+    }
+    console.log('[repair] all columns ensured');
   } catch (e: any) {
     console.error('[repair] startup repair failed:', e?.message);
   } finally {
