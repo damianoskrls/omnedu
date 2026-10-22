@@ -106,15 +106,26 @@ export default function PartyInvitationsPage() {
     if (!form.birthdayStudentId || !form.title.trim()) return;
     setSaving(true);
     try {
-      const inv: any = await partyInvitationsApi.create(schoolId, {
-        birthdayStudentId: form.birthdayStudentId,
-        title: form.title,
-        body: form.body || undefined,
-        imageUrl: form.imageUrl || undefined,
-        eventDate: form.eventDate || undefined,
-        recipientStudentIds: form.recipientStudentIds,
-      });
-      setInvitations(prev => [inv, ...prev]);
+      if (editingId) {
+        const updated: any = await partyInvitationsApi.update(schoolId, editingId, {
+          title: form.title,
+          body: form.body || undefined,
+          imageUrl: form.imageUrl || undefined,
+          eventDate: form.eventDate || undefined,
+          recipientStudentIds: form.recipientStudentIds,
+        });
+        setInvitations(prev => prev.map(i => i.id === editingId ? updated : i));
+      } else {
+        const inv: any = await partyInvitationsApi.create(schoolId, {
+          birthdayStudentId: form.birthdayStudentId,
+          title: form.title,
+          body: form.body || undefined,
+          imageUrl: form.imageUrl || undefined,
+          eventDate: form.eventDate || undefined,
+          recipientStudentIds: form.recipientStudentIds,
+        });
+        setInvitations(prev => [inv, ...prev]);
+      }
       setShowModal(false);
     } finally { setSaving(false); }
   };
@@ -199,7 +210,14 @@ export default function PartyInvitationsPage() {
               </div>
             </div>
             {isAdmin && (
-              <div className="flex gap-2 px-4 pb-4 border-t border-gray-50 pt-3">
+              <div className="flex gap-2 px-4 pb-4 border-t border-gray-50 pt-3 flex-wrap">
+                <button
+                  onClick={() => openEdit(inv)}
+                  className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-700 rounded-lg px-3 py-1.5 font-medium hover:bg-gray-50"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Επεξεργασία
+                </button>
                 {!inv.sentAt ? (
                   <button
                     disabled={sending === inv.id}
@@ -239,7 +257,7 @@ export default function PartyInvitationsPage() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b border-gray-100">
               <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                <Cake className="h-5 w-5 text-pink-500" /> Νέα Πρόσκληση Πάρτυ
+                <Cake className="h-5 w-5 text-pink-500" /> {editingId ? 'Επεξεργασία Πρόσκλησης' : 'Νέα Πρόσκληση Πάρτυ'}
               </h3>
               <button onClick={() => setShowModal(false)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
                 <X className="h-5 w-5" />
@@ -249,47 +267,55 @@ export default function PartyInvitationsPage() {
               {/* Birthday child picker */}
               <div className="relative">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Παιδί που κάνει πάρτυ *</label>
-                <input
-                  value={studentSearch || form.birthdayStudentName}
-                  onChange={e => {
-                    setStudentSearch(e.target.value);
-                    setForm(f => ({ ...f, birthdayStudentId: '', birthdayStudentName: '' }));
-                    setShowStudentDropdown(e.target.value.length >= 1);
-                  }}
-                  onFocus={() => { if ((studentSearch || form.birthdayStudentName).length >= 1) setShowStudentDropdown(true); }}
-                  onBlur={() => setTimeout(() => setShowStudentDropdown(false), 150)}
-                  className={inputCls}
-                  placeholder="Αναζήτηση μαθητή..."
-                />
-                {form.birthdayStudentId && (
-                  <div className="mt-1 text-xs text-pink-600 font-medium">🎂 {form.birthdayStudentName}</div>
+                {editingId ? (
+                  <div className={`${inputCls} bg-gray-50 text-gray-700 flex items-center gap-2`}>
+                    🎂 {form.birthdayStudentName}
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      value={studentSearch || form.birthdayStudentName}
+                      onChange={e => {
+                        setStudentSearch(e.target.value);
+                        setForm(f => ({ ...f, birthdayStudentId: '', birthdayStudentName: '' }));
+                        setShowStudentDropdown(e.target.value.length >= 1);
+                      }}
+                      onFocus={() => { if ((studentSearch || form.birthdayStudentName).length >= 1) setShowStudentDropdown(true); }}
+                      onBlur={() => setTimeout(() => setShowStudentDropdown(false), 150)}
+                      className={inputCls}
+                      placeholder="Αναζήτηση μαθητή..."
+                    />
+                    {form.birthdayStudentId && (
+                      <div className="mt-1 text-xs text-pink-600 font-medium">🎂 {form.birthdayStudentName}</div>
+                    )}
+                    {showStudentDropdown && (() => {
+                      const q = studentSearch.toLowerCase();
+                      const filtered = allStudents.filter((s: any) => s.fullName?.toLowerCase().includes(q)).slice(0, 6);
+                      if (!filtered.length) return null;
+                      return (
+                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                          {filtered.map((s: any) => (
+                            <button key={s.id} type="button"
+                              onMouseDown={() => {
+                                setForm(f => ({
+                                  ...f,
+                                  birthdayStudentId: s.id,
+                                  birthdayStudentName: s.fullName,
+                                  title: f.title || `Πρόσκληση από ${s.fullName}`,
+                                }));
+                                setStudentSearch('');
+                                setShowStudentDropdown(false);
+                              }}
+                              className="w-full text-left px-4 py-2.5 hover:bg-pink-50 text-sm border-b border-gray-100 last:border-0"
+                            >
+                              {s.fullName}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </>
                 )}
-                {showStudentDropdown && (() => {
-                  const q = studentSearch.toLowerCase();
-                  const filtered = allStudents.filter((s: any) => s.fullName?.toLowerCase().includes(q)).slice(0, 6);
-                  if (!filtered.length) return null;
-                  return (
-                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-                      {filtered.map((s: any) => (
-                        <button key={s.id} type="button"
-                          onMouseDown={() => {
-                            setForm(f => ({
-                              ...f,
-                              birthdayStudentId: s.id,
-                              birthdayStudentName: s.fullName,
-                              title: f.title || `Πρόσκληση από ${s.fullName}`,
-                            }));
-                            setStudentSearch('');
-                            setShowStudentDropdown(false);
-                          }}
-                          className="w-full text-left px-4 py-2.5 hover:bg-pink-50 text-sm border-b border-gray-100 last:border-0"
-                        >
-                          {s.fullName}
-                        </button>
-                      ))}
-                    </div>
-                  );
-                })()}
               </div>
 
               <div>
@@ -374,7 +400,7 @@ export default function PartyInvitationsPage() {
               </button>
               <button disabled={saving || !form.birthdayStudentId || !form.title.trim()} onClick={doSave}
                 className="flex-1 py-2.5 rounded-xl bg-pink-600 text-white text-sm font-medium hover:bg-pink-700 disabled:opacity-50">
-                {saving ? 'Αποθήκευση...' : 'Αποθήκευση'}
+                {saving ? 'Αποθήκευση...' : editingId ? 'Αποθήκευση αλλαγών' : 'Αποθήκευση'}
               </button>
             </div>
           </div>
