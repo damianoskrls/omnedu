@@ -184,18 +184,29 @@ export class ParentMeetingsService implements OnModuleInit {
       });
     }
 
+    const previousStatus = request.status;
     const saved = await this.prisma.parentMeetingRequest.update({ where: { id: request.id }, data: { status } });
     const teacherName = meeting.teacher?.fullName || 'τον εκπαιδευτικό';
     const day = this.dayLabel(meeting.meetingDate);
-    await this.notifications.notifyUsers(schoolId, [request.parentUserId], {
-      event: status === 'accepted' ? 'parent_meeting_accepted' : 'parent_meeting_request',
-      type: status === 'accepted' ? 'parent_meeting_accepted' : 'parent_meeting',
-      title: status === 'accepted' ? 'Η συνάντηση έκλεισε' : 'Η ώρα δεν είναι διαθέσιμη',
-      body: status === 'accepted'
-        ? `${request.student.fullName}: ${day} στις ${request.slotTime} με ${teacherName}.`
-        : `Η ώρα ${request.slotTime} για ${request.student.fullName} δεν έγινε δεκτή. Διάλεξε άλλη.`,
-      data: { screen: 'parent_meeting', meetingId, classId: meeting.classId, studentId: request.studentId },
-    });
+    if (previousStatus === 'accepted' && status === 'declined') {
+      await this.notifications.notifyUsers(schoolId, [request.parentUserId], {
+        event: 'parent_meeting_cancelled',
+        type: 'parent_meeting',
+        title: 'Ακύρωση συνάντησης',
+        body: `Ο εκπαιδευτικός ακύρωσε τη συνάντηση για ${request.student.fullName} στις ${day} (${request.slotTime}). Παρακαλώ επιλέξτε άλλη διαθέσιμη ώρα.`,
+        data: { screen: 'parent_meeting', meetingId, classId: meeting.classId, studentId: request.studentId },
+      });
+    } else {
+      await this.notifications.notifyUsers(schoolId, [request.parentUserId], {
+        event: status === 'accepted' ? 'parent_meeting_accepted' : 'parent_meeting_request',
+        type: status === 'accepted' ? 'parent_meeting_accepted' : 'parent_meeting',
+        title: status === 'accepted' ? 'Η συνάντηση έκλεισε' : 'Η ώρα δεν είναι διαθέσιμη',
+        body: status === 'accepted'
+          ? `${request.student.fullName}: ${day} στις ${request.slotTime} με ${teacherName}.`
+          : `Η ώρα ${request.slotTime} για ${request.student.fullName} δεν έγινε δεκτή. Διάλεξε άλλη.`,
+        data: { screen: 'parent_meeting', meetingId, classId: meeting.classId, studentId: request.studentId },
+      });
+    }
     return saved;
   }
 
@@ -253,6 +264,121 @@ export class ParentMeetingsService implements OnModuleInit {
     const existing = await this.prisma.parentMeeting.findFirst({ where: { id, schoolId } });
     if (!existing) throw new NotFoundException('Η ενημέρωση δεν βρέθηκε.');
     await this.prisma.parentMeeting.delete({ where: { id } });
+  }
+
+  async eligibleParents(schoolId: string, user: JwtPayload, meetingId: string) {
+    const meeting = await this.meetingOrThrow(schoolId, meetingId);
+    if (!meeting.classId) throw new BadRequestException('Η ενημέρωση δεν ανήκει σε τάξη.');
+    await this.assertCanManage(schoolId, user, meeting.classId);
+
+    const enrollments = await this.prisma.classEnrollment.findMany({
+      where: { classId: meeting.classId, student: { schoolId, isActive: true } },
+      select: { studentId: true },
+    });
+    const allStudentIds = [...new Set(enrollments.map((e) => e.studentId))];
+    if (!allStudentIds.length) return [];
+
+    const acceptedRequests = await this.prisma.parentMeetingRequest.findMany({
+      where: { meetingId, status: 'accepted' },
+      select: { studentId: true },
+    });
+    const acceptedStudentIds = new Set(acceptedRequests.map((r) => r.studentId));
+    const eligibleStudentIds = allStudentIds.filter((id) => !acceptedStudentIds.has(id));
+    if (!eligibleStudentIds.length) return [];
+
+    const studentParents = await this.prisma.studentParent.findMany({
+      where: { studentId: { in: eligibleStudentIds } },
+      include: {
+        student: { select: { id: true, fullName: true } },
+        user: { select: { id: true, fullName: true } },
+      },
+    });
+
+    return (studentParents as any[]).map((p) => ({
+      parentUserId: p.userId,
+      parentName: p.user?.fullName ?? '',
+      studentId: p.studentId,
+      studentName: p.student?.fullName ?? '',
+    }));
+  }
+
+  async proposeSlot(schoolId: string, user: JwtPayload, meetingId: string, data: { parentUserId: string; studentId: string; slotTime: string }) {
+    const meeting = await this.meetingOrThrow(schoolId, meetingId);
+    if (!meeting.classId) throw new BadRequestException('Η ενημέρωση δεν ανήκει σε τάξη.');
+    await this.assertCanManage(schoolId, user, meeting.classId);
+
+    const slotTime = this.time(data.slotTime, 'Ώρα');
+    const available = this.slots(meeting.windowStart, meeting.windowEnd, meeting.durationMinutes);
+    if (!available.includes(slotTime)) throw new BadRequestException('Αυτή η ώρα δεν είναι διαθέσιμη.');
+
+    const taken = await this.prisma.parentMeetingRequest.findFirst({
+      where: { meetingId, slotTime, status: 'accepted' },
+    });
+    if (taken) throw new BadRequestException('Η ώρα έχει ήδη κλείσει.');
+
+    const student = await this.prisma.student.findFirst({
+      where: { id: data.studentId, schoolId },
+      select: { fullName: true },
+    });
+    if (!student) throw new NotFoundException('Ο μαθητής δεν βρέθηκε.');
+
+    const existing = await this.prisma.parentMeetingRequest.findUnique({
+      where: { meetingId_studentId: { meetingId, studentId: data.studentId } },
+    });
+
+    const saved = existing
+      ? await this.prisma.parentMeetingRequest.update({
+          where: { id: existing.id },
+          data: { slotTime, status: 'teacher_proposed', parentUserId: data.parentUserId },
+        })
+      : await this.prisma.parentMeetingRequest.create({
+          data: { meetingId, studentId: data.studentId, parentUserId: data.parentUserId, slotTime, status: 'teacher_proposed' },
+        });
+
+    const day = this.dayLabel(meeting.meetingDate);
+    await this.notifications.notifyUsers(schoolId, [data.parentUserId], {
+      event: 'parent_meeting_proposed',
+      type: 'parent_meeting_proposed',
+      title: 'Πρόταση ώρας συνάντησης',
+      body: `Ο εκπαιδευτικός πρότεινε ${slotTime} για ${student.fullName} στις ${day}. Αποδεχτείτε ή απορρίψτε.`,
+      data: { screen: 'parent_meeting', meetingId, classId: meeting.classId, studentId: data.studentId },
+    });
+
+    return saved;
+  }
+
+  async respondToProposal(schoolId: string, user: JwtPayload, meetingId: string, requestId: string, status: string) {
+    if (status !== 'accepted' && status !== 'declined') throw new BadRequestException('Η απάντηση είναι αποδοχή ή απόρριψη.');
+    const meeting = await this.meetingOrThrow(schoolId, meetingId);
+    const request = await this.prisma.parentMeetingRequest.findFirst({
+      where: { id: requestId, meetingId, status: 'teacher_proposed', parentUserId: user.sub },
+      include: { student: { select: { fullName: true } } },
+    });
+    if (!request) throw new NotFoundException('Η πρόταση δεν βρέθηκε.');
+
+    if (status === 'accepted') {
+      const taken = await this.prisma.parentMeetingRequest.findFirst({
+        where: { meetingId, slotTime: request.slotTime, status: 'accepted' },
+      });
+      if (taken) throw new BadRequestException('Η ώρα έχει ήδη κλείσει.');
+    }
+
+    const saved = await this.prisma.parentMeetingRequest.update({ where: { id: request.id }, data: { status } });
+
+    if (meeting.teacherUserId) {
+      const day = this.dayLabel(meeting.meetingDate);
+      await this.notifications.notifyUsers(schoolId, [meeting.teacherUserId], {
+        event: status === 'accepted' ? 'parent_meeting_proposal_accepted' : 'parent_meeting_proposal_declined',
+        type: 'parent_meeting',
+        title: status === 'accepted' ? 'Αποδοχή ώρας' : 'Απόρριψη ώρας',
+        body: status === 'accepted'
+          ? `${request.student.fullName} αποδέχτηκε ${request.slotTime} στις ${day}.`
+          : `${request.student.fullName} απέρριψε την πρόταση για ${request.slotTime} στις ${day}.`,
+        data: { screen: 'parent_meeting', meetingId, classId: meeting.classId ?? '' },
+      });
+    }
+
+    return saved;
   }
 
   private present(meeting: any, parentUserId: string | null) {

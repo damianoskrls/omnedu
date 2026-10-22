@@ -117,6 +117,37 @@ class _TeacherMeetingsScreenState extends ConsumerState<TeacherMeetingsScreen> {
     setState(() => start ? _from = picked : _until = picked);
   }
 
+  Future<void> _openAssignSheet(String meetingId, String slot) async {
+    List<Map<String, dynamic>> eligible = [];
+    try {
+      final resp = await ref.read(dioProvider).get(
+        '/schools/${widget.schoolId}/parent-meetings/$meetingId/eligible-parents',
+      );
+      final list = resp.data is List ? resp.data as List : [];
+      eligible = list.map((item) => Map<String, dynamic>.from(item as Map)).toList();
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(apiErrorText(error))));
+      return;
+    }
+    if (!mounted) return;
+    if (eligible.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Δεν υπάρχουν γονείς για ανάθεση.')));
+      return;
+    }
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => _AssignSlotSheet(
+        schoolId: widget.schoolId,
+        meetingId: meetingId,
+        slot: slot,
+        eligible: eligible,
+        onDone: _load,
+      ),
+    );
+  }
+
   void _openEditSheet(Map<String, dynamic> meeting) {
     showModalBottomSheet(
       context: context,
@@ -168,7 +199,9 @@ class _TeacherMeetingsScreenState extends ConsumerState<TeacherMeetingsScreen> {
             const SizedBox(height: 8),
             ..._meetings.map((m) => _MeetingScheduleCard(
               meeting: m,
+              schoolId: widget.schoolId,
               onDecide: _decide,
+              onAssign: _openAssignSheet,
               onEdit: () => _openEditSheet(m),
               pretty: _pretty,
             )),
@@ -253,11 +286,20 @@ class _NewMeetingCard extends StatelessWidget {
 
 class _MeetingScheduleCard extends StatefulWidget {
   final Map<String, dynamic> meeting;
+  final String schoolId;
   final Future<void> Function(String meetingId, String requestId, String status) onDecide;
+  final Future<void> Function(String meetingId, String slot) onAssign;
   final VoidCallback onEdit;
   final String Function(dynamic) pretty;
 
-  const _MeetingScheduleCard({required this.meeting, required this.onDecide, required this.onEdit, required this.pretty});
+  const _MeetingScheduleCard({
+    required this.meeting,
+    required this.schoolId,
+    required this.onDecide,
+    required this.onAssign,
+    required this.onEdit,
+    required this.pretty,
+  });
 
   @override
   State<_MeetingScheduleCard> createState() => _MeetingScheduleCardState();
@@ -280,6 +322,7 @@ class _MeetingScheduleCardState extends State<_MeetingScheduleCard> {
 
     final pendingCount = requests.where((r) => r['status'] == 'requested').length;
     final acceptedCount = requests.where((r) => r['status'] == 'accepted').length;
+    final proposedCount = requests.where((r) => r['status'] == 'teacher_proposed').length;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -311,6 +354,8 @@ class _MeetingScheduleCardState extends State<_MeetingScheduleCard> {
                               if (acceptedCount > 0) _Chip(label: '$acceptedCount κλεισμένα', color: const Color(0xFF16A34A)),
                               if (acceptedCount > 0 && pendingCount > 0) const SizedBox(width: 6),
                               if (pendingCount > 0) _Chip(label: '$pendingCount αναμένουν', color: const Color(0xFFD97706)),
+                              if ((acceptedCount > 0 || pendingCount > 0) && proposedCount > 0) const SizedBox(width: 6),
+                              if (proposedCount > 0) _Chip(label: '$proposedCount εκκρεμούν', color: const Color(0xFF4F46E5)),
                             ]),
                           ),
                       ],
@@ -349,6 +394,7 @@ class _MeetingScheduleCardState extends State<_MeetingScheduleCard> {
                     request: req,
                     meetingId: meeting['id']?.toString() ?? '',
                     onDecide: widget.onDecide,
+                    onAssign: () => widget.onAssign(meeting['id']?.toString() ?? '', slot),
                   );
                 },
               ),
@@ -366,8 +412,9 @@ class _SlotRow extends StatelessWidget {
   final Map<String, dynamic>? request;
   final String meetingId;
   final Future<void> Function(String meetingId, String requestId, String status) onDecide;
+  final VoidCallback? onAssign;
 
-  const _SlotRow({required this.slot, required this.request, required this.meetingId, required this.onDecide});
+  const _SlotRow({required this.slot, required this.request, required this.meetingId, required this.onDecide, this.onAssign});
 
   @override
   Widget build(BuildContext context) {
@@ -382,6 +429,9 @@ class _SlotRow extends StatelessWidget {
     } else if (status == 'requested') {
       dotColor = const Color(0xFFD97706);
       label = name.isNotEmpty ? '$name — αναμένει' : 'Αναμένει';
+    } else if (status == 'teacher_proposed') {
+      dotColor = const Color(0xFF4F46E5);
+      label = name.isNotEmpty ? '$name — αναμένει αποδοχή' : 'Αναμένει αποδοχή';
     } else if (status == 'declined') {
       dotColor = const Color(0xFF9CA3AF);
       label = 'Απορρίφθηκε';
@@ -417,7 +467,111 @@ class _SlotRow extends StatelessWidget {
               _ActionBtn(label: 'Ακύρωση', color: const Color(0xFFDC2626), onTap: () => onDecide(meetingId, request!['id'].toString(), 'declined'))
             else if (status == 'declined')
               _ActionBtn(label: 'Αποδοχή', color: const Color(0xFF16A34A), onTap: () => onDecide(meetingId, request!['id'].toString(), 'accepted')),
-          ],
+          ] else if (onAssign != null)
+            _ActionBtn(label: 'Ανάθεση', color: const Color(0xFF4F46E5), onTap: onAssign!),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Ανάθεση slot σε γονέα ───────────────────────────────────────────────────
+
+class _AssignSlotSheet extends ConsumerStatefulWidget {
+  final String schoolId;
+  final String meetingId;
+  final String slot;
+  final List<Map<String, dynamic>> eligible;
+  final VoidCallback onDone;
+
+  const _AssignSlotSheet({
+    required this.schoolId,
+    required this.meetingId,
+    required this.slot,
+    required this.eligible,
+    required this.onDone,
+  });
+
+  @override
+  ConsumerState<_AssignSlotSheet> createState() => _AssignSlotSheetState();
+}
+
+class _AssignSlotSheetState extends ConsumerState<_AssignSlotSheet> {
+  Map<String, dynamic>? _selected;
+  bool _saving = false;
+
+  Future<void> _confirm() async {
+    if (_selected == null) return;
+    setState(() => _saving = true);
+    try {
+      await ref.read(dioProvider).post(
+        '/schools/${widget.schoolId}/parent-meetings/${widget.meetingId}/propose',
+        data: {
+          'parentUserId': _selected!['parentUserId'],
+          'studentId': _selected!['studentId'],
+          'slotTime': widget.slot,
+        },
+      );
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Η ώρα ${widget.slot} ανατέθηκε. Ο γονέας ειδοποιήθηκε.'),
+        ));
+        widget.onDone();
+      }
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(apiErrorText(error))));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 20, 16, 24 + MediaQuery.of(context).viewInsets.bottom),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Expanded(child: Text('Ανάθεση ${widget.slot}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17))),
+            IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+          ]),
+          const SizedBox(height: 4),
+          const Text('Διάλεξε γονέα για αυτή την ώρα:', style: TextStyle(color: Color(0xFF6B7280), fontSize: 13)),
+          const SizedBox(height: 12),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.4),
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: widget.eligible.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (_, i) {
+                final item = widget.eligible[i];
+                final isSelected = _selected?['studentId'] == item['studentId'];
+                return ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                  leading: Icon(
+                    isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+                    color: const Color(0xFF4F46E5),
+                  ),
+                  title: Text(item['studentName']?.toString() ?? '', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Text(item['parentName']?.toString() ?? '', style: const TextStyle(fontSize: 13)),
+                  onTap: () => setState(() => _selected = item),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF4F46E5),
+              minimumSize: const Size.fromHeight(44),
+            ),
+            onPressed: (_selected == null || _saving) ? null : _confirm,
+            child: Text(_saving ? 'Αποστολή...' : 'Ανάθεση & ειδοποίηση'),
+          ),
         ],
       ),
     );

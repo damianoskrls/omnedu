@@ -109,6 +109,26 @@ class _ParentMeetingsScreenState extends ConsumerState<ParentMeetingsScreen> {
     if (mounted) setState(() => _loading = false);
   }
 
+  Future<void> _respond(String meetingId, String requestId, String status) async {
+    setState(() => _sending = '$meetingId-$requestId');
+    try {
+      await ref.read(dioProvider).patch(
+        '/schools/${widget.schoolId}/parent-meetings/$meetingId/requests/$requestId/respond',
+        data: {'status': status},
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(status == 'accepted' ? 'Αποδεχτήκατε την ώρα.' : 'Απορρίψατε την πρόταση.'),
+        ));
+      }
+      await _load();
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(apiErrorText(error))));
+    } finally {
+      if (mounted) setState(() => _sending = null);
+    }
+  }
+
   Future<void> _request(String meetingId, String slot) async {
     setState(() => _sending = '$meetingId-$slot');
     try {
@@ -241,6 +261,16 @@ class _ParentMeetingsScreenState extends ConsumerState<ParentMeetingsScreen> {
               slotTime: mine?['slotTime']?.toString() ?? '',
               teacherName: teacherName,
             )
+          else if (mine != null && mine['status'] == 'teacher_proposed')
+            _TeacherProposedBanner(
+              requestId: mine!['id']?.toString() ?? '',
+              meetingId: meeting['id']?.toString() ?? '',
+              slotTime: mine!['slotTime']?.toString() ?? '',
+              teacherName: teacherName,
+              meetingDate: meeting['meetingDate']?.toString() ?? '',
+              sending: _sending,
+              onRespond: _respond,
+            )
           else if (slots.isEmpty)
             const Text('Ο εκπαιδευτικός δεν έχει ανοίξει ώρες για κράτηση.')
           else ...[
@@ -291,6 +321,88 @@ class _ParentMeetingsScreenState extends ConsumerState<ParentMeetingsScreen> {
               ),
             ],
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TeacherProposedBanner extends StatelessWidget {
+  final String requestId;
+  final String meetingId;
+  final String slotTime;
+  final String teacherName;
+  final String meetingDate;
+  final String? sending;
+  final Future<void> Function(String meetingId, String requestId, String status) onRespond;
+
+  const _TeacherProposedBanner({
+    required this.requestId,
+    required this.meetingId,
+    required this.slotTime,
+    required this.teacherName,
+    required this.meetingDate,
+    required this.sending,
+    required this.onRespond,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final teacher = teacherName.isEmpty ? 'ο εκπαιδευτικός' : teacherName;
+    final isSending = sending != null;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEEF2FF),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFC7D2FE)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.schedule_rounded, size: 18, color: Color(0xFF4F46E5)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '$teacher πρότεινε ${meetingDay(meetingDate)} στις $slotTime. Αποδεχτείτε ή απορρίψτε.',
+                  style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF3730A3), fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: isSending ? null : () => onRespond(meetingId, requestId, 'declined'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFDC2626),
+                    side: const BorderSide(color: Color(0xFFDC2626)),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: const Text('Απόρριψη', style: TextStyle(fontSize: 13)),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton(
+                  onPressed: isSending ? null : () => onRespond(meetingId, requestId, 'accepted'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF4F46E5),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: const Text('Αποδοχή', style: TextStyle(fontSize: 13)),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );

@@ -48,6 +48,39 @@ export class ParentMeetingsController {
     return this.svc.decide(schoolId, user, id, requestId, String(body.status ?? ''));
   }
 
+  @Get(':id/eligible-parents')
+  @Roles('school_admin', 'teacher')
+  eligibleParents(
+    @Param('schoolId') schoolId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.svc.eligibleParents(schoolId, user, id);
+  }
+
+  @Post(':id/propose')
+  @Roles('school_admin', 'teacher')
+  proposeSlot(
+    @Param('schoolId') schoolId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { parentUserId: string; studentId: string; slotTime: string },
+  ) {
+    return this.svc.proposeSlot(schoolId, user, id, body);
+  }
+
+  @Patch(':id/requests/:requestId/respond')
+  @Roles('parent')
+  respondToProposal(
+    @Param('schoolId') schoolId: string,
+    @Param('id') id: string,
+    @Param('requestId') requestId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { status: string },
+  ) {
+    return this.svc.respondToProposal(schoolId, user, id, requestId, String(body.status ?? ''));
+  }
+
   @Patch(':id')
   @Roles('school_admin', 'teacher')
   update(@Param('id') id: string, @Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload, @Body() body: any) {
