@@ -311,11 +311,12 @@ export default function PartyInvitationsPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Εικόνα πρόσκλησης</label>
                 {form.imageUrl ? (
-                  <div className="relative inline-block">
-                    <img src={form.imageUrl} alt="" className="h-28 w-auto rounded-xl border border-gray-200 object-cover" />
-                    <button onClick={() => setForm(f => ({ ...f, imageUrl: '' }))} className="absolute -top-2 -right-2 bg-white rounded-full border border-gray-200 p-0.5 text-gray-500 hover:text-red-500">
-                      <X className="h-3.5 w-3.5" />
+                  <div className="relative w-full">
+                    <img src={form.imageUrl} alt="" className="w-full max-h-52 rounded-xl border border-gray-200 object-cover" />
+                    <button onClick={() => setForm(f => ({ ...f, imageUrl: '' }))} className="absolute top-2 right-2 bg-white rounded-full border border-gray-200 p-1 text-gray-500 hover:text-red-500 shadow-sm">
+                      <X className="h-4 w-4" />
                     </button>
+                    <div className="mt-1 text-xs text-green-600 font-medium flex items-center gap-1">✓ Η εικόνα ανέβηκε</div>
                   </div>
                 ) : (
                   <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
