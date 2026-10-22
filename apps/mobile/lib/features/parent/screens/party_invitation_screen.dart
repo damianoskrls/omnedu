@@ -74,10 +74,14 @@ class _PartyInvitationScreenState extends ConsumerState<PartyInvitationScreen> {
     final body = row['body']?.toString() ?? '';
     final imageUrl = row['imageUrl']?.toString() ?? '';
     final eventDate = row['eventDate']?.toString() ?? '';
+    final sentAt = row['sentAt'];
     final birthdayChild = row['birthdayStudent'] is Map
         ? Map<String, dynamic>.from(row['birthdayStudent'] as Map)
         : <String, dynamic>{};
     final birthdayName = birthdayChild['fullName']?.toString() ?? '';
+    final recipients = row['recipientStudents'] is List
+        ? (row['recipientStudents'] as List).cast<Map>()
+        : <Map>[];
 
     return ListView(
       padding: EdgeInsets.fromLTRB(16, 16, 16, 24 + systemBottomInset(context)),
@@ -107,13 +111,35 @@ class _PartyInvitationScreenState extends ConsumerState<PartyInvitationScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text('📅 $eventDate',
                       style: const TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w600)),
                 ),
               ],
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      sentAt != null ? Icons.check_circle_rounded : Icons.schedule_rounded,
+                      size: 14, color: Colors.white,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      sentAt != null ? 'Η πρόσκληση στάλθηκε' : 'Δεν έχει σταλεί ακόμα',
+                      style: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -125,7 +151,7 @@ class _PartyInvitationScreenState extends ConsumerState<PartyInvitationScreen> {
           ),
           const SizedBox(height: 16),
         ],
-        if (body.isNotEmpty)
+        if (body.isNotEmpty) ...[
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -135,6 +161,35 @@ class _PartyInvitationScreenState extends ConsumerState<PartyInvitationScreen> {
             ),
             child: Text(body, style: const TextStyle(fontSize: 15, height: 1.55, color: Color(0xFF374151))),
           ),
+          const SizedBox(height: 16),
+        ],
+        if (recipients.isNotEmpty) ...[
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFFCE7F3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Προσκεκλημένοι (${recipients.length})',
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF111827))),
+                const SizedBox(height: 10),
+                ...recipients.map((r) => Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(children: [
+                        const Icon(Icons.person_rounded, size: 16, color: Color(0xFFDB2777)),
+                        const SizedBox(width: 8),
+                        Text(r['fullName']?.toString() ?? '',
+                            style: const TextStyle(fontSize: 14, color: Color(0xFF374151))),
+                      ]),
+                    )),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }

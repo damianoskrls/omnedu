@@ -55,17 +55,18 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
 
   void _startRoute({bool afternoon = false}) {
     final d = _dashboard;
-    final buses = d?['buses'] as List? ?? [];
-    final serviceId = d?['activeServiceId'] as String?;
-    if (serviceId == null || buses.isEmpty) return;
-    final bus = Map<String, dynamic>.from(buses.first as Map);
+    final route = afternoon ? (d?['afternoonRoute']) : (d?['morningRoute']);
+    final serviceId = (route is Map ? route['serviceId']?.toString() : null)
+        ?? d?['activeServiceId']?.toString();
+    if (serviceId == null) return;
+    final busName = (route is Map ? route['name']?.toString() : null) ?? 'Σχολικό';
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => DriverRouteScreen(
           schoolId: widget.schoolId,
           serviceId: serviceId,
-          busName: bus['name']?.toString() ?? 'Σχολικό',
+          busName: busName,
           isAfternoon: afternoon,
         ),
       ),
@@ -77,12 +78,10 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
     final user = ref.watch(authProvider).user;
     final firstName = (user?.fullName ?? 'Οδηγέ').split(' ').first;
     final d = _dashboard;
-    final buses = d?['buses'] as List? ?? [];
-    final busInfo = buses.isNotEmpty ? Map<String, dynamic>.from(buses.first as Map) : null;
     final morning = d?['morningRoute'] != null ? Map<String, dynamic>.from(d!['morningRoute'] as Map) : null;
     final afternoon = d?['afternoonRoute'] != null ? Map<String, dynamic>.from(d!['afternoonRoute'] as Map) : null;
-    final busName = busInfo?['name']?.toString() ?? 'Σχολικό';
-    final busNumber = busInfo?['busNumber']?.toString() ?? '';
+    final busName = morning?['name']?.toString() ?? afternoon?['name']?.toString() ?? 'Σχολικό';
+    final busNumber = morning?['busNumber']?.toString() ?? afternoon?['busNumber']?.toString() ?? '';
 
     final conversations = ref.watch(conversationsProvider(widget.schoolId));
     final unread = conversations.asData?.value
