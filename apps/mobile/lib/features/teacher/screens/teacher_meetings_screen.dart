@@ -408,10 +408,15 @@ class _SlotRow extends StatelessWidget {
               ),
             ),
           ),
-          if (status == 'requested' && request != null) ...[
-            _ActionBtn(label: 'Αποδοχή', color: const Color(0xFF16A34A), onTap: () => onDecide(meetingId, request!['id'].toString(), 'accepted')),
-            const SizedBox(width: 6),
-            _ActionBtn(label: 'Άρνηση', color: const Color(0xFFDC2626), onTap: () => onDecide(meetingId, request!['id'].toString(), 'declined')),
+          if (request != null) ...[
+            if (status == 'requested') ...[
+              _ActionBtn(label: 'Αποδοχή', color: const Color(0xFF16A34A), onTap: () => onDecide(meetingId, request!['id'].toString(), 'accepted')),
+              const SizedBox(width: 6),
+              _ActionBtn(label: 'Άρνηση', color: const Color(0xFFDC2626), onTap: () => onDecide(meetingId, request!['id'].toString(), 'declined')),
+            ] else if (status == 'accepted')
+              _ActionBtn(label: 'Ακύρωση', color: const Color(0xFFDC2626), onTap: () => onDecide(meetingId, request!['id'].toString(), 'declined'))
+            else if (status == 'declined')
+              _ActionBtn(label: 'Αποδοχή', color: const Color(0xFF16A34A), onTap: () => onDecide(meetingId, request!['id'].toString(), 'accepted')),
           ],
         ],
       ),
