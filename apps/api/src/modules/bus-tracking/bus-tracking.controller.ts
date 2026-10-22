@@ -79,6 +79,20 @@ export class BusTrackingController {
     return this.service.removeClosure(schoolId, closureId);
   }
 
+  @Get('dashboard')
+  dashboard(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
+    return this.service.dashboard(schoolId, user.sub, user.role);
+  }
+
+  @Post('absent')
+  absent(
+    @Param('schoolId') schoolId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { serviceId?: string; studentId?: string },
+  ) {
+    return this.service.absent(schoolId, user.sub, user.role, body);
+  }
+
   @Get('student/:studentId')
   forStudent(
     @Param('schoolId') schoolId: string,

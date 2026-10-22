@@ -1,10 +1,16 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
-export class BusTrackingService {
+export class BusTrackingService implements OnModuleInit {
   constructor(private prisma: PrismaService, private notifications: NotificationsService) {}
+
+  async onModuleInit() {
+    await this.prisma.$executeRawUnsafe(
+      `ALTER TABLE bus_pickups ADD COLUMN IF NOT EXISTS is_absent BOOLEAN NOT NULL DEFAULT false`,
+    );
+  }
 
   async drivers(schoolId: string) {
     return this.prisma.schoolMember.findMany({
@@ -70,7 +76,8 @@ export class BusTrackingService {
     if (!id) return { serviceId: null, riders: [] };
     const day = schoolDay();
     const dayKey = schoolDayKey();
-    const [rows, pickups] = await Promise.all([
+    const dayStr = day.toISOString().slice(0, 10);
+    const [rows, pickups, absentRows] = await Promise.all([
       this.prisma.studentService.findMany({
         where: { serviceId: id, isActive: true, student: { schoolId, isActive: true } },
         include: {
@@ -79,15 +86,20 @@ export class BusTrackingService {
               id: true,
               fullName: true,
               avatarUrl: true,
-              parents: { include: { user: { select: { id: true, fullName: true } } } },
+              parents: { include: { user: { select: { id: true, fullName: true, phone: true, avatarUrl: true } } } },
             },
           },
           stop: true,
         },
       }),
       this.prisma.busPickup.findMany({ where: { serviceId: id, day } }),
+      this.prisma.$queryRawUnsafe<{ student_id: string }[]>(
+        `SELECT student_id FROM bus_pickups WHERE service_id = $1 AND day = $2::date AND is_absent = true`,
+        id, dayStr,
+      ),
     ]);
     const picked = new Map(pickups.map((row) => [row.studentId, row.pickedUpAt]));
+    const absentSet = new Set(absentRows.map((r) => r.student_id));
     const riders = rows.map((row) => {
       const point = riderPoint(row);
       const mode = row.serviceMode || 'both';
@@ -106,9 +118,12 @@ export class BusTrackingService {
         longitude: point?.longitude ?? null,
         parentId: parent?.id ?? null,
         parentName: parent?.fullName ?? null,
+        parentPhone: parent?.phone ?? null,
+        parentAvatarUrl: parent?.avatarUrl ?? null,
         canPickup: mode !== 'dropoff',
         pickedUp: picked.has(row.student.id),
         pickedUpAt: picked.get(row.student.id) ?? null,
+        isAbsent: absentSet.has(row.student.id),
       };
     }).sort((a, b) => {
       const left = minutesOf(a.pickupTime) ?? 24 * 60;
@@ -233,6 +248,59 @@ export class BusTrackingService {
     if (!existing) throw new NotFoundException('Η ημέρα δεν βρέθηκε.');
     await this.prisma.busClosure.delete({ where: { id: existing.id } });
     return { success: true };
+  }
+
+  async absent(schoolId: string, userId: string, role: string | null | undefined, data: { serviceId?: string; studentId?: string }) {
+    const serviceId = await this.driverServiceId(schoolId, userId, role, data.serviceId);
+    const studentId = data.studentId?.trim() ?? '';
+    if (!serviceId || !studentId) throw new BadRequestException('Διάλεξε παιδί από το δρομολόγιο.');
+    const rider = await this.prisma.studentService.findFirst({
+      where: { serviceId, studentId, isActive: true, student: { schoolId, isActive: true } },
+    });
+    if (!rider) throw new NotFoundException('Αυτό το παιδί δεν είναι στο σχολικό σου.');
+    const day = schoolDay();
+    const dayStr = day.toISOString().slice(0, 10);
+    const { randomUUID } = await import('crypto');
+    await this.prisma.$executeRawUnsafe(
+      `INSERT INTO bus_pickups (id, school_id, service_id, student_id, driver_user_id, day, picked_up_at, is_absent)
+       VALUES ($1, $2, $3, $4, $5, $6::date, NOW(), true)
+       ON CONFLICT (service_id, student_id, day) DO UPDATE SET is_absent = true`,
+      randomUUID(), schoolId, serviceId, studentId, userId, dayStr,
+    );
+    return { ok: true, studentId };
+  }
+
+  async dashboard(schoolId: string, userId: string, role: string | null | undefined) {
+    if (role !== 'driver') throw new ForbiddenException('Μόνο ο οδηγός βλέπει το dashboard.');
+    const buses = await this.prisma.extraService.findMany({
+      where: { schoolId, serviceType: 'bus', isActive: true, driverUserId: userId },
+      include: { busPosition: true, studentServices: { where: { isActive: true } } },
+    });
+    const dayKey = schoolDayKey();
+    const morningBus = buses[0] ?? null;
+    const afternoonBus = buses[1] ?? null;
+    const toStats = (bus: typeof morningBus) => {
+      if (!bus) return null;
+      const times = bus.studentServices.map((ss: Record<string, unknown>) => clockOf(ss as Parameters<typeof clockOf>[0], 'pickup', dayKey)).filter(Boolean);
+      times.sort();
+      const stops = new Set(bus.studentServices.map((ss: Record<string, unknown>) => (ss as { stopId?: string }).stopId).filter(Boolean)).size;
+      return {
+        serviceId: bus.id,
+        name: bus.name,
+        busNumber: bus.busNumber ?? null,
+        startTime: times[0] ?? null,
+        stopsCount: stops,
+        studentsCount: bus.studentServices.length,
+      };
+    };
+    const position = morningBus?.busPosition;
+    const ageMs = position ? Date.now() - position.updatedAt.getTime() : Infinity;
+    return {
+      morningRoute: toStats(morningBus),
+      afternoonRoute: toStats(afternoonBus),
+      isActive: ageMs < 2 * 60 * 60 * 1000,
+      activeServiceId: morningBus?.id ?? null,
+    };
   }
 
   private async notifyClosure(schoolId: string, day: Date, reason: string) {
