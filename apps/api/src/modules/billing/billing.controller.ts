@@ -240,4 +240,18 @@ export class BillingController {
   createInvoice(@Param('schoolId') schoolId: string, @Body() body: any) {
     return this.billing.createInvoice(schoolId, body);
   }
+
+  // ── Sibling discount policy ──────────────────────────────
+
+  @Get('sibling-discount-policy')
+  @Roles('school_admin')
+  getSiblingDiscountPolicy(@Param('schoolId') schoolId: string) {
+    return this.billing.getSiblingDiscountPolicy(schoolId);
+  }
+
+  @Patch('sibling-discount-policy')
+  @Roles('school_admin')
+  updateSiblingDiscountPolicy(@Param('schoolId') schoolId: string, @Body() body: { siblingDiscountEnabled?: boolean; siblingDiscount2Pct?: number | null; siblingDiscount3PlusPct?: number | null }) {
+    return this.billing.updateSiblingDiscountPolicy(schoolId, body);
+  }
 }

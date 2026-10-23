@@ -2076,6 +2076,45 @@ export default function StudentProfilePage() {
               </div>
             )}
 
+            {/* Sibling discount section */}
+            {isAdmin && (() => {
+              const siblingLine = currentQuote.lines.find((l: any) => l.label.startsWith('Έκπτωση αδελφών'));
+              const skipSibling = feeOverride?.skipSiblingDiscount ?? false;
+
+              async function toggleSkipSiblingDiscount() {
+                const next = !skipSibling;
+                await billingApi.upsertStudentFee(schoolId, id, { skipSiblingDiscount: next });
+                await loadBillingData();
+              }
+
+              return (
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-semibold text-gray-900">Έκπτωση αδελφών</h3>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {siblingLine
+                          ? `Εφαρμόζεται (${siblingLine.label}) · −€${Math.abs(siblingLine.amount).toFixed(2)}/μήνα`
+                          : 'Δεν εφαρμόζεται αυτόν τον μήνα'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">{skipSibling ? 'Εξαίρεση' : 'Αυτόματη'}</span>
+                      <button
+                        role="switch"
+                        aria-checked={!skipSibling}
+                        onClick={toggleSkipSiblingDiscount}
+                        title={skipSibling ? 'Το παιδί εξαιρείται από την έκπτωση αδελφών' : 'Κλικ για εξαίρεση'}
+                        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-300 ${!skipSibling ? 'bg-indigo-600' : 'bg-gray-200'}`}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${!skipSibling ? 'translate-x-6' : 'translate-x-1'}`} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <div className="flex items-start justify-between gap-4 mb-4">
                 <div>

@@ -76,6 +76,11 @@ export default function BillingPage() {
   const [savingDueDay, setSavingDueDay] = useState(false);
   const [dueDaySaved, setDueDaySaved] = useState(false);
 
+  // Sibling discount policy
+  const [siblingPolicy, setSiblingPolicy] = useState<{ siblingDiscountEnabled: boolean; siblingDiscount2Pct: number | null; siblingDiscount3PlusPct: number | null }>({ siblingDiscountEnabled: false, siblingDiscount2Pct: null, siblingDiscount3PlusPct: null });
+  const [savingSiblingPolicy, setSavingSiblingPolicy] = useState(false);
+  const [siblingPolicySaved, setSiblingPolicySaved] = useState(false);
+
   // Settings modals
   const [editingLevelFee, setEditingLevelFee] = useState<any>(null); // { levelId, levelName, monthlyFee }
   const [editingOverride, setEditingOverride] = useState<any>(null); // student charge selected for override/subsidy management
@@ -91,12 +96,13 @@ export default function BillingPage() {
     if (!schoolId) return;
     setLoading(true);
     try {
-      const [ch, st, lv, lf, school] = await Promise.all([
+      const [ch, st, lv, lf, school, sibPol] = await Promise.all([
         billingApi.getCharges(schoolId, month, year),
         billingApi.stats(schoolId),
         levelsApi.list(schoolId),
         billingApi.getLevelFees(schoolId),
         schoolsApi.get(schoolId),
+        billingApi.getSiblingDiscountPolicy(schoolId).catch(() => null),
       ]);
       const chargesArr = Array.isArray(ch) ? ch : [];
       setCharges(chargesArr);
@@ -104,6 +110,7 @@ export default function BillingPage() {
       setLevels(Array.isArray(lv) ? lv : []);
       setLevelFees(Array.isArray(lf) ? lf : []);
       if ((school as any)?.billingDueDay != null) setBillingDueDay(String((school as any).billingDueDay));
+      if (sibPol) setSiblingPolicy({ siblingDiscountEnabled: (sibPol as any).siblingDiscountEnabled ?? false, siblingDiscount2Pct: (sibPol as any).siblingDiscount2Pct ?? null, siblingDiscount3PlusPct: (sibPol as any).siblingDiscount3PlusPct ?? null });
 
       // Auto-generate for the current month if no charges exist yet
       const now = new Date();
@@ -292,6 +299,21 @@ export default function BillingPage() {
     }
   }
 
+  async function saveSiblingPolicy() {
+    setSavingSiblingPolicy(true);
+    try {
+      await billingApi.updateSiblingDiscountPolicy(schoolId, {
+        siblingDiscountEnabled: siblingPolicy.siblingDiscountEnabled,
+        siblingDiscount2Pct: siblingPolicy.siblingDiscountEnabled ? (siblingPolicy.siblingDiscount2Pct ?? null) : null,
+        siblingDiscount3PlusPct: siblingPolicy.siblingDiscountEnabled ? (siblingPolicy.siblingDiscount3PlusPct ?? null) : null,
+      });
+      setSiblingPolicySaved(true);
+      setTimeout(() => setSiblingPolicySaved(false), 2000);
+    } finally {
+      setSavingSiblingPolicy(false);
+    }
+  }
+
   async function saveLevelFee() {
     if (!editingLevelFee) return;
     await billingApi.upsertLevelFee(schoolId, editingLevelFee.levelId, {
@@ -430,6 +452,11 @@ export default function BillingPage() {
           saveBillingDueDay={saveBillingDueDay}
           savingDueDay={savingDueDay}
           dueDaySaved={dueDaySaved}
+          siblingPolicy={siblingPolicy}
+          setSiblingPolicy={setSiblingPolicy}
+          saveSiblingPolicy={saveSiblingPolicy}
+          savingSiblingPolicy={savingSiblingPolicy}
+          siblingPolicySaved={siblingPolicySaved}
         />
       ) : tab === 'events' ? (
         /* ---- Events tab ---- */
@@ -864,7 +891,7 @@ export default function BillingPage() {
   );
 }
 
-function SettingsTab({ levels, levelFees, editingLevelFee, setEditingLevelFee, saveLevelFee, billingDueDay, setBillingDueDay, saveBillingDueDay, savingDueDay, dueDaySaved }: any) {
+function SettingsTab({ levels, levelFees, editingLevelFee, setEditingLevelFee, saveLevelFee, billingDueDay, setBillingDueDay, saveBillingDueDay, savingDueDay, dueDaySaved, siblingPolicy, setSiblingPolicy, saveSiblingPolicy, savingSiblingPolicy, siblingPolicySaved }: any) {
   const feeMap: Record<string, any> = {};
   levelFees.forEach((lf: any) => { feeMap[lf.levelId] = lf; });
 
@@ -893,6 +920,58 @@ function SettingsTab({ levels, levelFees, editingLevelFee, setEditingLevelFee, s
           {dueDaySaved ? 'Αποθηκεύτηκε' : savingDueDay ? 'Αποθήκευση...' : 'Αποθήκευση'}
         </button>
       </div>
+    </div>
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="text-base font-bold text-gray-900">Έκπτωση αδελφών</h2>
+        <button
+          role="switch"
+          aria-checked={siblingPolicy.siblingDiscountEnabled}
+          onClick={() => setSiblingPolicy({ ...siblingPolicy, siblingDiscountEnabled: !siblingPolicy.siblingDiscountEnabled })}
+          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-300 ${siblingPolicy.siblingDiscountEnabled ? 'bg-indigo-600' : 'bg-gray-200'}`}
+        >
+          <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${siblingPolicy.siblingDiscountEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+        </button>
+      </div>
+      <p className="text-sm text-gray-500 mb-4">Αυτόματη έκπτωση για οικογένειες με 2 ή περισσότερα παιδιά στο σχολείο. Εφαρμόζεται στη Φοίτηση κάθε μήνα.</p>
+      {siblingPolicy.siblingDiscountEnabled && (
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Έκπτωση 2ου παιδιού (%)</label>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step={0.5}
+              value={siblingPolicy.siblingDiscount2Pct ?? ''}
+              onChange={e => setSiblingPolicy({ ...siblingPolicy, siblingDiscount2Pct: e.target.value === '' ? null : Number(e.target.value) })}
+              placeholder="π.χ. 10"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Έκπτωση 3ου+ παιδιού (%) <span className="text-gray-400 font-normal">(προαιρετικό)</span></label>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step={0.5}
+              value={siblingPolicy.siblingDiscount3PlusPct ?? ''}
+              onChange={e => setSiblingPolicy({ ...siblingPolicy, siblingDiscount3PlusPct: e.target.value === '' ? null : Number(e.target.value) })}
+              placeholder="π.χ. 15"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            />
+          </div>
+        </div>
+      )}
+      <button
+        onClick={saveSiblingPolicy}
+        disabled={savingSiblingPolicy}
+        className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+      >
+        {siblingPolicySaved ? <Check className="h-3.5 w-3.5" /> : null}
+        {siblingPolicySaved ? 'Αποθηκεύτηκε' : savingSiblingPolicy ? 'Αποθήκευση...' : 'Αποθήκευση'}
+      </button>
     </div>
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
       <h2 className="text-base font-bold text-gray-900 mb-1">Τιμολόγηση ανά Βαθμίδα</h2>

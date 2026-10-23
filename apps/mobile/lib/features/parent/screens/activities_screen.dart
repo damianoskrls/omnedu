@@ -36,6 +36,15 @@ final schoolActivitiesProvider = FutureProvider.family<List<dynamic>, String>(
   },
 );
 
+final schoolServicesProvider = FutureProvider.family<List<dynamic>, String>(
+  (ref, schoolId) async {
+    final dio = ref.read(dioProvider);
+    final resp = await dio.get('/schools/$schoolId/extra-services');
+    final data = resp.data;
+    return data is List ? data : [];
+  },
+);
+
 class ActivitiesScreen extends ConsumerWidget {
   final String schoolId;
   const ActivitiesScreen({super.key, required this.schoolId});
@@ -44,6 +53,7 @@ class ActivitiesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final childrenAsync = ref.watch(childrenWithServicesProvider(schoolId));
     final activitiesAsync = ref.watch(schoolActivitiesProvider(schoolId));
+    final servicesAsync = ref.watch(schoolServicesProvider(schoolId));
 
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAFB),
@@ -56,6 +66,7 @@ class ActivitiesScreen extends ConsumerWidget {
             onPressed: () {
               ref.invalidate(childrenWithServicesProvider(schoolId));
               ref.invalidate(schoolActivitiesProvider(schoolId));
+              ref.invalidate(schoolServicesProvider(schoolId));
             },
           ),
         ],
@@ -64,69 +75,103 @@ class ActivitiesScreen extends ConsumerWidget {
         onRefresh: () async {
           ref.invalidate(childrenWithServicesProvider(schoolId));
           ref.invalidate(schoolActivitiesProvider(schoolId));
+          ref.invalidate(schoolServicesProvider(schoolId));
           await Future.wait([
             ref.read(childrenWithServicesProvider(schoolId).future),
             ref.read(schoolActivitiesProvider(schoolId).future),
+            ref.read(schoolServicesProvider(schoolId).future),
           ]);
         },
         child: CustomScrollView(
           slivers: [
-            // School activities with instructors section
-            SliverToBoxAdapter(
-              child: activitiesAsync.when(
-                loading: () => const SizedBox(height: 80, child: Center(child: CircularProgressIndicator())),
-                error: (_, __) => const SizedBox.shrink(),
-                data: (activities) {
-                  if (activities.isEmpty) return const SizedBox.shrink();
-                  return _SchoolActivitiesSection(activities: activities);
-                },
-              ),
-            ),
-
-            // My children's registrations
+            // 1. My children's enrolled activities + services (top)
             SliverToBoxAdapter(
               child: childrenAsync.when(
-                loading: () => const SizedBox.shrink(),
+                loading: () => const SizedBox(height: 80, child: Center(child: CircularProgressIndicator())),
                 error: (e, _) => Center(child: Text('Σφάλμα: $e')),
                 data: (children) {
-                  final registered = children.any((c) {
+                  final hasEnrolled = children.any((c) {
                     final regs = (c as Map)['activityRegistrations'];
-                    return regs is List && regs.isNotEmpty;
+                    final svcs = c['studentServices'];
+                    return (regs is List && regs.isNotEmpty) || (svcs is List && svcs.isNotEmpty);
                   });
-                  final catalogEmpty = activitiesAsync.maybeWhen(data: (rows) => rows.isEmpty, orElse: () => false);
-                  if (children.isNotEmpty && !registered && catalogEmpty) {
-                    return const Padding(
-                      padding: EdgeInsets.fromLTRB(24, 80, 24, 24),
-                      child: Column(
-                        children: [
-                          Icon(Icons.palette_outlined, size: 72, color: Color(0xFFD1D5DB)),
-                          SizedBox(height: 12),
-                          Text('Χωρίς δραστηριότητες', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF2C2422))),
-                          SizedBox(height: 8),
-                          Text(
-                            'Δεν υπάρχουν δραστηριότητες για τα παιδιά σας. Θα εμφανιστούν εδώ μόλις τις καταχωρήσει η διαχείριση.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: Color(0xFF6B7280), height: 1.4),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-                  if (children.isEmpty) return const SizedBox.shrink();
+                  if (!hasEnrolled) return const SizedBox.shrink();
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Padding(
-                        padding: EdgeInsets.fromLTRB(16, 8, 16, 10),
-                        child: Text('Εγγεγραμμένες Δραστηριότητες',
+                        padding: EdgeInsets.fromLTRB(16, 16, 16, 10),
+                        child: Text('Εγγεγραμμένες Δραστηριότητες & Παροχές',
                             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF111827))),
                       ),
-                      ...children.map((c) => _ChildActivitiesSection(child: c as Map<String, dynamic>)),
-                      const SizedBox(height: 24),
+                      ...children.map((c) => _ChildServicesSection(child: c as Map<String, dynamic>)),
+                      const SizedBox(height: 8),
                     ],
                   );
                 },
               ),
+            ),
+
+            // 2. School catalog: all activities + services, with enrollment status tag
+            SliverToBoxAdapter(
+              child: Builder(builder: (context) {
+                final children = childrenAsync.maybeWhen(data: (c) => c, orElse: () => <dynamic>[]);
+                final activities = activitiesAsync.maybeWhen(data: (a) => a, orElse: () => <dynamic>[]);
+                final services = servicesAsync.maybeWhen(data: (s) => s, orElse: () => <dynamic>[]);
+
+                // Collect all enrolled activity IDs across all children
+                final enrolledActivityIds = <String>{};
+                final enrolledServiceIds = <String>{};
+                for (final child in children) {
+                  final regs = (child as Map)['activityRegistrations'] as List? ?? [];
+                  for (final reg in regs) {
+                    final actId = (reg as Map)['activityId']?.toString() ?? (reg['activity'] as Map?)?['id']?.toString() ?? '';
+                    if (actId.isNotEmpty) enrolledActivityIds.add(actId);
+                  }
+                  final svcs = child['studentServices'] as List? ?? [];
+                  for (final ss in svcs) {
+                    final svcId = (ss as Map)['serviceId']?.toString() ?? (ss['service'] as Map?)?['id']?.toString() ?? '';
+                    if (svcId.isNotEmpty) enrolledServiceIds.add(svcId);
+                  }
+                }
+
+                if (activities.isEmpty && services.isEmpty) {
+                  if (activitiesAsync.isLoading || servicesAsync.isLoading) {
+                    return const SizedBox(height: 60, child: Center(child: CircularProgressIndicator()));
+                  }
+                  return const SizedBox.shrink();
+                }
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(16, 8, 16, 10),
+                      child: Text('Όλες οι Δραστηριότητες & Παροχές',
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF111827))),
+                    ),
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: activities.length + services.length,
+                      itemBuilder: (_, i) {
+                        if (i < activities.length) {
+                          final activity = activities[i] as Map<String, dynamic>;
+                          final actId = activity['id']?.toString() ?? '';
+                          final isEnrolled = enrolledActivityIds.contains(actId);
+                          return _SchoolActivityCard(activity: activity, isEnrolled: isEnrolled);
+                        }
+                        final service = services[i - activities.length] as Map<String, dynamic>;
+                        final svcId = service['id']?.toString() ?? '';
+                        final isEnrolled = enrolledServiceIds.contains(svcId);
+                        return _SchoolServiceCard(service: service, isEnrolled: isEnrolled);
+                      },
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+                );
+              }),
             ),
           ],
         ),
@@ -164,7 +209,8 @@ class _SchoolActivitiesSection extends StatelessWidget {
 
 class _SchoolActivityCard extends StatelessWidget {
   final Map<String, dynamic> activity;
-  const _SchoolActivityCard({required this.activity});
+  final bool isEnrolled;
+  const _SchoolActivityCard({required this.activity, this.isEnrolled = false});
 
   static const _typeIcons = {
     'excursion': (icon: Icons.directions_bus_outlined, color: Color(0xFF059669), bg: Color(0xFFECFDF5)),
@@ -240,6 +286,7 @@ class _SchoolActivityCard extends StatelessWidget {
                       const SizedBox(height: 6),
                       Wrap(
                         spacing: 6,
+                        runSpacing: 4,
                         children: [
                           if (monthlyCost != null)
                             _Chip('€$monthlyCost/μήνα', typeInfo.color, typeInfo.bg),
@@ -249,6 +296,10 @@ class _SchoolActivityCard extends StatelessWidget {
                           if (scheduleSlots.isNotEmpty)
                             _Chip(scheduleSlots.map((slot) => _scheduleLabel(slot as Map<String, dynamic>)).join(' · '),
                                 const Color(0xFF6B7280), const Color(0xFFF3F4F6)),
+                          if (isEnrolled)
+                            _Chip('Εγγεγραμμένο', const Color(0xFF16A34A), const Color(0xFFDCFCE7))
+                          else
+                            _Chip('Μη εγγεγραμμένο', const Color(0xFF9CA3AF), const Color(0xFFF3F4F6)),
                         ],
                       ),
                     ],
@@ -336,6 +387,83 @@ class _SchoolActivityCard extends StatelessWidget {
     final end = slot['endTime'] as String? ?? '';
     final day = dow > 0 && dow < days.length ? days[dow] : '';
     return '$day $start–$end'.trim();
+  }
+}
+
+class _SchoolServiceCard extends StatelessWidget {
+  final Map<String, dynamic> service;
+  final bool isEnrolled;
+  const _SchoolServiceCard({required this.service, this.isEnrolled = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = service['name'] as String? ?? '';
+    final type = service['serviceType'] as String? ?? '';
+    final monthlyCost = service['monthlyCost'];
+    final description = service['description'] as String? ?? '';
+    final isBus = type == 'bus';
+
+    final Color iconColor = isBus ? const Color(0xFF059669) : const Color(0xFF6B7280);
+    final Color iconBg = isBus ? const Color(0xFFECFDF5) : const Color(0xFFF3F4F6);
+    final IconData iconData = isBus ? Icons.directions_bus_outlined : Icons.business_center_outlined;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(12)),
+              child: Icon(iconData, size: 20, color: iconColor),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF111827))),
+                  if (description.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
+                  ],
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      if (monthlyCost != null)
+                        _Chip('€$monthlyCost/μήνα', iconColor, iconBg),
+                      _Chip(_typeLabel(type), const Color(0xFF6B7280), const Color(0xFFF3F4F6)),
+                      if (isEnrolled)
+                        _Chip('Εγγεγραμμένο', const Color(0xFF16A34A), const Color(0xFFDCFCE7))
+                      else
+                        _Chip('Μη εγγεγραμμένο', const Color(0xFF9CA3AF), const Color(0xFFF3F4F6)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _typeLabel(String t) {
+    const map = {'bus': 'Σχολικό Λεωφορείο', 'aftercare': 'Ολοήμερο', 'other': 'Άλλο'};
+    return map[t] ?? t;
   }
 }
 
@@ -755,9 +883,18 @@ class ActivityDetailScreen extends StatelessWidget {
             expandedHeight: (imageUrl != null && imageUrl.isNotEmpty) ? 280 : 0,
             backgroundColor: purple,
             foregroundColor: Colors.white,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
-              onPressed: () => Navigator.of(context).pop(),
+            leading: Padding(
+              padding: const EdgeInsets.all(8),
+              child: GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.35),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
+                ),
+              ),
             ),
             title: Text(title,
                 maxLines: 1,

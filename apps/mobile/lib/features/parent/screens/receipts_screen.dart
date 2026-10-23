@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api/api_client.dart';
@@ -124,12 +123,8 @@ class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
       if (url.isEmpty) { _say(context, 'Η απόδειξη δεν έχει αρχείο.'); return; }
       final uri = Uri.tryParse(url);
       if (uri == null) { _say(context, 'Μη έγκυρο αρχείο.'); return; }
-      final dir = await getTemporaryDirectory();
-      final filePath = '${dir.path}/receipt_$docId.pdf';
-      await dioClient.download(url, filePath);
       if (!mounted) return;
-      final fileUri = Uri.file(filePath);
-      final ok = await launchUrl(fileUri, mode: LaunchMode.platformDefault);
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
       if (!ok && mounted) _say(context, 'Δεν ήταν δυνατό το άνοιγμα της απόδειξης.');
     } catch (_) {
       if (mounted) _say(context, 'Σφάλμα κατά το κατέβασμα.');

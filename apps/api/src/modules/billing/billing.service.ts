@@ -343,47 +343,65 @@ export class BillingService implements OnModuleInit {
             orderBy: { createdAt: 'desc' },
           }),
         ]);
-        return { student: child, monthly, oneTime, events };
+        const year = schoolYearBounds();
+        let seenStationery = false;
+        const deduplicatedOneTime = oneTime.filter((c) => {
+          if (this.isStationery(c.description, c.chargeDate, year.startYear)) {
+            if (seenStationery) return false;
+            seenStationery = true;
+          }
+          return true;
+        });
+        return { student: child, monthly, oneTime: deduplicatedOneTime, events };
       }),
     );
     return results;
   }
 
   async generateMonthlyCharges(schoolId: string, month: number, year: number) {
-    const students = await this.prisma.student.findMany({
-      where: { schoolId, isActive: true },
-      include: {
-        enrollments: {
-          where: { academicYear: { isCurrent: true } },
-          include: {
-            class: {
-              include: {
-                level: {
-                  include: {
-                    levelFees: { orderBy: { academicYear: 'desc' } },
+    const [students, schoolPolicy] = await Promise.all([
+      this.prisma.student.findMany({
+        where: { schoolId, isActive: true },
+        include: {
+          enrollments: {
+            where: { academicYear: { isCurrent: true } },
+            include: {
+              class: {
+                include: {
+                  level: {
+                    include: {
+                      levelFees: { orderBy: { academicYear: 'desc' } },
+                    },
                   },
                 },
               },
             },
+            take: 1,
           },
-          take: 1,
-        },
-        studentServices: {
-          where: { isActive: true },
-          include: {
-            service: { select: { serviceType: true, monthlyCost: true, pickupCost: true, dropoffCost: true } },
+          studentServices: {
+            where: { isActive: true },
+            include: {
+              service: { select: { serviceType: true, monthlyCost: true, pickupCost: true, dropoffCost: true } },
+            },
+          },
+          activityRegistrations: {
+            where: { status: { in: ['approved', 'pending'] } },
+            include: {
+              activity: { select: { title: true, monthlyCost: true, oneTimeCost: true, startsOn: true, endsOn: true } },
+            },
+          },
+          feeOverrides: true,
+          subsidies: true,
+          siblingLinks: {
+            include: { sibling: { select: { id: true, createdAt: true, enrollments: { where: { academicYear: { isCurrent: true } }, select: { id: true } } } } },
+          },
+          siblingOf: {
+            include: { student: { select: { id: true, createdAt: true, enrollments: { where: { academicYear: { isCurrent: true } }, select: { id: true } } } } },
           },
         },
-        activityRegistrations: {
-          where: { status: { in: ['approved', 'pending'] } },
-          include: {
-            activity: { select: { title: true, monthlyCost: true, oneTimeCost: true, startsOn: true, endsOn: true } },
-          },
-        },
-        feeOverrides: true,
-        subsidies: true,
-      },
-    });
+      }),
+      this.loadSchoolSiblingPolicy(schoolId),
+    ]);
 
     const results = [];
     for (const student of students) {
@@ -397,7 +415,7 @@ export class BillingService implements OnModuleInit {
       }
       const isNew = !existing;
 
-      const quote = this.quoteLoadedStudent(student, month, year);
+      const quote = this.quoteLoadedStudent(student, month, year, schoolPolicy);
       const { schoolFee, busFee, activityFees, subsidyTotal, totalDue } = quote;
 
       const charge = await this.prisma.monthlyCharge.upsert({
@@ -528,13 +546,16 @@ export class BillingService implements OnModuleInit {
   }
 
   async generateStudentCharge(schoolId: string, studentId: string, month: number, year: number) {
-    const student = await this.loadBillingStudent(schoolId, studentId);
+    const [student, schoolPolicy] = await Promise.all([
+      this.loadBillingStudent(schoolId, studentId),
+      this.loadSchoolSiblingPolicy(schoolId),
+    ]);
     if (!student) throw new NotFoundException('Student not found');
 
     const existing = await this.prisma.monthlyCharge.findFirst({ where: { studentId, month, year } });
     if (existing && existing.status === 'paid') return existing;
 
-    const quote = this.quoteLoadedStudent(student, month, year);
+    const quote = this.quoteLoadedStudent(student, month, year, schoolPolicy);
     if (!existing && quote.totalDue <= 0 && quote.lines.length === 0) return null;
     const paidAmount = Number(existing?.paidAmount ?? 0);
     const status = quote.totalDue <= paidAmount ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
@@ -578,9 +599,10 @@ export class BillingService implements OnModuleInit {
     if (!student) throw new NotFoundException('Student not found');
 
     const year = schoolYearBounds(now);
-    const [charges, oneTime] = await Promise.all([
+    const [charges, oneTime, schoolPolicy] = await Promise.all([
       this.prisma.monthlyCharge.findMany({ where: { schoolId, studentId } }),
       this.prisma.oneTimeCharge.findMany({ where: { schoolId, studentId }, orderBy: { chargeDate: 'asc' } }),
+      this.loadSchoolSiblingPolicy(schoolId),
     ]);
 
     const stationery = oneTime.find((charge) => this.isStationery(charge.description, charge.chargeDate, year.startYear)) ?? null;
@@ -589,7 +611,7 @@ export class BillingService implements OnModuleInit {
     const months = year.months.map(({ month, year: chargeYear }) => {
       const charge = charges.find((row) => row.month === month && row.year === chargeYear);
       const open = isOpenMonth(month, chargeYear, now);
-      const quote = this.quoteLoadedStudent(student, month, chargeYear);
+      const quote = this.quoteLoadedStudent(student, month, chargeYear, schoolPolicy);
       const useStored = charge && charge.status === 'paid';
       const lines = useStored
         ? [
@@ -729,15 +751,41 @@ export class BillingService implements OnModuleInit {
     return date.getUTCMonth() + 1 === month && date.getUTCFullYear() === year;
   }
 
+  private siblingDiscountPct(
+    student: { id: string; createdAt: Date; siblingLinks?: { sibling: { id: string; createdAt: Date; enrollments: { id: string }[] } }[]; siblingOf?: { student: { id: string; createdAt: Date; enrollments: { id: string }[] } }[] },
+    school: { siblingDiscountEnabled: boolean; siblingDiscount2Pct: unknown; siblingDiscount3PlusPct: unknown },
+    skipSiblingDiscount: boolean,
+  ): number {
+    if (!school.siblingDiscountEnabled || skipSiblingDiscount) return 0;
+    const allSiblings = [
+      ...(student.siblingLinks ?? []).map((l) => l.sibling),
+      ...(student.siblingOf ?? []).map((l) => l.student),
+    ].filter((s) => s.enrollments.length > 0);
+    if (allSiblings.length === 0) return 0;
+    const sorted = [student, ...allSiblings].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    const rank = sorted.findIndex((s) => s.id === student.id) + 1;
+    if (rank <= 1) return 0;
+    const pct = rank === 2
+      ? Number(school.siblingDiscount2Pct ?? 0)
+      : Number(school.siblingDiscount3PlusPct ?? school.siblingDiscount2Pct ?? 0);
+    return pct;
+  }
+
   private quoteLoadedStudent(student: {
+    id: string;
+    createdAt: Date;
     enrollments: { class: { level: { name: string; levelFees: { monthlyFee: unknown; annualFee?: unknown }[] } | null } }[];
     studentServices: { isActive: boolean; enrolledAt: Date; serviceMode?: string | null; discountAmount?: unknown; service: { name?: string; serviceType: string; monthlyCost?: unknown; pickupCost?: unknown; dropoffCost?: unknown } }[];
     activityRegistrations: { activity: { title?: string; monthlyCost?: unknown; startsOn?: Date | null; endsOn?: Date | null } }[];
-    feeOverrides: { fixedAmount?: unknown; discountPct?: unknown; effectiveFrom?: Date | null }[];
+    feeOverrides: { fixedAmount?: unknown; discountPct?: unknown; effectiveFrom?: Date | null; skipSiblingDiscount?: boolean }[];
     subsidies: { name: string; monthlyAmount: unknown; isActive: boolean; startsFrom?: Date | null; endsAt?: Date | null }[];
-  }, month: number, year: number) {
+    siblingLinks?: { sibling: { id: string; createdAt: Date; enrollments: { id: string }[] } }[];
+    siblingOf?: { student: { id: string; createdAt: Date; enrollments: { id: string }[] } }[];
+  }, month: number, year: number, school?: { siblingDiscountEnabled: boolean; siblingDiscount2Pct: unknown; siblingDiscount3PlusPct: unknown } | null) {
     const level = student.enrollments[0]?.class?.level;
     const fee = level?.levelFees?.[0];
+    const skip = student.feeOverrides.some((r) => r.skipSiblingDiscount);
+    const siblingPct = school ? this.siblingDiscountPct(student, school, skip) : 0;
     return quoteStudentMonth({
       month,
       year,
@@ -769,6 +817,7 @@ export class BillingService implements OnModuleInit {
         startsFrom: subsidy.startsFrom,
         endsAt: subsidy.endsAt,
       })),
+      siblingDiscountPct: siblingPct || null,
     });
   }
 
@@ -793,7 +842,39 @@ export class BillingService implements OnModuleInit {
         eventEnrollments: {
           include: { event: { select: { id: true, title: true, eventType: true, eventDate: true, costPerChild: true, status: true } } },
         },
+        siblingLinks: {
+          include: { sibling: { select: { id: true, createdAt: true, enrollments: { where: { academicYear: { isCurrent: true } }, select: { id: true } } } } },
+        },
+        siblingOf: {
+          include: { student: { select: { id: true, createdAt: true, enrollments: { where: { academicYear: { isCurrent: true } }, select: { id: true } } } } },
+        },
       },
+    });
+  }
+
+  private async loadSchoolSiblingPolicy(schoolId: string) {
+    return this.prisma.school.findUnique({
+      where: { id: schoolId },
+      select: { siblingDiscountEnabled: true, siblingDiscount2Pct: true, siblingDiscount3PlusPct: true },
+    });
+  }
+
+  async getSiblingDiscountPolicy(schoolId: string) {
+    return this.prisma.school.findUnique({
+      where: { id: schoolId },
+      select: { siblingDiscountEnabled: true, siblingDiscount2Pct: true, siblingDiscount3PlusPct: true },
+    });
+  }
+
+  async updateSiblingDiscountPolicy(schoolId: string, data: { siblingDiscountEnabled?: boolean; siblingDiscount2Pct?: number | null; siblingDiscount3PlusPct?: number | null }) {
+    return this.prisma.school.update({
+      where: { id: schoolId },
+      data: {
+        ...(data.siblingDiscountEnabled !== undefined && { siblingDiscountEnabled: data.siblingDiscountEnabled }),
+        ...(data.siblingDiscount2Pct !== undefined && { siblingDiscount2Pct: data.siblingDiscount2Pct }),
+        ...(data.siblingDiscount3PlusPct !== undefined && { siblingDiscount3PlusPct: data.siblingDiscount3PlusPct }),
+      },
+      select: { siblingDiscountEnabled: true, siblingDiscount2Pct: true, siblingDiscount3PlusPct: true },
     });
   }
 

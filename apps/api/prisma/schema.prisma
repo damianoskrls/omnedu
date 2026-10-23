@@ -25,8 +25,11 @@ model School {
   isActive              Boolean   @default(true) @map("is_active")
   operatingRegulation   String?   @map("operating_regulation") @db.Text
   financialRegulation   String?   @map("financial_regulation") @db.Text
-  billingDueDay         Int?      @map("billing_due_day")
-  createdAt             DateTime  @default(now()) @map("created_at")
+  billingDueDay              Int?      @map("billing_due_day")
+  siblingDiscountEnabled     Boolean   @default(false) @map("sibling_discount_enabled")
+  siblingDiscount2Pct        Decimal?  @map("sibling_discount_2_pct") @db.Decimal(5, 2)
+  siblingDiscount3PlusPct    Decimal?  @map("sibling_discount_3_plus_pct") @db.Decimal(5, 2)
+  createdAt                  DateTime  @default(now()) @map("created_at")
 
   members            SchoolMember[]
   academicYears      AcademicYear[]
@@ -742,11 +745,12 @@ model StudentFeeOverride {
   id           String   @id @default(uuid())
   schoolId      String    @map("school_id")
   studentId     String    @map("student_id")
-  discountPct   Decimal?  @map("discount_pct") @db.Decimal(5, 2)
-  fixedAmount   Decimal?  @map("fixed_amount") @db.Decimal(10, 2)
-  reason        String?
-  effectiveFrom DateTime? @map("effective_from") @db.Date
-  createdAt     DateTime  @default(now()) @map("created_at")
+  discountPct         Decimal?  @map("discount_pct") @db.Decimal(5, 2)
+  fixedAmount         Decimal?  @map("fixed_amount") @db.Decimal(10, 2)
+  reason              String?
+  effectiveFrom       DateTime? @map("effective_from") @db.Date
+  skipSiblingDiscount Boolean   @default(false) @map("skip_sibling_discount")
+  createdAt           DateTime  @default(now()) @map("created_at")
 
   school  School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)

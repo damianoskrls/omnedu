@@ -296,6 +296,11 @@ export const billingApi = {
     api.delete(`/schools/${schoolId}/billing/one-time/${chargeId}`),
   generateAnnualCharges: (schoolId: string, year: number) =>
     api.post(`/schools/${schoolId}/billing/one-time/generate-annual`, { year }),
+  // Sibling discount policy
+  getSiblingDiscountPolicy: (schoolId: string) =>
+    api.get(`/schools/${schoolId}/billing/sibling-discount-policy`),
+  updateSiblingDiscountPolicy: (schoolId: string, data: { siblingDiscountEnabled?: boolean; siblingDiscount2Pct?: number | null; siblingDiscount3PlusPct?: number | null }) =>
+    api.patch(`/schools/${schoolId}/billing/sibling-discount-policy`, data),
 };
 
 export const levelsApi = {

@@ -99,6 +99,7 @@ export function quoteStudentMonth(input: {
     startsFrom?: Date | string | null;
     endsAt?: Date | string | null;
   }[];
+  siblingDiscountPct?: number | null;
 }): MonthQuote {
   const levelMonthly = Number(input.levelMonthly ?? 0);
   const rule = input.feeRules ? feeRuleForMonth(input.feeRules, input.month, input.year) : null;
@@ -120,6 +121,11 @@ export function quoteStudentMonth(input: {
 
   const lines: QuoteLine[] = [];
   if (schoolFee > 0) lines.push({ label: schoolLabel, amount: schoolFee });
+
+  if (input.siblingDiscountPct && input.siblingDiscountPct > 0 && schoolFee > 0) {
+    const siblingAmt = round2(schoolFee * input.siblingDiscountPct / 100);
+    lines.push({ label: `Έκπτωση αδελφών (−${input.siblingDiscountPct}%)`, amount: -siblingAmt });
+  }
 
   let busFee = 0;
   for (const bus of input.buses ?? []) {
@@ -152,6 +158,9 @@ export function quoteStudentMonth(input: {
   }
   subsidyTotal = round2(subsidyTotal);
 
-  const totalDue = Math.max(0, round2(schoolFee + busFee + activityFees - subsidyTotal));
-  return { schoolFee: round2(schoolFee), busFee, activityFees, subsidyTotal, totalDue, lines };
+  const siblingAmt = (input.siblingDiscountPct && input.siblingDiscountPct > 0 && schoolFee > 0)
+    ? round2(schoolFee * input.siblingDiscountPct / 100)
+    : 0;
+  const totalDue = Math.max(0, round2(schoolFee + busFee + activityFees - subsidyTotal - siblingAmt));
+  return { schoolFee: round2(schoolFee), busFee, activityFees, subsidyTotal: round2(subsidyTotal + siblingAmt), totalDue, lines };
 }
