@@ -179,7 +179,7 @@ function ExtraList({
   return (
     <div className="mt-2 space-y-1">
       {extras.map((extra) => {
-        const badge = statusLabel(extra.status === 'pending_payment' ? 'unpaid' : extra.status);
+        const badge = statusLabel(extra.status === 'pending_payment' ? 'unpaid' : extra.status, Number(extra.amount));
         return (
           <div key={extra.id} className="flex items-center gap-2 rounded-lg bg-orange-50 px-3 py-2 text-sm">
             <span className="flex-1 text-gray-800">{extra.kind === 'event' ? `Εκδρομή · ${extra.title}` : extra.title}</span>
