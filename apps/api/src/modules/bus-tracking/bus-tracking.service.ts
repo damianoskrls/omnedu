@@ -319,7 +319,9 @@ export class BusTrackingService implements OnModuleInit {
           const mode = (ss as { serviceMode?: string }).serviceMode;
           return !mode || mode === 'dropoff' || mode === 'both';
         });
-        afternoonRoute = toStats(primaryBus, dropoffStudents, 'dropoff');
+        // Fallback: if no explicit dropoff students, the whole bus does both directions
+        const afternoonStudents = dropoffStudents.length > 0 ? dropoffStudents : primaryBus.studentServices;
+        afternoonRoute = toStats(primaryBus, afternoonStudents, 'dropoff');
       }
     }
 
