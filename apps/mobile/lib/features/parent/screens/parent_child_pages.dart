@@ -30,7 +30,18 @@ class MealsScreen extends ConsumerWidget {
     final menus = ref.watch(_menusProvider(schoolId));
     return Scaffold(
       backgroundColor: const Color(0xFFF6F3FA),
-      appBar: AppBar(title: Text('Φαγητό · $childName')),
+      appBar: AppBar(
+        title: Text('Φαγητό · $childName'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.calendar_month_rounded),
+            tooltip: 'Μηνιαίο διατροφολόγιο',
+            onPressed: () => Navigator.push(context, MaterialPageRoute(
+              builder: (_) => MonthlyMealsScreen(schoolId: schoolId, childName: childName),
+            )),
+          ),
+        ],
+      ),
       body: menus.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Δεν φορτώθηκε το διατροφολόγιο.\n$e', textAlign: TextAlign.center)),
@@ -73,6 +84,163 @@ final _menusProvider = FutureProvider.family<List<dynamic>, String>((ref, school
   final resp = await dio.get('/schools/$schoolId/daily-menus', queryParameters: {'from': from, 'to': to});
   return resp.data is List ? resp.data as List<dynamic> : [];
 });
+
+final _monthMenusProvider = FutureProvider.family<List<dynamic>, ({String schoolId, String ym})>((ref, q) async {
+  final parts = q.ym.split('-');
+  final year = int.parse(parts[0]);
+  final month = int.parse(parts[1]);
+  final lastDay = DateTime(year, month + 1, 0).day;
+  final from = '${q.ym}-01';
+  final to = '${q.ym}-${lastDay.toString().padLeft(2, '0')}';
+  final dio = ref.read(dioProvider);
+  final resp = await dio.get('/schools/${q.schoolId}/daily-menus', queryParameters: {'from': from, 'to': to});
+  return resp.data is List ? resp.data as List<dynamic> : [];
+});
+
+class MonthlyMealsScreen extends ConsumerStatefulWidget {
+  final String schoolId;
+  final String childName;
+  const MonthlyMealsScreen({super.key, required this.schoolId, required this.childName});
+
+  @override
+  ConsumerState<MonthlyMealsScreen> createState() => _MonthlyMealsScreenState();
+}
+
+class _MonthlyMealsScreenState extends ConsumerState<MonthlyMealsScreen> {
+  late DateTime _month;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _month = DateTime(now.year, now.month);
+  }
+
+  String get _ym => '${_month.year}-${_month.month.toString().padLeft(2, '0')}';
+
+  @override
+  Widget build(BuildContext context) {
+    const monthNames = ['', 'Ιανουάριος', 'Φεβρουάριος', 'Μάρτιος', 'Απρίλιος', 'Μάιος', 'Ιούνιος', 'Ιούλιος', 'Αύγουστος', 'Σεπτέμβριος', 'Οκτώβριος', 'Νοέμβριος', 'Δεκέμβριος'];
+    final q = (schoolId: widget.schoolId, ym: _ym);
+    final menus = ref.watch(_monthMenusProvider(q));
+    final daysInMonth = DateTime(_month.year, _month.month + 1, 0).day;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF6F3FA),
+      appBar: AppBar(title: Text('Διατροφολόγιο · ${widget.childName}')),
+      body: Column(
+        children: [
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  onPressed: () => setState(() => _month = DateTime(_month.year, _month.month - 1)),
+                  icon: const Icon(Icons.chevron_left_rounded, color: Color(0xFF77328D)),
+                ),
+                Text(
+                  '${monthNames[_month.month]} ${_month.year}',
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF2C2422)),
+                ),
+                IconButton(
+                  onPressed: () => setState(() => _month = DateTime(_month.year, _month.month + 1)),
+                  icon: const Icon(Icons.chevron_right_rounded, color: Color(0xFF77328D)),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: menus.when(
+              loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFF77328D))),
+              error: (e, _) => Center(child: Text('Σφάλμα φόρτωσης: $e', textAlign: TextAlign.center)),
+              data: (list) {
+                final menuMap = <String, Map<String, dynamic>>{};
+                for (final item in list) {
+                  final date = (item['date'] as String? ?? '');
+                  final key = date.length >= 10 ? date.substring(0, 10) : date;
+                  menuMap[key] = Map<String, dynamic>.from(item as Map);
+                }
+                final weekdays = List.generate(daysInMonth, (i) {
+                  final d = DateTime(_month.year, _month.month, i + 1);
+                  return d.weekday <= 5 ? d : null;
+                }).whereType<DateTime>().toList();
+
+                if (weekdays.isEmpty) return const Center(child: Text('Δεν υπάρχουν εργάσιμες μέρες.'));
+                return ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: weekdays.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (_, i) {
+                    final date = weekdays[i];
+                    final key = _iso(date);
+                    return _MonthDayCard(date: date, menu: menuMap[key]);
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MonthDayCard extends StatelessWidget {
+  final DateTime date;
+  final Map<String, dynamic>? menu;
+  const _MonthDayCard({required this.date, required this.menu});
+
+  @override
+  Widget build(BuildContext context) {
+    const weekDays = ['', 'Δευτ', 'Τρίτ', 'Τετ', 'Πέμ', 'Παρ'];
+    final dayLabel = '${weekDays[date.weekday]}  ${_grDate(date)}';
+    final rows = [
+      ('Πρωινό', menu?['breakfast']),
+      ('Δεκατιανό', menu?['midMorning']),
+      ('Μεσημεριανό', menu?['lunch']),
+      ('Απογευματινό', menu?['afternoon']),
+    ];
+    final filled = rows.any((r) => (r.$2 as String?)?.trim().isNotEmpty == true);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(dayLabel, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Color(0xFF77328D))),
+          if (!filled)
+            const Padding(
+              padding: EdgeInsets.only(top: 4),
+              child: Text('—', style: TextStyle(color: Color(0xFFD1D5DB), fontSize: 13)),
+            )
+          else ...[
+            const SizedBox(height: 6),
+            ...rows.map((r) {
+              final value = (r.$2 as String?)?.trim() ?? '';
+              if (value.isEmpty) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 3),
+                child: RichText(
+                  text: TextSpan(
+                    style: const TextStyle(fontSize: 13, color: Color(0xFF374151)),
+                    children: [
+                      TextSpan(text: '${r.$1}: ', style: const TextStyle(fontWeight: FontWeight.w600)),
+                      TextSpan(text: value),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ],
+        ],
+      ),
+    );
+  }
+}
 
 class _MenuDay extends StatelessWidget {
   final String title;
