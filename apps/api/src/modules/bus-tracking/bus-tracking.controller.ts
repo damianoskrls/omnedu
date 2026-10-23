@@ -93,6 +93,20 @@ export class BusTrackingController {
     return this.service.absent(schoolId, user.sub, user.role, body);
   }
 
+  @Post('complete')
+  completeRoute(
+    @Param('schoolId') schoolId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { serviceId?: string; direction?: string; studentsCount?: number },
+  ) {
+    return this.service.completeRoute(schoolId, user.sub, user.role, body);
+  }
+
+  @Get('completed-today')
+  completedToday(@Param('schoolId') schoolId: string) {
+    return this.service.completedToday(schoolId);
+  }
+
   @Get('student/:studentId')
   forStudent(
     @Param('schoolId') schoolId: string,

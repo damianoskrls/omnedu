@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { activitiesApi, billingApi, classesApi, extraServicesApi, schoolEventsApi, staffApi, studentsApi } from '@/lib/api';
+import { activitiesApi, billingApi, busTrackingApi, classesApi, extraServicesApi, schoolEventsApi, staffApi, studentsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
 import { GraduationCap, BookOpen, CreditCard, UserPlus, ArrowUpRight, Bus, CalendarDays, Sparkles, Shirt } from 'lucide-react';
@@ -30,6 +30,8 @@ function euro(value: number) {
   return `€${Math.round(value).toLocaleString('el-GR')}`;
 }
 
+type RouteCompletion = { direction: string; studentsCount: number; completedAt: string; serviceId: string };
+
 export default function SchoolDashboard() {
   const user = useStoredUser();
   const schoolId = user?.schoolId ?? '';
@@ -37,6 +39,9 @@ export default function SchoolDashboard() {
   const { selectedYear } = useAcademicYear();
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<DashboardView | null>(null);
+  const [routeCompletions, setRouteCompletions] = useState<RouteCompletion[]>([]);
+  const [showRouteModal, setShowRouteModal] = useState(false);
+  const shownRef = useRef(false);
 
   useEffect(() => {
     if (!schoolId) {
@@ -52,7 +57,8 @@ export default function SchoolDashboard() {
       schoolEventsApi.list(schoolId).catch(() => []),
       extraServicesApi.list(schoolId).catch(() => []),
       staffApi.list(schoolId).catch(() => []),
-    ]).then(([students, classes, billing, activities, events, services, staff]) => {
+      busTrackingApi.completedToday(schoolId).catch(() => []),
+    ]).then(([students, classes, billing, activities, events, services, staff, completions]) => {
       setView(buildView(
         Array.isArray(students) ? students : [],
         Array.isArray(classes) ? classes : [],
@@ -63,6 +69,15 @@ export default function SchoolDashboard() {
         Array.isArray(staff) ? staff : [],
         selectedYear?.label,
       ));
+      const todayKey = new Date().toISOString().slice(0, 10);
+      const seenKey = `route_completions_seen_${schoolId}_${todayKey}`;
+      const completionList = Array.isArray(completions) ? (completions as RouteCompletion[]) : [];
+      if (completionList.length > 0 && !shownRef.current && !sessionStorage.getItem(seenKey)) {
+        shownRef.current = true;
+        setRouteCompletions(completionList);
+        setShowRouteModal(true);
+        sessionStorage.setItem(seenKey, '1');
+      }
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [schoolId, selectedYear?.id]);
@@ -71,6 +86,37 @@ export default function SchoolDashboard() {
 
   return (
     <div className="space-y-5">
+      {showRouteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-green-100">
+                <span className="text-xl">✅</span>
+              </div>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-green-600">Σήμερα</p>
+                <h2 className="text-lg font-extrabold text-gray-900">Δρομολόγια Ολοκληρώθηκαν</h2>
+              </div>
+            </div>
+            <div className="space-y-2 mb-5">
+              {routeCompletions.map((c, i) => (
+                <div key={i} className="flex items-center justify-between rounded-xl bg-green-50 px-4 py-3">
+                  <span className="text-sm font-semibold text-gray-800">
+                    {c.direction === 'pickup' ? '🌅 Πρωινή Παραλαβή' : '🌆 Απογευματινή Παράδοση'}
+                  </span>
+                  <span className="text-sm font-bold text-green-700">{c.studentsCount} μαθητές</span>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowRouteModal(false)}
+              className="w-full rounded-xl bg-[#77328D] py-3 text-sm font-bold text-white hover:bg-[#5B1E73] transition-colors"
+            >
+              Εντάξει
+            </button>
+          </div>
+        </div>
+      )}
       <div className="overflow-hidden rounded-3xl bg-white shadow-[0_18px_40px_-28px_rgba(119,50,141,0.55)]">
         <div className="h-1.5 bg-gradient-to-r from-[#E95926] via-[#c46a3a] to-[#77328D]" />
         <div className="px-6 py-6 sm:px-8">

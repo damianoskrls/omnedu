@@ -169,7 +169,6 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
     }
 
     if (afternoon != null) {
-      final afternoonLocked = morning != null && !morningDone;
       widgets.add(_RouteCard(
         label: 'Απογευματινή Παράδοση',
         badge: 'ΑΠΟΓΕΥΜΑ',
@@ -180,8 +179,7 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
         studentsCount: afternoon['studentsCount'] as int? ?? 0,
         pulseAnim: _pulseAnim,
         completed: afternoonDone,
-        locked: afternoonLocked,
-        onStart: (afternoonDone || afternoonLocked) ? null : () => _startRoute(afternoon: true),
+        onStart: afternoonDone ? null : () => _startRoute(afternoon: true),
         onPreview: () => _showPreview(afternoon: true),
       ));
       widgets.add(const SizedBox(height: 12));
@@ -334,7 +332,6 @@ class _RouteCard extends StatelessWidget {
   final int studentsCount;
   final Animation<double> pulseAnim;
   final bool completed;
-  final bool locked;
   final VoidCallback? onStart;
   final VoidCallback? onPreview;
 
@@ -348,7 +345,6 @@ class _RouteCard extends StatelessWidget {
     required this.studentsCount,
     required this.pulseAnim,
     this.completed = false,
-    this.locked = false,
     this.onStart,
     this.onPreview,
   });
@@ -420,18 +416,18 @@ class _RouteCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: ScaleTransition(
-                    scale: locked ? const AlwaysStoppedAnimation(1.0) : pulseAnim,
+                    scale: pulseAnim,
                     child: SizedBox(
                       height: 54,
                       child: FilledButton.icon(
                         style: FilledButton.styleFrom(
-                          backgroundColor: locked ? const Color(0xFFD1D5DB) : const Color(0xFFE95926),
+                          backgroundColor: const Color(0xFFE95926),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                         ),
-                        icon: Icon(locked ? Icons.lock_outline_rounded : Icons.play_arrow_rounded, size: 22),
-                        label: Text(
-                          locked ? 'Διαθέσιμη αργότερα' : 'Έναρξη Διαδρομής',
-                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                        icon: const Icon(Icons.play_arrow_rounded, size: 22),
+                        label: const Text(
+                          'Έναρξη Διαδρομής',
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
                         ),
                         onPressed: onStart,
                       ),
@@ -489,7 +485,7 @@ class _StatTile extends StatelessWidget {
   }
 }
 
-class _RoutePreviewScreen extends StatefulWidget {
+class _RoutePreviewScreen extends ConsumerStatefulWidget {
   final String busName;
   final bool isAfternoon;
   final List<Map<String, dynamic>> riders;
@@ -507,10 +503,10 @@ class _RoutePreviewScreen extends StatefulWidget {
   });
 
   @override
-  State<_RoutePreviewScreen> createState() => _RoutePreviewScreenState();
+  ConsumerState<_RoutePreviewScreen> createState() => _RoutePreviewScreenState();
 }
 
-class _RoutePreviewScreenState extends State<_RoutePreviewScreen> {
+class _RoutePreviewScreenState extends ConsumerState<_RoutePreviewScreen> {
   final _map = MapController();
 
   LatLng? _riderPoint(Map<String, dynamic> r) {
@@ -591,17 +587,36 @@ class _RoutePreviewScreenState extends State<_RoutePreviewScreen> {
                 ],
                 Expanded(
                   child: FilledButton.icon(
-                    onPressed: parentId.isNotEmpty ? () {
+                    onPressed: parentId.isNotEmpty ? () async {
                       Navigator.pop(ctx);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => DriverMessagesScreen(
-                            schoolId: widget.schoolId,
-                            userId: widget.driverUserId,
+                      final me = ref.read(authProvider).user;
+                      if (me == null) return;
+                      try {
+                        final created = await openScopedConversation(
+                          ref,
+                          schoolId: widget.schoolId,
+                          kind: 'driver',
+                          withUserId: parentId,
+                          participantIds: [me.id, parentId],
+                        );
+                        final convId = created?['id'] as String?;
+                        if (convId == null || !mounted) return;
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ChatScreen(
+                              schoolId: widget.schoolId,
+                              convId: convId,
+                              title: rider['parentName']?.toString().trim().isNotEmpty == true
+                                  ? rider['parentName'].toString()
+                                  : 'Γονέας',
+                              subtitle: name,
+                              currentUserId: me.id,
+                              startedByMe: conversationStartedByMe(created, me.id),
+                            ),
                           ),
-                        ),
-                      );
+                        );
+                      } catch (_) {}
                     } : null,
                     icon: const Icon(Icons.message_rounded, size: 18),
                     label: const Text('Μήνυμα'),
@@ -882,24 +897,154 @@ class _ErrorState extends StatelessWidget {
   }
 }
 
-class DriverMessagesScreen extends ConsumerWidget {
+class DriverMessagesScreen extends ConsumerStatefulWidget {
   final String schoolId;
   final String userId;
   const DriverMessagesScreen({super.key, required this.schoolId, required this.userId});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final conversations = ref.watch(conversationsProvider(schoolId));
+  ConsumerState<DriverMessagesScreen> createState() => _DriverMessagesScreenState();
+}
+
+class _DriverMessagesScreenState extends ConsumerState<DriverMessagesScreen> {
+  Future<void> _newMessage() async {
+    // Load all riders from today's routes (morning + afternoon)
+    List<Map<String, dynamic>> allRiders = [];
+    try {
+      final dash = await ref.read(dioProvider).get('/schools/${widget.schoolId}/bus-tracking/dashboard');
+      final d = dash.data is Map ? dash.data as Map : {};
+      final morning = d['morningRoute'] is Map ? d['morningRoute'] as Map : null;
+      final afternoon = d['afternoonRoute'] is Map ? d['afternoonRoute'] as Map : null;
+
+      for (final route in [morning, afternoon]) {
+        if (route == null) continue;
+        final svcId = route['serviceId']?.toString();
+        if (svcId == null) continue;
+        try {
+          final resp = await ref.read(dioProvider).get(
+            '/schools/${widget.schoolId}/bus-tracking/route',
+            queryParameters: {'serviceId': svcId},
+          );
+          final data = resp.data is Map ? resp.data as Map : {};
+          final riders = (data['riders'] as List? ?? []).whereType<Map>().map((r) => Map<String, dynamic>.from(r)).toList();
+          for (final r in riders) {
+            if (!allRiders.any((x) => x['parentId'] == r['parentId'])) {
+              allRiders.add(r);
+            }
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+
+    if (!mounted) return;
+    if (allRiders.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Δεν βρέθηκαν μαθητές σήμερα.')));
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.4,
+        maxChildSize: 0.9,
+        expand: false,
+        builder: (_, controller) => Column(
+          children: [
+            const SizedBox(height: 8),
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: const Color(0xFFE5E7EB), borderRadius: BorderRadius.circular(2))),
+            const SizedBox(height: 12),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Επιλογή μαθητή', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: ListView.separated(
+                controller: controller,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                itemCount: allRiders.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 6),
+                itemBuilder: (_, i) {
+                  final r = allRiders[i];
+                  final name = r['name']?.toString() ?? '';
+                  final parentName = r['parentName']?.toString() ?? '';
+                  return ListTile(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    tileColor: const Color(0xFFF6F3FA),
+                    leading: CircleAvatar(
+                      backgroundColor: const Color(0xFF77328D).withValues(alpha: 0.15),
+                      child: Text(name.isNotEmpty ? name[0] : '?', style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w800)),
+                    ),
+                    title: Text(name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                    subtitle: parentName.isNotEmpty ? Text(parentName, style: const TextStyle(fontSize: 12)) : null,
+                    trailing: const Icon(Icons.message_rounded, color: Color(0xFF77328D), size: 20),
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      final parentId = r['parentId']?.toString() ?? '';
+                      if (parentId.isEmpty) return;
+                      final me = ref.read(authProvider).user;
+                      if (me == null) return;
+                      try {
+                        final created = await openScopedConversation(
+                          ref,
+                          schoolId: widget.schoolId,
+                          kind: 'driver',
+                          withUserId: parentId,
+                          participantIds: [me.id, parentId],
+                        );
+                        final convId = created?['id'] as String?;
+                        if (convId == null || !mounted) return;
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ChatScreen(
+                              schoolId: widget.schoolId,
+                              convId: convId,
+                              title: parentName.isNotEmpty ? parentName : 'Γονέας',
+                              subtitle: name,
+                              currentUserId: me.id,
+                              startedByMe: conversationStartedByMe(created, me.id),
+                            ),
+                          ),
+                        );
+                        ref.invalidate(conversationsProvider(widget.schoolId));
+                      } catch (_) {}
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final conversations = ref.watch(conversationsProvider(widget.schoolId));
     return Scaffold(
       backgroundColor: const Color(0xFFF6F3FA),
       appBar: AppBar(
         title: const Text('Μηνύματα'),
         actions: [
           IconButton(
-            onPressed: () => ref.invalidate(conversationsProvider(schoolId)),
+            onPressed: () => ref.invalidate(conversationsProvider(widget.schoolId)),
             icon: const Icon(Icons.refresh_rounded),
           ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _newMessage,
+        backgroundColor: const Color(0xFF77328D),
+        icon: const Icon(Icons.edit_rounded, size: 20),
+        label: const Text('Νέο Μήνυμα', style: TextStyle(fontWeight: FontWeight.w700)),
       ),
       body: conversations.when(
         loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFF77328D))),
@@ -910,7 +1055,7 @@ class DriverMessagesScreen extends ConsumerWidget {
               child: Padding(
                 padding: EdgeInsets.all(32),
                 child: Text(
-                  'Δεν υπάρχουν μηνύματα. Οι γονείς των παιδιών του σχολικού μπορούν να σου γράψουν εδώ.',
+                  'Δεν υπάρχουν μηνύματα. Πάτα + για να στείλεις μήνυμα σε γονέα.',
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -918,20 +1063,20 @@ class DriverMessagesScreen extends ConsumerWidget {
           }
           return RefreshIndicator(
             color: const Color(0xFF77328D),
-            onRefresh: () => ref.refresh(conversationsProvider(schoolId).future),
+            onRefresh: () => ref.refresh(conversationsProvider(widget.schoolId).future),
             child: ListView.separated(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
               itemCount: list.length,
               separatorBuilder: (_, __) => const SizedBox(height: 8),
               itemBuilder: (_, index) {
                 final conv = Map<String, dynamic>.from(list[index] as Map);
                 return ConversationTile(
                   conv: conv,
-                  userId: userId,
-                  onTap: () => openChat(context, ref, schoolId: schoolId, userId: userId, conv: conv),
+                  userId: widget.userId,
+                  onTap: () => openChat(context, ref, schoolId: widget.schoolId, userId: widget.userId, conv: conv),
                   onDelete: () => confirmRemoveConversation(
                     context, ref,
-                    schoolId: schoolId,
+                    schoolId: widget.schoolId,
                     conversationId: conv['id']?.toString() ?? '',
                     startedByMe: conv['startedByMe'] == true,
                   ),

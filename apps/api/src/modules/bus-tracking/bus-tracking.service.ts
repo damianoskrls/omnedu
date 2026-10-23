@@ -325,6 +325,20 @@ export class BusTrackingService implements OnModuleInit {
       }
     }
 
+    // Check completions for today
+    const todayDate = schoolDay();
+    const todayKey = todayDate.toISOString().slice(0, 10);
+    const completions = primaryBus
+      ? await this.prisma.routeCompletion.findMany({
+          where: { serviceId: primaryBus.id, dayKey: todayKey },
+        })
+      : [];
+    const morningDone = completions.some((c) => c.direction === 'pickup');
+    const afternoonDone = completions.some((c) => c.direction === 'dropoff');
+
+    if (morningRoute) (morningRoute as Record<string, unknown>).status = morningDone ? 'completed' : 'pending';
+    if (afternoonRoute) (afternoonRoute as Record<string, unknown>).status = afternoonDone ? 'completed' : 'pending';
+
     const position = primaryBus?.busPosition;
     const ageMs = position ? Date.now() - position.updatedAt.getTime() : Infinity;
     return {
@@ -333,6 +347,44 @@ export class BusTrackingService implements OnModuleInit {
       isActive: ageMs < 2 * 60 * 60 * 1000,
       activeServiceId: primaryBus?.id ?? null,
     };
+  }
+
+  async completeRoute(
+    schoolId: string,
+    userId: string,
+    role: string | null | undefined,
+    data: { serviceId?: string; direction?: string; studentsCount?: number },
+  ) {
+    if (role !== 'driver') throw new ForbiddenException('Μόνο ο οδηγός μπορεί να ολοκληρώσει διαδρομή.');
+    if (!data.serviceId || !data.direction) throw new BadRequestException('Απαιτούνται serviceId και direction.');
+    const todayKey = schoolDay().toISOString().slice(0, 10);
+    const completion = await this.prisma.routeCompletion.upsert({
+      where: { serviceId_direction_dayKey: { serviceId: data.serviceId, direction: data.direction, dayKey: todayKey } },
+      create: {
+        schoolId,
+        serviceId: data.serviceId,
+        driverUserId: userId,
+        direction: data.direction,
+        dayKey: todayKey,
+        studentsCount: data.studentsCount ?? 0,
+      },
+      update: { completedAt: new Date(), studentsCount: data.studentsCount ?? 0 },
+    });
+    return { ok: true, completedAt: completion.completedAt, direction: completion.direction };
+  }
+
+  async completedToday(schoolId: string) {
+    const todayKey = schoolDay().toISOString().slice(0, 10);
+    const completions = await this.prisma.routeCompletion.findMany({
+      where: { schoolId, dayKey: todayKey },
+      orderBy: { completedAt: 'desc' },
+    });
+    return completions.map((c) => ({
+      direction: c.direction,
+      studentsCount: c.studentsCount,
+      completedAt: c.completedAt,
+      serviceId: c.serviceId,
+    }));
   }
 
   private async notifyClosure(schoolId: string, day: Date, reason: string) {

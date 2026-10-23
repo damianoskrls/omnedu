@@ -74,7 +74,7 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
       CurvedAnimation(parent: _progressCtrl, curve: Curves.easeOut),
     );
     _load();
-    _startGps();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _askGpsConsent());
   }
 
   @override
@@ -112,6 +112,44 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
     );
     _lastProgress = target;
     _progressCtrl.forward(from: 0);
+  }
+
+  Future<void> _askGpsConsent() async {
+    if (!mounted) return;
+    final direction = widget.isAfternoon ? 'παράδοσης' : 'παραλαβής';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(children: [
+          Icon(Icons.gps_fixed_rounded, color: Color(0xFF77328D), size: 24),
+          SizedBox(width: 10),
+          Text('Κοινοποίηση τοποθεσίας', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+        ]),
+        content: Text(
+          'Κατά τη διάρκεια της διαδρομής $direction, η τοποθεσία σου θα είναι ορατή στους γονείς των παιδιών μέσω της εφαρμογής.',
+          style: const TextStyle(fontSize: 14, color: Color(0xFF374151), height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Ακύρωση', style: TextStyle(color: Color(0xFF6B7280))),
+          ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF77328D), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.play_arrow_rounded, size: 18),
+            label: const Text('Έναρξη GPS'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      _startGps();
+    } else if (mounted) {
+      Navigator.pop(context);
+    }
   }
 
   Future<void> _startGps() async {
@@ -266,19 +304,31 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Ολοκλήρωση διαδρομής;'),
         content: const Text('Επιβεβαιώνεις ότι η διαδρομή ολοκληρώθηκε;'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Πίσω')),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF059669)),
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF059669), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Ολοκλήρωση'),
           ),
         ],
       ),
     );
-    if (confirmed == true && mounted) Navigator.pop(context);
+    if (confirmed != true || !mounted) return;
+    try {
+      await ref.read(dioProvider).post(
+        '/schools/${widget.schoolId}/bus-tracking/complete',
+        data: {
+          'serviceId': widget.serviceId,
+          'direction': widget.isAfternoon ? 'dropoff' : 'pickup',
+          'studentsCount': _riders.where((r) => r['canPickup'] == true).length,
+        },
+      );
+    } catch (_) {}
+    if (mounted) Navigator.pop(context);
   }
 
   LatLng? _riderPoint(Map<String, dynamic> rider) {

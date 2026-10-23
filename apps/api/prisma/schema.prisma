@@ -69,6 +69,7 @@ model School {
   regulations          SchoolRegulation[]
   celebrations         SchoolCelebration[]
   partyInvitations     PartyInvitation[]
+  routeCompletions     RouteCompletion[]
 
   @@map("schools")
 }
@@ -1478,4 +1479,21 @@ model PartyInvitation {
   birthdayStudent Student @relation("PartyInvitationBirthdayStudent", fields: [birthdayStudentId], references: [id], onDelete: Cascade)
 
   @@map("party_invitations")
+}
+
+model RouteCompletion {
+  id            String   @id @default(uuid())
+  schoolId      String   @map("school_id")
+  serviceId     String   @map("service_id")
+  driverUserId  String   @map("driver_user_id")
+  direction     String   // 'pickup' | 'dropoff'
+  dayKey        String   @map("day_key") // e.g. "2026-10-23"
+  studentsCount Int      @default(0) @map("students_count")
+  completedAt   DateTime @default(now()) @map("completed_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, direction, dayKey])
+  @@index([schoolId, dayKey])
+  @@map("route_completions")
 }

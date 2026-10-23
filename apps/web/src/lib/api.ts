@@ -498,6 +498,10 @@ export const busClosuresApi = {
   remove: (schoolId: string, id: string) => api.delete(`/schools/${schoolId}/bus-tracking/closures/${id}`),
 };
 
+export const busTrackingApi = {
+  completedToday: (schoolId: string) => api.get(`/schools/${schoolId}/bus-tracking/completed-today`),
+};
+
 export const extraServicesApi = {
   list: (schoolId: string) => api.get(`/schools/${schoolId}/extra-services`),
   get: (schoolId: string, id: string) => api.get(`/schools/${schoolId}/extra-services/${id}`),
