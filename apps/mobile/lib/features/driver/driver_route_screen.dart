@@ -842,75 +842,25 @@ class _StopRow extends StatelessWidget {
   }
 }
 
-class _CompleteRouteButton extends StatefulWidget {
+class _CompleteRouteButton extends StatelessWidget {
   final VoidCallback onComplete;
   const _CompleteRouteButton({required this.onComplete});
-
-  @override
-  State<_CompleteRouteButton> createState() => _CompleteRouteButtonState();
-}
-
-class _CompleteRouteButtonState extends State<_CompleteRouteButton> {
-  double _drag = 0.0;
-  static const _threshold = 0.85;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 12, 4, 4),
-      child: GestureDetector(
-        onHorizontalDragUpdate: (d) {
-          final box = context.findRenderObject() as RenderBox?;
-          if (box == null) return;
-          setState(() => _drag = (_drag + d.delta.dx / box.size.width).clamp(0.0, 1.0));
-        },
-        onHorizontalDragEnd: (_) {
-          if (_drag >= _threshold) {
-            widget.onComplete();
-          }
-          setState(() => _drag = 0.0);
-        },
-        child: Container(
-          height: 60,
-          decoration: BoxDecoration(
-            color: const Color(0xFFF3F4F6),
-            borderRadius: BorderRadius.circular(16),
+      child: SizedBox(
+        width: double.infinity,
+        height: 58,
+        child: FilledButton.icon(
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFF059669),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           ),
-          child: Stack(
-            children: [
-              // Fill
-              AnimatedFractionallySizedBox(
-                duration: const Duration(milliseconds: 50),
-                widthFactor: _drag,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF059669).withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-              ),
-              Center(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.flag_rounded, color: _drag > 0 ? const Color(0xFF059669) : const Color(0xFF9CA3AF), size: 20),
-                    const SizedBox(width: 8),
-                    Text(
-                      'ΣΥΡΕΤΕ ΓΙΑ ΟΛΟΚΛΗΡΩΣΗ',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 13,
-                        letterSpacing: 0.5,
-                        color: _drag > 0 ? const Color(0xFF059669) : const Color(0xFF9CA3AF),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Icon(Icons.chevron_right_rounded, color: _drag > 0 ? const Color(0xFF059669) : const Color(0xFF9CA3AF), size: 20),
-                  ],
-                ),
-              ),
-            ],
-          ),
+          onPressed: onComplete,
+          icon: const Icon(Icons.flag_rounded, size: 22),
+          label: const Text('Ολοκλήρωση Διαδρομής', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
         ),
       ),
     );

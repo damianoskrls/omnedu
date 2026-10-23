@@ -289,7 +289,7 @@ export class BusTrackingService implements OnModuleInit {
         name: bus.name,
         busNumber: bus.busNumber ?? null,
         startTime: times[0] ?? null,
-        stopsCount: stops,
+        stopsCount: stops || bus.studentServices.length,
         studentsCount: bus.studentServices.length,
       };
     };

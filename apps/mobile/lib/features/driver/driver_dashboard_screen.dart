@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../core/api/api_client.dart';
 import '../../core/providers/auth_provider.dart';
@@ -73,6 +75,43 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
     ).then((_) => _load());
   }
 
+  Future<void> _showPreview({bool afternoon = false}) async {
+    final d = _dashboard;
+    final route = afternoon ? (d?['afternoonRoute']) : (d?['morningRoute']);
+    final serviceId = (route is Map ? route['serviceId']?.toString() : null);
+    final busName = (route is Map ? route['name']?.toString() : null) ?? 'Σχολικό';
+    if (serviceId == null) return;
+
+    List<Map<String, dynamic>> riders = [];
+    try {
+      final resp = await ref.read(dioProvider).get(
+        '/schools/${widget.schoolId}/bus-tracking/route',
+        queryParameters: {'serviceId': serviceId},
+      );
+      final data = resp.data is Map ? resp.data as Map : {};
+      riders = (data['riders'] as List? ?? [])
+          .whereType<Map>()
+          .map((r) => Map<String, dynamic>.from(r))
+          .toList();
+    } catch (_) {}
+
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _RoutePreviewScreen(
+          busName: busName,
+          isAfternoon: afternoon,
+          riders: riders,
+          onStart: () {
+            Navigator.pop(context);
+            _startRoute(afternoon: afternoon);
+          },
+        ),
+      ),
+    );
+  }
+
   static String _appBarTitle(Map<String, dynamic>? morning, Map<String, dynamic>? afternoon) {
     final hasMorning = morning != null;
     final hasAfternoon = afternoon != null;
@@ -104,38 +143,28 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
         pulseAnim: _pulseAnim,
         completed: morningDone,
         onStart: morningDone ? null : () => _startRoute(afternoon: false),
+        onPreview: () => _showPreview(afternoon: false),
       ));
       widgets.add(const SizedBox(height: 12));
     }
 
     if (afternoon != null) {
-      if (morningDone || morning == null) {
-        widgets.add(_RouteCard(
-          label: 'Απογευματινή Παράδοση',
-          badge: 'ΑΠΟΓΕΥΜΑ',
-          badgeColor: const Color(0xFFD97706),
-          date: today,
-          startTime: afternoon['startTime']?.toString(),
-          stopsCount: afternoon['stopsCount'] as int? ?? 0,
-          studentsCount: afternoon['studentsCount'] as int? ?? 0,
-          pulseAnim: _pulseAnim,
-          completed: afternoonDone,
-          onStart: afternoonDone ? null : () => _startRoute(afternoon: true),
-        ));
-        widgets.add(const SizedBox(height: 12));
-      } else {
-        widgets.add(_SecondaryRouteRow(
-          label: 'Απογευματινή Παράδοση',
-          subtitle: afternoon['startTime'] != null
-              ? 'Για τις ${afternoon['startTime']}'
-              : 'Αργότερα σήμερα',
-          icon: Icons.directions_bus_outlined,
-          iconColor: const Color(0xFFD97706),
-          locked: true,
-          onTap: null,
-        ));
-        widgets.add(const SizedBox(height: 8));
-      }
+      final afternoonLocked = morning != null && !morningDone;
+      widgets.add(_RouteCard(
+        label: 'Απογευματινή Παράδοση',
+        badge: 'ΑΠΟΓΕΥΜΑ',
+        badgeColor: const Color(0xFFD97706),
+        date: today,
+        startTime: afternoon['startTime']?.toString(),
+        stopsCount: afternoon['stopsCount'] as int? ?? 0,
+        studentsCount: afternoon['studentsCount'] as int? ?? 0,
+        pulseAnim: _pulseAnim,
+        completed: afternoonDone,
+        locked: afternoonLocked,
+        onStart: (afternoonDone || afternoonLocked) ? null : () => _startRoute(afternoon: true),
+        onPreview: () => _showPreview(afternoon: true),
+      ));
+      widgets.add(const SizedBox(height: 12));
     }
 
     if (morningDone && afternoonDone) {
@@ -285,7 +314,9 @@ class _RouteCard extends StatelessWidget {
   final int studentsCount;
   final Animation<double> pulseAnim;
   final bool completed;
+  final bool locked;
   final VoidCallback? onStart;
+  final VoidCallback? onPreview;
 
   const _RouteCard({
     required this.label,
@@ -297,7 +328,9 @@ class _RouteCard extends StatelessWidget {
     required this.studentsCount,
     required this.pulseAnim,
     this.completed = false,
+    this.locked = false,
     this.onStart,
+    this.onPreview,
   });
 
   @override
@@ -362,23 +395,49 @@ class _RouteCard extends StatelessWidget {
                 ],
               ),
             )
-          else
-            ScaleTransition(
-              scale: pulseAnim,
-              child: SizedBox(
-                width: double.infinity,
-                height: 58,
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFFE95926),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          else ...[
+            Row(
+              children: [
+                Expanded(
+                  child: ScaleTransition(
+                    scale: locked ? const AlwaysStoppedAnimation(1.0) : pulseAnim,
+                    child: SizedBox(
+                      height: 54,
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: locked ? const Color(0xFFD1D5DB) : const Color(0xFFE95926),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        icon: Icon(locked ? Icons.lock_outline_rounded : Icons.play_arrow_rounded, size: 22),
+                        label: Text(
+                          locked ? 'Διαθέσιμη αργότερα' : 'Έναρξη Διαδρομής',
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                        ),
+                        onPressed: onStart,
+                      ),
+                    ),
                   ),
-                  icon: const Icon(Icons.play_arrow_rounded, size: 24),
-                  label: const Text('Έναρξη Διαδρομής', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-                  onPressed: onStart,
                 ),
-              ),
+                if (onPreview != null) ...[
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    height: 54,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: badgeColor,
+                        side: BorderSide(color: badgeColor),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                      onPressed: onPreview,
+                      icon: const Icon(Icons.map_outlined, size: 20),
+                      label: const Text('Προεπισκόπηση', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+                ],
+              ],
             ),
+          ],
         ],
       ),
     );
@@ -410,61 +469,196 @@ class _StatTile extends StatelessWidget {
   }
 }
 
-class _SecondaryRouteRow extends StatelessWidget {
-  final String label;
-  final String subtitle;
-  final IconData icon;
-  final Color iconColor;
-  final bool locked;
-  final VoidCallback? onTap;
-  const _SecondaryRouteRow({
-    required this.label,
-    required this.subtitle,
-    required this.icon,
-    required this.iconColor,
-    this.locked = false,
-    this.onTap,
+class _RoutePreviewScreen extends StatefulWidget {
+  final String busName;
+  final bool isAfternoon;
+  final List<Map<String, dynamic>> riders;
+  final VoidCallback onStart;
+
+  const _RoutePreviewScreen({
+    required this.busName,
+    required this.isAfternoon,
+    required this.riders,
+    required this.onStart,
   });
 
   @override
+  State<_RoutePreviewScreen> createState() => _RoutePreviewScreenState();
+}
+
+class _RoutePreviewScreenState extends State<_RoutePreviewScreen> {
+  final _map = MapController();
+
+  LatLng? _riderPoint(Map<String, dynamic> r) {
+    final lat = double.tryParse(r['latitude']?.toString() ?? '');
+    final lng = double.tryParse(r['longitude']?.toString() ?? '');
+    if (lat == null || lng == null) return null;
+    return LatLng(lat, lng);
+  }
+
+  void _fit() {
+    final pts = widget.riders.map(_riderPoint).whereType<LatLng>().toList();
+    if (pts.isEmpty) return;
+    pts.length == 1
+        ? _map.move(pts.first, 14)
+        : _map.fitCamera(CameraFit.coordinates(coordinates: pts, padding: const EdgeInsets.all(60)));
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final effectiveColor = locked ? const Color(0xFFD1D5DB) : iconColor;
-    return Material(
-      color: locked ? const Color(0xFFFAFAFA) : Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: locked ? null : onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            children: [
-              Container(
-                width: 40, height: 40,
-                decoration: BoxDecoration(
-                  color: effectiveColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(locked ? Icons.lock_outline_rounded : icon, color: effectiveColor, size: 20),
+    final color = widget.isAfternoon ? const Color(0xFFD97706) : const Color(0xFF77328D);
+    final pts = widget.riders.map(_riderPoint).whereType<LatLng>().toList();
+    final center = pts.isNotEmpty ? pts.first : const LatLng(37.9838, 23.7275);
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF6F3FA),
+      appBar: AppBar(
+        backgroundColor: color,
+        foregroundColor: Colors.white,
+        title: Text(
+          'Προεπισκόπηση · ${widget.isAfternoon ? 'Παράδοση' : 'Παραλαβή'}',
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17),
+        ),
+      ),
+      body: Column(
+        children: [
+          // Map
+          SizedBox(
+            height: 280,
+            child: FlutterMap(
+              mapController: _map,
+              options: MapOptions(
+                initialCenter: center,
+                initialZoom: 13,
+                onMapReady: () => WidgetsBinding.instance.addPostFrameCallback((_) => _fit()),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(label, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: locked ? const Color(0xFF9CA3AF) : const Color(0xFF111827))),
-                    Text(
-                      locked ? 'Διαθέσιμη μετά την παραλαβή' : subtitle,
-                      style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 13),
-                    ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.omnedu.omnedu',
+                ),
+                MarkerLayer(
+                  markers: [
+                    for (int i = 0; i < widget.riders.length; i++)
+                      if (_riderPoint(widget.riders[i]) != null)
+                        Marker(
+                          point: _riderPoint(widget.riders[i])!,
+                          width: 90,
+                          height: 56,
+                          alignment: Alignment.topCenter,
+                          child: _PreviewPin(
+                            name: widget.riders[i]['name']?.toString().split(' ').first ?? '',
+                            order: i + 1,
+                            color: color,
+                          ),
+                        ),
                   ],
                 ),
+              ],
+            ),
+          ),
+
+          // Stop list
+          Expanded(
+            child: widget.riders.isEmpty
+                ? const Center(child: Text('Δεν βρέθηκαν στάσεις.', style: TextStyle(color: Colors.grey)))
+                : ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+                    itemCount: widget.riders.length,
+                    itemBuilder: (_, i) {
+                      final r = widget.riders[i];
+                      final name = r['name']?.toString() ?? '';
+                      final address = r['address']?.toString() ?? '';
+                      final time = r['pickupTime']?.toString() ?? '';
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFFE5E7EB)),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 30, height: 30,
+                              decoration: BoxDecoration(color: color.withValues(alpha: 0.12), shape: BoxShape.circle),
+                              child: Center(
+                                child: Text('${i + 1}', style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 13)),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                                  if (address.isNotEmpty)
+                                    Text(address, style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                ],
+                              ),
+                            ),
+                            if (time.isNotEmpty)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: color.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(time, style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 13)),
+                              ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: SizedBox(
+            height: 56,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFE95926),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
-              if (!locked) const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF)),
-            ],
+              onPressed: widget.onStart,
+              icon: const Icon(Icons.play_arrow_rounded, size: 24),
+              label: const Text('Έναρξη Διαδρομής', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _PreviewPin extends StatelessWidget {
+  final String name;
+  final int order;
+  final Color color;
+  const _PreviewPin({required this.name, required this.order, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(6)),
+          child: Text(
+            '$order. $name',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: color),
+          ),
+        ),
+        Icon(Icons.location_pin, color: color, size: 28),
+      ],
     );
   }
 }
