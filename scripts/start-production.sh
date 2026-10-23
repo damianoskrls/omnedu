@@ -17,6 +17,8 @@ node repair.js || echo '[repair] repair.js failed, continuing anyway'
   node_modules/.bin/prisma migrate resolve --applied 20261020200000_party_invitations || true
   node_modules/.bin/prisma migrate resolve --applied 20261021000000_repair_billing_due_day_and_assignment_date || true
   node_modules/.bin/prisma migrate resolve --applied 20261022000000_add_student_gender || true
+  node_modules/.bin/prisma migrate resolve --applied 20261023000000_add_sibling_discount || true
+  node_modules/.bin/prisma migrate resolve --applied 20261023100000_add_student_siblings_table || true
   node_modules/.bin/prisma migrate deploy || echo 'migration failed, starting api anyway'
 })
 cd "$ROOT"
