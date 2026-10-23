@@ -646,17 +646,6 @@ export class BillingService implements OnModuleInit {
             paidAt: enrollment.paidAt,
           })),
       ];
-      if (stationery && this.chargeInMonth(stationery.chargeDate, month, chargeYear)) {
-        extras.unshift({
-          id: stationery.id,
-          kind: 'once' as const,
-          title: stationery.description,
-          amount: Number(stationery.amount),
-          status: stationery.status,
-          notes: stationery.notes,
-          paidAt: stationery.paidAt,
-        });
-      }
       return {
         month,
         year: chargeYear,
@@ -678,12 +667,15 @@ export class BillingService implements OnModuleInit {
       .flatMap((month) => month.extras)
       .filter((extra) => extra.status === 'unpaid' || extra.status === 'partial' || extra.status === 'pending_payment')
       .reduce((sum, extra) => sum + Number(extra.amount), 0);
+    const pendingStationery = stationery && (stationery.status === 'unpaid' || stationery.status === 'partial')
+      ? Math.max(0, Number(stationery.amount) - Number(stationery.paidAmount))
+      : 0;
 
     const current = months.find((month) => month.month === now.getUTCMonth() + 1 && month.year === now.getUTCFullYear()) ?? null;
 
     return {
       schoolYear: year.label,
-      pendingNow: Math.round((pendingMonths + pendingExtras) * 100) / 100,
+      pendingNow: Math.round((pendingMonths + pendingExtras + pendingStationery) * 100) / 100,
       current,
       stationery: stationery
         ? {
