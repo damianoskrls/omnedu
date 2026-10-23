@@ -277,29 +277,59 @@ export class BusTrackingService implements OnModuleInit {
       include: { busPosition: true, studentServices: { where: { isActive: true } } },
     });
     const dayKey = schoolDayKey();
-    const morningBus = buses[0] ?? null;
-    const afternoonBus = buses[1] ?? null;
-    const toStats = (bus: typeof morningBus) => {
-      if (!bus) return null;
-      const times = bus.studentServices.map((ss: Record<string, unknown>) => clockOf(ss as Parameters<typeof clockOf>[0], 'pickup', dayKey)).filter(Boolean);
+    const primaryBus = buses[0] ?? null;
+    // If there are 2+ separate bus records, use them as morning/afternoon respectively.
+    // Otherwise (the common case: one bus does both), split students by serviceMode.
+    const dedicatedAfternoonBus = buses.length >= 2 ? buses[1] : null;
+
+    type BusRecord = typeof primaryBus;
+    type StudentService = NonNullable<BusRecord>['studentServices'][number];
+
+    const toStats = (bus: BusRecord, students: StudentService[], kind: 'pickup' | 'dropoff') => {
+      if (!bus || students.length === 0) return null;
+      const times = students
+        .map((ss) => clockOf(ss as Parameters<typeof clockOf>[0], kind, dayKey))
+        .filter(Boolean);
       times.sort();
-      const stops = new Set(bus.studentServices.map((ss: Record<string, unknown>) => (ss as { stopId?: string }).stopId).filter(Boolean)).size;
+      const stops = new Set(students.map((ss) => (ss as { stopId?: string }).stopId).filter(Boolean)).size;
       return {
         serviceId: bus.id,
         name: bus.name,
         busNumber: bus.busNumber ?? null,
         startTime: times[0] ?? null,
-        stopsCount: stops || bus.studentServices.length,
-        studentsCount: bus.studentServices.length,
+        stopsCount: stops || students.length,
+        studentsCount: students.length,
       };
     };
-    const position = morningBus?.busPosition;
+
+    let morningRoute = null;
+    let afternoonRoute = null;
+
+    if (primaryBus) {
+      const pickupStudents = primaryBus.studentServices.filter((ss) => {
+        const mode = (ss as { serviceMode?: string }).serviceMode;
+        return !mode || mode === 'pickup' || mode === 'both';
+      });
+      morningRoute = toStats(primaryBus, pickupStudents, 'pickup');
+
+      if (dedicatedAfternoonBus) {
+        afternoonRoute = toStats(dedicatedAfternoonBus, dedicatedAfternoonBus.studentServices, 'dropoff');
+      } else {
+        const dropoffStudents = primaryBus.studentServices.filter((ss) => {
+          const mode = (ss as { serviceMode?: string }).serviceMode;
+          return !mode || mode === 'dropoff' || mode === 'both';
+        });
+        afternoonRoute = toStats(primaryBus, dropoffStudents, 'dropoff');
+      }
+    }
+
+    const position = primaryBus?.busPosition;
     const ageMs = position ? Date.now() - position.updatedAt.getTime() : Infinity;
     return {
-      morningRoute: toStats(morningBus),
-      afternoonRoute: toStats(afternoonBus),
+      morningRoute,
+      afternoonRoute,
       isActive: ageMs < 2 * 60 * 60 * 1000,
-      activeServiceId: morningBus?.id ?? null,
+      activeServiceId: primaryBus?.id ?? null,
     };
   }
 
