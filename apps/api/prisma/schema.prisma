@@ -1467,6 +1467,7 @@ model PartyInvitation {
   title               String
   body                String?   @db.Text
   imageUrl            String?   @map("image_url")
+  pdfUrl              String?   @map("pdf_url")
   eventDate           String?   @map("event_date")
   recipientStudentIds Json      @default("[]") @map("recipient_student_ids")
   sentAt              DateTime? @map("sent_at")

@@ -60,6 +60,7 @@ export class PartyInvitationsService {
     title: string;
     body?: string;
     imageUrl?: string;
+    pdfUrl?: string;
     eventDate?: string;
     recipientStudentIds: string[];
   }) {
@@ -73,6 +74,7 @@ export class PartyInvitationsService {
         title: data.title,
         body: data.body ?? null,
         imageUrl: data.imageUrl ?? null,
+        pdfUrl: data.pdfUrl ?? null,
         eventDate: data.eventDate ?? null,
         recipientStudentIds: data.recipientStudentIds,
       },
@@ -84,6 +86,7 @@ export class PartyInvitationsService {
     title?: string;
     body?: string;
     imageUrl?: string;
+    pdfUrl?: string;
     eventDate?: string;
     recipientStudentIds?: string[];
   }) {
@@ -95,6 +98,7 @@ export class PartyInvitationsService {
         ...(data.title !== undefined ? { title: data.title } : {}),
         ...(data.body !== undefined ? { body: data.body } : {}),
         ...(data.imageUrl !== undefined ? { imageUrl: data.imageUrl } : {}),
+        ...(data.pdfUrl !== undefined ? { pdfUrl: data.pdfUrl } : {}),
         ...(data.eventDate !== undefined ? { eventDate: data.eventDate } : {}),
         ...(data.recipientStudentIds !== undefined ? { recipientStudentIds: data.recipientStudentIds } : {}),
       },

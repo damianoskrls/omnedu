@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { partyInvitationsApi, studentsApi, classesApi } from '@/lib/api';
+import { api, partyInvitationsApi, studentsApi, classesApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
-import { Plus, X, Send, Bell, Trash2, Cake, Users, ChevronDown, ChevronUp, ImageIcon, Pencil } from 'lucide-react';
+import { Plus, X, Send, Bell, Trash2, Cake, Users, ChevronDown, ChevronUp, ImageIcon, Pencil, FileText } from 'lucide-react';
 
 const inputCls = 'w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300';
 
@@ -27,9 +27,10 @@ export default function PartyInvitationsPage() {
     title: string;
     body: string;
     imageUrl: string;
+    pdfUrl: string;
     eventDate: string;
     recipientStudentIds: string[];
-  }>({ birthdayStudentId: '', birthdayStudentName: '', title: '', body: '', imageUrl: '', eventDate: '', recipientStudentIds: [] });
+  }>({ birthdayStudentId: '', birthdayStudentName: '', title: '', body: '', imageUrl: '', pdfUrl: '', eventDate: '', recipientStudentIds: [] });
 
   const [allStudents, setAllStudents] = useState<any[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
@@ -38,7 +39,9 @@ export default function PartyInvitationsPage() {
   const [selectedClassId, setSelectedClassId] = useState('');
   const [expandedRecipients, setExpandedRecipients] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadingPdf, setUploadingPdf] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const pdfRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!schoolId) return;
@@ -66,7 +69,7 @@ export default function PartyInvitationsPage() {
 
   const openCreate = () => {
     setEditingId(null);
-    setForm({ birthdayStudentId: '', birthdayStudentName: '', title: '', body: '', imageUrl: '', eventDate: '', recipientStudentIds: [] });
+    setForm({ birthdayStudentId: '', birthdayStudentName: '', title: '', body: '', imageUrl: '', pdfUrl: '', eventDate: '', recipientStudentIds: [] });
     setStudentSearch('');
     setSelectedClassId('');
     setExpandedRecipients(false);
@@ -81,6 +84,7 @@ export default function PartyInvitationsPage() {
       title: inv.title,
       body: inv.body ?? '',
       imageUrl: inv.imageUrl ?? '',
+      pdfUrl: inv.pdfUrl ?? '',
       eventDate: inv.eventDate ?? '',
       recipientStudentIds: Array.isArray(inv.recipientStudentIds) ? inv.recipientStudentIds : [],
     });
@@ -115,10 +119,19 @@ export default function PartyInvitationsPage() {
     try {
       const data = new FormData();
       data.append('file', file);
-      const res = await fetch(`/api/upload?schoolId=${schoolId}`, { method: 'POST', body: data });
-      const json = await res.json();
-      if (json.url) setForm(f => ({ ...f, imageUrl: json.url }));
+      const res = await api.post(`/schools/${schoolId}/party-invitations/upload-attachment`, data);
+      if (res.data?.url) setForm(f => ({ ...f, imageUrl: res.data.url }));
     } catch { /* ignore */ } finally { setUploading(false); }
+  };
+
+  const handlePdfUpload = async (file: File) => {
+    setUploadingPdf(true);
+    try {
+      const data = new FormData();
+      data.append('file', file);
+      const res = await api.post(`/schools/${schoolId}/party-invitations/upload-attachment`, data);
+      if (res.data?.url) setForm(f => ({ ...f, pdfUrl: res.data.url }));
+    } catch { /* ignore */ } finally { setUploadingPdf(false); }
   };
 
   const doSave = async () => {
@@ -130,6 +143,7 @@ export default function PartyInvitationsPage() {
           title: form.title,
           body: form.body || undefined,
           imageUrl: form.imageUrl || undefined,
+          pdfUrl: form.pdfUrl || undefined,
           eventDate: form.eventDate || undefined,
           recipientStudentIds: form.recipientStudentIds,
         });
@@ -140,6 +154,7 @@ export default function PartyInvitationsPage() {
           title: form.title,
           body: form.body || undefined,
           imageUrl: form.imageUrl || undefined,
+          pdfUrl: form.pdfUrl || undefined,
           eventDate: form.eventDate || undefined,
           recipientStudentIds: form.recipientStudentIds,
         });
@@ -218,6 +233,11 @@ export default function PartyInvitationsPage() {
                     <Users className="h-3 w-3" />
                     {Array.isArray(inv.recipientStudentIds) ? inv.recipientStudentIds.length : 0} παιδιά
                   </span>
+                  {inv.pdfUrl && (
+                    <span className="text-xs bg-red-50 text-red-600 rounded-full px-2 py-0.5 flex items-center gap-1">
+                      <FileText className="h-3 w-3" /> PDF
+                    </span>
+                  )}
                   {inv.sentAt
                     ? <span className="text-xs bg-green-100 text-green-700 rounded-full px-2 py-0.5">✓ Εστάλη {fmtDate(inv.sentAt)}</span>
                     : <span className="text-xs bg-yellow-100 text-yellow-700 rounded-full px-2 py-0.5">Δεν έχει σταλεί</span>
@@ -373,6 +393,29 @@ export default function PartyInvitationsPage() {
                 )}
                 <input ref={fileRef} type="file" accept="image/*" className="hidden"
                   onChange={e => { const f = e.target.files?.[0]; if (f) handleImageUpload(f); }} />
+              </div>
+
+              {/* PDF */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">PDF πρόσκλησης</label>
+                {form.pdfUrl ? (
+                  <div className="flex items-center gap-3 border border-gray-200 rounded-xl px-3 py-2.5">
+                    <FileText className="h-5 w-5 text-red-500 flex-shrink-0" />
+                    <span className="text-sm text-gray-700 flex-1 truncate">PDF ανέβηκε</span>
+                    <button onClick={() => setForm(f => ({ ...f, pdfUrl: '' }))} className="text-gray-400 hover:text-red-500">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => pdfRef.current?.click()} disabled={uploadingPdf}
+                    className="flex items-center gap-2 border border-dashed border-gray-300 rounded-xl px-4 py-3 text-sm text-gray-500 hover:border-red-400 hover:text-red-500 w-full justify-center"
+                  >
+                    <FileText className="h-4 w-4" />
+                    {uploadingPdf ? 'Ανέβασμα...' : 'Ανέβασε PDF πρόσκλησης'}
+                  </button>
+                )}
+                <input ref={pdfRef} type="file" accept="application/pdf" className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handlePdfUpload(f); }} />
               </div>
 
               {/* Recipients */}

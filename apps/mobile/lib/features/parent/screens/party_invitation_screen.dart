@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/utils/system_insets.dart';
@@ -73,15 +74,13 @@ class _PartyInvitationScreenState extends ConsumerState<PartyInvitationScreen> {
     final title = row['title']?.toString() ?? '';
     final body = row['body']?.toString() ?? '';
     final imageUrl = row['imageUrl']?.toString() ?? '';
+    final pdfUrl = row['pdfUrl']?.toString() ?? '';
     final eventDate = row['eventDate']?.toString() ?? '';
     final sentAt = row['sentAt'];
     final birthdayChild = row['birthdayStudent'] is Map
         ? Map<String, dynamic>.from(row['birthdayStudent'] as Map)
         : <String, dynamic>{};
     final birthdayName = birthdayChild['fullName']?.toString() ?? '';
-    final recipients = row['recipientStudents'] is List
-        ? (row['recipientStudents'] as List).cast<Map>()
-        : <Map>[];
 
     return ListView(
       padding: EdgeInsets.fromLTRB(16, 16, 16, 24 + systemBottomInset(context)),
@@ -163,32 +162,24 @@ class _PartyInvitationScreenState extends ConsumerState<PartyInvitationScreen> {
           ),
           const SizedBox(height: 16),
         ],
-        if (recipients.isNotEmpty) ...[
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFFCE7F3)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Προσκεκλημένοι (${recipients.length})',
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF111827))),
-                const SizedBox(height: 10),
-                ...recipients.map((r) => Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Row(children: [
-                        const Icon(Icons.person_rounded, size: 16, color: Color(0xFFDB2777)),
-                        const SizedBox(width: 8),
-                        Text(r['fullName']?.toString() ?? '',
-                            style: const TextStyle(fontSize: 14, color: Color(0xFF374151))),
-                      ]),
-                    )),
-              ],
+        if (pdfUrl.isNotEmpty) ...[
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                final uri = Uri.tryParse(pdfUrl);
+                if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
+              },
+              icon: const Icon(Icons.picture_as_pdf_rounded, color: Color(0xFFDB2777)),
+              label: const Text('Άνοιγμα PDF Πρόσκλησης', style: TextStyle(color: Color(0xFFDB2777))),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0xFFDB2777)),
+                minimumSize: const Size.fromHeight(48),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
             ),
           ),
+          const SizedBox(height: 16),
         ],
       ],
     );
