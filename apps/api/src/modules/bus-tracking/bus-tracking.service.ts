@@ -288,10 +288,10 @@ export class BusTrackingService implements OnModuleInit {
     const toStats = (bus: BusRecord, students: StudentService[], kind: 'pickup' | 'dropoff') => {
       if (!bus || students.length === 0) return null;
       const times = students
-        .map((ss) => clockOf(ss as Parameters<typeof clockOf>[0], kind, dayKey))
+        .map((ss: Record<string, unknown>) => clockOf(ss as unknown as Parameters<typeof clockOf>[0], kind, dayKey))
         .filter(Boolean);
       times.sort();
-      const stops = new Set(students.map((ss) => (ss as { stopId?: string }).stopId).filter(Boolean)).size;
+      const stops = new Set(students.map((ss: Record<string, unknown>) => (ss as { stopId?: string }).stopId).filter(Boolean)).size;
       return {
         serviceId: bus.id,
         name: bus.name,
