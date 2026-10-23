@@ -2000,6 +2000,82 @@ export default function StudentProfilePage() {
                 )}
               </div>
             )}
+            {/* Subsidies section */}
+            {isAdmin && (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h3 className="font-semibold text-gray-900">Επιδοτήσεις / Voucher</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">Μπορείς να αλλάξεις το ποσό, τον τύπο και την τράπεζα. Η αλλαγή πιάνει από τον μήνα που διαλέγεις και οι χρεώσεις ξαναϋπολογίζονται μόνες τους.</p>
+                  </div>
+                  {subsidyForm === null && (
+                    <button
+                      onClick={() => setSubsidyForm({ name: '', subsidyType: 'voucher', monthlyAmount: '', notes: '', startsMonth: currentMonthKey() })}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Προσθήκη
+                    </button>
+                  )}
+                </div>
+                {subsidies.length === 0 && subsidyForm === null ? (
+                  <p className="text-sm text-gray-400 py-1">Δεν υπάρχουν επιδοτήσεις</p>
+                ) : (
+                  <div className="space-y-2">
+                    {subsidies.map((sub: any) => (
+                      <div key={sub.id} className="flex items-center gap-3 p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm text-gray-900">{sub.name}</span>
+                            <span className="text-xs bg-white border border-emerald-200 text-emerald-700 px-2 py-0.5 rounded-full">
+                              {SUBSIDY_TYPES[sub.subsidyType] ?? sub.subsidyType}
+                            </span>
+                            {!sub.isActive && <span className="text-xs text-gray-400">(ανενεργό)</span>}
+                          </div>
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            {sub.startsFrom ? `από ${new Date(sub.startsFrom).toLocaleDateString('el-GR', { month: 'long', year: 'numeric' })}` : 'από την αρχή'}
+                            {sub.endsAt ? ` έως ${new Date(sub.endsAt).toLocaleDateString('el-GR', { month: 'long', year: 'numeric' })}` : ''}
+                            {sub.notes ? ` · ${sub.notes}` : ''}
+                          </div>
+                        </div>
+                        <div className="text-emerald-700 font-bold text-sm shrink-0">−€{Number(sub.monthlyAmount).toFixed(0)}/μήνα</div>
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => setSubsidyForm({ ...sub, monthlyAmount: String(sub.monthlyAmount), startsMonth: currentMonthKey() })} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-white text-xs font-medium text-[#77328D]"><Pencil className="h-3.5 w-3.5" /> Επεξεργασία</button>
+                          <button onClick={() => handleDeleteSubsidy(sub.id)} className="p-1.5 rounded-lg hover:bg-white text-gray-400 hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {subsidyForm !== null && (
+                  <div className="mt-3 border border-indigo-100 rounded-xl p-4 bg-indigo-50/30 space-y-3">
+                    <p className="text-sm font-medium text-gray-800">{subsidyForm.id ? 'Επεξεργασία επιδότησης' : 'Νέα επιδότηση'}</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Τύπος</label>
+                        <select value={subsidyForm.subsidyType ?? 'voucher'} onChange={e => setSubsidyForm({ ...subsidyForm, subsidyType: e.target.value })} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                          {Object.entries(SUBSIDY_TYPES).map(([k, v]) => <option key={k} value={k}>{v as string}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Ποσό/μήνα (€)</label>
+                        <input type="number" min="0" step="0.01" value={subsidyForm.monthlyAmount} onChange={e => setSubsidyForm({ ...subsidyForm, monthlyAmount: e.target.value })} placeholder="π.χ. 300" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Ισχύει από</label>
+                      <input type="month" value={subsidyForm.startsMonth || currentMonthKey()} onChange={e => setSubsidyForm({ ...subsidyForm, startsMonth: e.target.value })} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                    </div>
+                    <input value={subsidyForm.name} onChange={e => setSubsidyForm({ ...subsidyForm, name: e.target.value })} placeholder="Φορέας / Περιγραφή (π.χ. ΕΣΠΑ Voucher, Alpha Bank)" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                    <input value={subsidyForm.notes ?? ''} onChange={e => setSubsidyForm({ ...subsidyForm, notes: e.target.value })} placeholder="Σημειώσεις" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                    <div className="flex gap-2">
+                      <button onClick={() => setSubsidyForm(null)} className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">Ακύρωση</button>
+                      <button onClick={handleSaveSubsidy} disabled={savingSubsidy || !subsidyForm.name || !subsidyForm.monthlyAmount} className="flex-1 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">{savingSubsidy ? 'Αποθήκευση...' : 'Αποθήκευση'}</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <div className="flex items-start justify-between gap-4 mb-4">
                 <div>
@@ -2275,82 +2351,6 @@ export default function StudentProfilePage() {
               </div>
             )}
             </>
-            )}
-
-            {/* Subsidies section */}
-            {isAdmin && (
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <h3 className="font-semibold text-gray-900">Επιδοτήσεις / Voucher</h3>
-                    <p className="text-xs text-gray-500 mt-0.5">Μπορείς να αλλάξεις το ποσό, τον τύπο και την τράπεζα. Η αλλαγή πιάνει από τον μήνα που διαλέγεις και οι χρεώσεις ξαναϋπολογίζονται μόνες τους.</p>
-                  </div>
-                  {subsidyForm === null && (
-                    <button
-                      onClick={() => setSubsidyForm({ name: '', subsidyType: 'voucher', monthlyAmount: '', notes: '', startsMonth: currentMonthKey() })}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700"
-                    >
-                      <Plus className="h-3.5 w-3.5" /> Προσθήκη
-                    </button>
-                  )}
-                </div>
-                {subsidies.length === 0 && subsidyForm === null ? (
-                  <p className="text-sm text-gray-400 py-1">Δεν υπάρχουν επιδοτήσεις</p>
-                ) : (
-                  <div className="space-y-2">
-                    {subsidies.map((sub: any) => (
-                      <div key={sub.id} className="flex items-center gap-3 p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-sm text-gray-900">{sub.name}</span>
-                            <span className="text-xs bg-white border border-emerald-200 text-emerald-700 px-2 py-0.5 rounded-full">
-                              {SUBSIDY_TYPES[sub.subsidyType] ?? sub.subsidyType}
-                            </span>
-                            {!sub.isActive && <span className="text-xs text-gray-400">(ανενεργό)</span>}
-                          </div>
-                          <div className="text-xs text-gray-500 mt-0.5">
-                            {sub.startsFrom ? `από ${new Date(sub.startsFrom).toLocaleDateString('el-GR', { month: 'long', year: 'numeric' })}` : 'από την αρχή'}
-                            {sub.endsAt ? ` έως ${new Date(sub.endsAt).toLocaleDateString('el-GR', { month: 'long', year: 'numeric' })}` : ''}
-                            {sub.notes ? ` · ${sub.notes}` : ''}
-                          </div>
-                        </div>
-                        <div className="text-emerald-700 font-bold text-sm shrink-0">−€{Number(sub.monthlyAmount).toFixed(0)}/μήνα</div>
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => setSubsidyForm({ ...sub, monthlyAmount: String(sub.monthlyAmount), startsMonth: currentMonthKey() })} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-white text-xs font-medium text-[#77328D]"><Pencil className="h-3.5 w-3.5" /> Επεξεργασία</button>
-                          <button onClick={() => handleDeleteSubsidy(sub.id)} className="p-1.5 rounded-lg hover:bg-white text-gray-400 hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {subsidyForm !== null && (
-                  <div className="mt-3 border border-indigo-100 rounded-xl p-4 bg-indigo-50/30 space-y-3">
-                    <p className="text-sm font-medium text-gray-800">{subsidyForm.id ? 'Επεξεργασία επιδότησης' : 'Νέα επιδότηση'}</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Τύπος</label>
-                        <select value={subsidyForm.subsidyType ?? 'voucher'} onChange={e => setSubsidyForm({ ...subsidyForm, subsidyType: e.target.value })} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
-                          {Object.entries(SUBSIDY_TYPES).map(([k, v]) => <option key={k} value={k}>{v as string}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Ποσό/μήνα (€)</label>
-                        <input type="number" min="0" step="0.01" value={subsidyForm.monthlyAmount} onChange={e => setSubsidyForm({ ...subsidyForm, monthlyAmount: e.target.value })} placeholder="π.χ. 300" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Ισχύει από</label>
-                      <input type="month" value={subsidyForm.startsMonth || currentMonthKey()} onChange={e => setSubsidyForm({ ...subsidyForm, startsMonth: e.target.value })} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                    </div>
-                    <input value={subsidyForm.name} onChange={e => setSubsidyForm({ ...subsidyForm, name: e.target.value })} placeholder="Φορέας / Περιγραφή (π.χ. ΕΣΠΑ Voucher, Alpha Bank)" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                    <input value={subsidyForm.notes ?? ''} onChange={e => setSubsidyForm({ ...subsidyForm, notes: e.target.value })} placeholder="Σημειώσεις" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                    <div className="flex gap-2">
-                      <button onClick={() => setSubsidyForm(null)} className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">Ακύρωση</button>
-                      <button onClick={handleSaveSubsidy} disabled={savingSubsidy || !subsidyForm.name || !subsidyForm.monthlyAmount} className="flex-1 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">{savingSubsidy ? 'Αποθήκευση...' : 'Αποθήκευση'}</button>
-                    </div>
-                  </div>
-                )}
-              </div>
             )}
 
             {/* School year timelines */}
