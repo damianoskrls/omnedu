@@ -5,7 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../storage/secure_storage.dart';
 
-const productionApiUrl = 'https://omnedu.onrender.com/api/v1';
+const productionApiUrl = 'https://omneduapi-production.up.railway.app/api/v1';
 
 const _envApiUrl = String.fromEnvironment('API_URL', defaultValue: productionApiUrl);
 
