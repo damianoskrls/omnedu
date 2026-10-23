@@ -584,6 +584,7 @@ export class BillingService implements OnModuleInit {
     ]);
 
     const stationery = oneTime.find((charge) => this.isStationery(charge.description, charge.chargeDate, year.startYear)) ?? null;
+    const stationeryIds = new Set(oneTime.filter((charge) => this.isStationery(charge.description, charge.chargeDate, year.startYear)).map((c) => c.id));
 
     const months = year.months.map(({ month, year: chargeYear }) => {
       const charge = charges.find((row) => row.month === month && row.year === chargeYear);
@@ -600,7 +601,7 @@ export class BillingService implements OnModuleInit {
         : quote.lines;
       const extras = [
         ...oneTime
-          .filter((item) => this.chargeInMonth(item.chargeDate, month, chargeYear) && item.id !== stationery?.id)
+          .filter((item) => this.chargeInMonth(item.chargeDate, month, chargeYear) && !stationeryIds.has(item.id))
           .map((item) => ({
             id: item.id,
             kind: 'once' as const,
