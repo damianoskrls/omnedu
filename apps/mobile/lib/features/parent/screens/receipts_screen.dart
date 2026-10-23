@@ -1,5 +1,10 @@
+import 'dart:io';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api/api_client.dart';
@@ -121,11 +126,27 @@ class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
       final resp = await dioClient.get('/schools/${widget.schoolId}/billing/receipts/$docId/download');
       final url = resp.data['url']?.toString() ?? '';
       if (url.isEmpty) { _say(context, 'Η απόδειξη δεν έχει αρχείο.'); return; }
-      final uri = Uri.tryParse(url);
-      if (uri == null) { _say(context, 'Μη έγκυρο αρχείο.'); return; }
       if (!mounted) return;
-      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!ok && mounted) _say(context, 'Δεν ήταν δυνατό το άνοιγμα της απόδειξης.');
+
+      // Download bytes to temp dir, then open with native PDF viewer
+      final dir = await getTemporaryDirectory();
+      final filePath = '${dir.path}/receipt_$docId.pdf';
+      final downloader = Dio();
+      await downloader.download(url, filePath, options: Options(responseType: ResponseType.bytes));
+
+      if (!mounted) return;
+      final file = File(filePath);
+      if (!await file.exists()) {
+        _say(context, 'Σφάλμα κατά την αποθήκευση.');
+        return;
+      }
+
+      final result = await OpenFilex.open(filePath);
+      if (result.type != ResultType.done && mounted) {
+        // Fallback: open in browser if no PDF viewer installed
+        final uri = Uri.tryParse(url);
+        if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
     } catch (_) {
       if (mounted) _say(context, 'Σφάλμα κατά το κατέβασμα.');
     } finally {
