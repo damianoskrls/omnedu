@@ -117,20 +117,22 @@ export default function PartyInvitationsPage() {
   const handleImageUpload = async (file: File) => {
     setUploading(true);
     try {
-      const data = new FormData();
-      data.append('file', file);
-      const res = await api.post(`/schools/${schoolId}/party-invitations/upload-attachment`, data);
-      if (res.data?.url) setForm(f => ({ ...f, imageUrl: res.data.url }));
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await api.post(`/schools/${schoolId}/party-invitations/upload-attachment`, fd) as any;
+      const url = res?.url ?? res?.data?.url;
+      if (url) setForm(f => ({ ...f, imageUrl: url }));
     } catch { /* ignore */ } finally { setUploading(false); }
   };
 
   const handlePdfUpload = async (file: File) => {
     setUploadingPdf(true);
     try {
-      const data = new FormData();
-      data.append('file', file);
-      const res = await api.post(`/schools/${schoolId}/party-invitations/upload-attachment`, data);
-      if (res.data?.url) setForm(f => ({ ...f, pdfUrl: res.data.url }));
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await api.post(`/schools/${schoolId}/party-invitations/upload-attachment`, fd) as any;
+      const url = res?.url ?? res?.data?.url;
+      if (url) setForm(f => ({ ...f, pdfUrl: url }));
     } catch { /* ignore */ } finally { setUploadingPdf(false); }
   };
 
