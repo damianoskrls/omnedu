@@ -88,27 +88,28 @@ class _PartyInvitationScreenState extends ConsumerState<PartyInvitationScreen> {
     showDialog(
       context: context,
       barrierColor: Colors.black87,
-      builder: (_) => Dialog.fullscreen(
+      builder: (dialogContext) => Dialog.fullscreen(
         backgroundColor: Colors.black,
         child: Stack(
-          fit: StackFit.expand,
           children: [
-            InteractiveViewer(
-              minScale: 0.5,
-              maxScale: 5.0,
-              child: Center(
-                child: AppImage(imageUrl, fit: BoxFit.contain),
+            Positioned.fill(
+              child: InteractiveViewer(
+                minScale: 0.5,
+                maxScale: 5.0,
+                child: Center(
+                  child: AppImage(imageUrl, fit: BoxFit.contain),
+                ),
               ),
             ),
             Positioned(
               top: topPadding + 8,
               right: 12,
-              child: Material(
-                color: Colors.transparent,
-                child: IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close_rounded, color: Colors.white, size: 28),
-                  style: IconButton.styleFrom(backgroundColor: Colors.black45),
+              child: IconButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                icon: const Icon(Icons.close_rounded, color: Colors.white, size: 30),
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.black54,
+                  minimumSize: const Size(44, 44),
                 ),
               ),
             ),
