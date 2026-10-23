@@ -451,7 +451,7 @@ export class NotificationsService implements OnModuleInit {
       this.logger.log(`[EMAIL] From: ${fromEmail}, school: ${school?.name ?? schoolId}`);
 
       const userEmailRows = userIds.length > 0
-        ? await this.prisma.user.findMany({ where: { id: { in: userIds }, email: { not: null } }, select: { email: true } })
+        ? await this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { email: true } })
         : [];
 
       const allEmails = [
