@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api/api_client.dart';
 import '../../core/providers/auth_provider.dart';
@@ -81,6 +82,7 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
     final serviceId = (route is Map ? route['serviceId']?.toString() : null);
     final busName = (route is Map ? route['name']?.toString() : null) ?? 'Σχολικό';
     if (serviceId == null) return;
+    final userId = ref.read(authProvider).user?.id ?? '';
 
     List<Map<String, dynamic>> riders = [];
     try {
@@ -95,6 +97,22 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
           .toList();
     } catch (_) {}
 
+    // Filter by direction: morning = canPickup, afternoon = can dropoff
+    List<Map<String, dynamic>> filteredRiders;
+    if (afternoon) {
+      filteredRiders = riders.where((r) {
+        final mode = r['serviceMode']?.toString() ?? 'both';
+        return mode != 'pickup';
+      }).toList();
+      if (filteredRiders.isEmpty) filteredRiders = riders;
+    } else {
+      filteredRiders = riders.where((r) {
+        final mode = r['serviceMode']?.toString() ?? 'both';
+        return mode != 'dropoff';
+      }).toList();
+      if (filteredRiders.isEmpty) filteredRiders = riders;
+    }
+
     if (!mounted) return;
     await Navigator.push(
       context,
@@ -102,7 +120,9 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
         builder: (_) => _RoutePreviewScreen(
           busName: busName,
           isAfternoon: afternoon,
-          riders: riders,
+          riders: filteredRiders,
+          schoolId: widget.schoolId,
+          driverUserId: userId,
           onStart: () {
             Navigator.pop(context);
             _startRoute(afternoon: afternoon);
@@ -473,12 +493,16 @@ class _RoutePreviewScreen extends StatefulWidget {
   final String busName;
   final bool isAfternoon;
   final List<Map<String, dynamic>> riders;
+  final String schoolId;
+  final String driverUserId;
   final VoidCallback onStart;
 
   const _RoutePreviewScreen({
     required this.busName,
     required this.isAfternoon,
     required this.riders,
+    required this.schoolId,
+    required this.driverUserId,
     required this.onStart,
   });
 
@@ -494,6 +518,106 @@ class _RoutePreviewScreenState extends State<_RoutePreviewScreen> {
     final lng = double.tryParse(r['longitude']?.toString() ?? '');
     if (lat == null || lng == null) return null;
     return LatLng(lat, lng);
+  }
+
+  void _showContact(Map<String, dynamic> rider) {
+    final color = widget.isAfternoon ? const Color(0xFFD97706) : const Color(0xFF77328D);
+    final name = rider['name']?.toString() ?? '';
+    final parentPhone = rider['parentPhone']?.toString() ?? '';
+    final parentId = rider['parentId']?.toString() ?? '';
+    final rawContact = widget.isAfternoon
+        ? rider['dropoffContact']?.toString()
+        : rider['pickupContact']?.toString();
+    final contactPerson = (rawContact?.isNotEmpty == true)
+        ? rawContact!
+        : (rider['parentName']?.toString() ?? '');
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.of(ctx).padding.bottom),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(color: const Color(0xFFE5E7EB), borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
+            if (contactPerson.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Icon(Icons.person_rounded, color: color, size: 16),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '${widget.isAfternoon ? 'Θα παραλάβει' : 'Θα παραδοθεί σε'}: $contactPerson',
+                      style: const TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                if (parentPhone.isNotEmpty) ...[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        final uri = Uri(scheme: 'tel', path: parentPhone);
+                        await launchUrl(uri);
+                      },
+                      icon: const Icon(Icons.phone_rounded, size: 18),
+                      label: const Text('Κλήση'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: color,
+                        side: BorderSide(color: color),
+                        minimumSize: const Size(0, 48),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                ],
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: parentId.isNotEmpty ? () {
+                      Navigator.pop(ctx);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => DriverMessagesScreen(
+                            schoolId: widget.schoolId,
+                            userId: widget.driverUserId,
+                          ),
+                        ),
+                      );
+                    } : null,
+                    icon: const Icon(Icons.message_rounded, size: 18),
+                    label: const Text('Μήνυμα'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: color,
+                      minimumSize: const Size(0, 48),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _fit() {
@@ -546,10 +670,13 @@ class _RoutePreviewScreenState extends State<_RoutePreviewScreen> {
                           width: 90,
                           height: 56,
                           alignment: Alignment.topCenter,
-                          child: _PreviewPin(
-                            name: widget.riders[i]['name']?.toString().split(' ').first ?? '',
-                            order: i + 1,
-                            color: color,
+                          child: GestureDetector(
+                            onTap: () => _showContact(widget.riders[i]),
+                            child: _PreviewPin(
+                              name: widget.riders[i]['name']?.toString().split(' ').first ?? '',
+                              order: i + 1,
+                              color: color,
+                            ),
                           ),
                         ),
                   ],
@@ -569,45 +696,60 @@ class _RoutePreviewScreenState extends State<_RoutePreviewScreen> {
                       final r = widget.riders[i];
                       final name = r['name']?.toString() ?? '';
                       final address = r['address']?.toString() ?? '';
-                      final time = r['pickupTime']?.toString() ?? '';
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: const Color(0xFFE5E7EB)),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 30, height: 30,
-                              decoration: BoxDecoration(color: color.withValues(alpha: 0.12), shape: BoxShape.circle),
-                              child: Center(
-                                child: Text('${i + 1}', style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 13)),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                                  if (address.isNotEmpty)
-                                    Text(address, style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                ],
-                              ),
-                            ),
-                            if (time.isNotEmpty)
+                      final time = widget.isAfternoon
+                          ? (r['dropoffTime']?.toString() ?? r['pickupTime']?.toString() ?? '')
+                          : (r['pickupTime']?.toString() ?? '');
+                      final rawContact = widget.isAfternoon
+                          ? r['dropoffContact']?.toString()
+                          : r['pickupContact']?.toString();
+                      final contactPerson = (rawContact?.isNotEmpty == true)
+                          ? rawContact!
+                          : (r['parentName']?.toString() ?? '');
+                      return GestureDetector(
+                        onTap: () => _showContact(r),
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFE5E7EB)),
+                          ),
+                          child: Row(
+                            children: [
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: color.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(8),
+                                width: 30, height: 30,
+                                decoration: BoxDecoration(color: color.withValues(alpha: 0.12), shape: BoxShape.circle),
+                                child: Center(
+                                  child: Text('${i + 1}', style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 13)),
                                 ),
-                                child: Text(time, style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 13)),
                               ),
-                          ],
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                                    if (contactPerson.isNotEmpty)
+                                      Text(contactPerson, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    if (address.isNotEmpty)
+                                      Text(address, style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  ],
+                                ),
+                              ),
+                              if (time.isNotEmpty)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: color.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(time, style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 13)),
+                                ),
+                              const SizedBox(width: 6),
+                              Icon(Icons.chevron_right, color: color.withValues(alpha: 0.5), size: 18),
+                            ],
+                          ),
                         ),
                       );
                     },
