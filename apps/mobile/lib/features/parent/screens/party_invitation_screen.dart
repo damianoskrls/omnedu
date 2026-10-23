@@ -1,5 +1,10 @@
+import 'dart:io';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api/api_client.dart';
@@ -24,6 +29,7 @@ class _PartyInvitationScreenState extends ConsumerState<PartyInvitationScreen> {
   Map<String, dynamic>? _row;
   bool _loading = true;
   String? _error;
+  bool _downloadingPdf = false;
 
   @override
   void initState() {
@@ -52,6 +58,66 @@ class _PartyInvitationScreenState extends ConsumerState<PartyInvitationScreen> {
     }
   }
 
+  Future<void> _downloadPdf(String pdfUrl) async {
+    setState(() => _downloadingPdf = true);
+    try {
+      final dir = await getTemporaryDirectory();
+      final filePath = '${dir.path}/party_invitation.pdf';
+      final downloader = Dio();
+      await downloader.download(
+        pdfUrl,
+        filePath,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      if (!mounted) return;
+      final file = File(filePath);
+      if (!await file.exists()) return;
+      final result = await OpenFilex.open(filePath);
+      if (result.type != ResultType.done && mounted) {
+        final uri = Uri.tryParse(pdfUrl);
+        if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _downloadingPdf = false);
+    }
+  }
+
+  void _showFullscreenImage(BuildContext context, String imageUrl) {
+    final topPadding = MediaQuery.of(context).padding.top;
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (_) => Dialog.fullscreen(
+        backgroundColor: Colors.black,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 5.0,
+              child: Center(
+                child: AppImage(imageUrl, fit: BoxFit.contain),
+              ),
+            ),
+            Positioned(
+              top: topPadding + 8,
+              right: 12,
+              child: Material(
+                color: Colors.transparent,
+                child: IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded, color: Colors.white, size: 28),
+                  style: IconButton.styleFrom(backgroundColor: Colors.black45),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -65,11 +131,11 @@ class _PartyInvitationScreenState extends ConsumerState<PartyInvitationScreen> {
           ? const Center(child: CircularProgressIndicator(color: Color(0xFFDB2777)))
           : _error != null
               ? Center(child: Text(_error!, style: const TextStyle(color: Colors.grey)))
-              : _buildBody(),
+              : _buildBody(context),
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBody(BuildContext context) {
     final row = _row!;
     final title = row['title']?.toString() ?? '';
     final body = row['body']?.toString() ?? '';
@@ -144,11 +210,21 @@ class _PartyInvitationScreenState extends ConsumerState<PartyInvitationScreen> {
         ),
         const SizedBox(height: 16),
         if (imageUrl.isNotEmpty) ...[
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: AppImage(imageUrl, height: 260, width: double.infinity, fit: BoxFit.cover),
+          GestureDetector(
+            onTap: () => _showFullscreenImage(context, imageUrl),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: AppImage(imageUrl, width: double.infinity, fit: BoxFit.contain),
+            ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
+          const Center(
+            child: Text(
+              'Πατήστε για μεγέθυνση',
+              style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)),
+            ),
+          ),
+          const SizedBox(height: 12),
         ],
         if (body.isNotEmpty) ...[
           Container(
@@ -166,12 +242,18 @@ class _PartyInvitationScreenState extends ConsumerState<PartyInvitationScreen> {
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: () async {
-                final uri = Uri.tryParse(pdfUrl);
-                if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
-              },
-              icon: const Icon(Icons.picture_as_pdf_rounded, color: Color(0xFFDB2777)),
-              label: const Text('Άνοιγμα PDF Πρόσκλησης', style: TextStyle(color: Color(0xFFDB2777))),
+              onPressed: _downloadingPdf ? null : () => _downloadPdf(pdfUrl),
+              icon: _downloadingPdf
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFDB2777)),
+                    )
+                  : const Icon(Icons.download_rounded, color: Color(0xFFDB2777)),
+              label: Text(
+                _downloadingPdf ? 'Λήψη...' : 'Κατέβασμα PDF Πρόσκλησης',
+                style: const TextStyle(color: Color(0xFFDB2777)),
+              ),
               style: OutlinedButton.styleFrom(
                 side: const BorderSide(color: Color(0xFFDB2777)),
                 minimumSize: const Size.fromHeight(48),
