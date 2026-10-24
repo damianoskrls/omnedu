@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { classesApi, studentsApi, levelsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
@@ -18,7 +18,7 @@ const STEPS = [
   { id: 4, label: 'Ολοκλήρωση', icon: Check },
 ];
 
-export default function NewYearWizardPage() {
+function NewYearWizardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const user = useStoredUser();
@@ -408,5 +408,13 @@ export default function NewYearWizardPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function NewYearWizardPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-64 text-sm text-gray-400">Φόρτωση...</div>}>
+      <NewYearWizardContent />
+    </Suspense>
   );
 }
