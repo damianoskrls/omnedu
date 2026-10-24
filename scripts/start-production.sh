@@ -6,6 +6,9 @@ cd "$ROOT"
 
 cd "$ROOT/apps/api"
 
+# Regenerate Prisma client so it always matches the current schema.
+node_modules/.bin/prisma generate || echo '[prisma] generate failed, continuing anyway'
+
 # Direct repair: add missing DB columns using PrismaClient (reliable on Render).
 node repair.js || echo '[repair] repair.js failed, continuing anyway'
 
