@@ -29,6 +29,8 @@ model School {
   siblingDiscountEnabled     Boolean   @default(false) @map("sibling_discount_enabled")
   siblingDiscount2Pct        Decimal?  @map("sibling_discount_2_pct") @db.Decimal(5, 2)
   siblingDiscount3PlusPct    Decimal?  @map("sibling_discount_3_plus_pct") @db.Decimal(5, 2)
+  latitude                   Float?    @map("latitude")
+  longitude                  Float?    @map("longitude")
   createdAt                  DateTime  @default(now()) @map("created_at")
 
   members            SchoolMember[]

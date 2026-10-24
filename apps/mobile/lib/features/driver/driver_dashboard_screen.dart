@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart' as osrm;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -106,6 +107,9 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
           riders: riders,
           schoolId: widget.schoolId,
           driverUserId: userId,
+          schoolLat: double.tryParse(_dashboard?['schoolLat']?.toString() ?? ''),
+          schoolLng: double.tryParse(_dashboard?['schoolLng']?.toString() ?? ''),
+          schoolLogoUrl: _dashboard?['schoolLogoUrl']?.toString(),
           onStart: () {
             Navigator.pop(context);
             _startRoute(route);
@@ -458,6 +462,9 @@ class _RoutePreviewScreen extends ConsumerStatefulWidget {
   final String schoolId;
   final String driverUserId;
   final VoidCallback onStart;
+  final double? schoolLat;
+  final double? schoolLng;
+  final String? schoolLogoUrl;
 
   const _RoutePreviewScreen({
     required this.busName,
@@ -466,6 +473,9 @@ class _RoutePreviewScreen extends ConsumerStatefulWidget {
     required this.schoolId,
     required this.driverUserId,
     required this.onStart,
+    this.schoolLat,
+    this.schoolLng,
+    this.schoolLogoUrl,
   });
 
   @override
@@ -494,8 +504,18 @@ class _RoutePreviewScreenState extends ConsumerState<_RoutePreviewScreen>
     super.dispose();
   }
 
+  LatLng? get _schoolPoint {
+    final lat = widget.schoolLat ?? 38.0864;
+    final lng = widget.schoolLng ?? 23.7332;
+    return LatLng(lat, lng);
+  }
+
   Future<void> _fetchRoute() async {
-    final pts = widget.riders.map(_riderPoint).whereType<LatLng>().toList();
+    final riderPts = widget.riders.map(_riderPoint).whereType<LatLng>().toList();
+    final school = _schoolPoint;
+    final pts = school != null
+        ? [school, ...riderPts, school]
+        : riderPts;
     if (pts.length < 2) return;
     try {
       final coords = pts.map((p) => '${p.longitude},${p.latitude}').join(';');
@@ -643,7 +663,9 @@ class _RoutePreviewScreenState extends ConsumerState<_RoutePreviewScreen>
   }
 
   void _fit() {
-    final pts = widget.riders.map(_riderPoint).whereType<LatLng>().toList();
+    final riderPts = widget.riders.map(_riderPoint).whereType<LatLng>().toList();
+    final school = _schoolPoint;
+    final pts = [if (school != null) school, ...riderPts];
     if (pts.isEmpty) return;
     pts.length == 1
         ? _map.move(pts.first, 14)
@@ -721,6 +743,17 @@ class _RoutePreviewScreenState extends ConsumerState<_RoutePreviewScreen>
                             ),
                           ),
                         ),
+                    if (_schoolPoint != null)
+                      Marker(
+                        point: _schoolPoint!,
+                        width: 56,
+                        height: 56,
+                        alignment: Alignment.center,
+                        child: _SchoolMarker(
+                          logoUrl: widget.schoolLogoUrl,
+                          color: color,
+                        ),
+                      ),
                   ],
                 ),
               ],
@@ -843,6 +876,30 @@ class _PreviewPin extends StatelessWidget {
         ),
         Icon(Icons.location_pin, color: color, size: 28),
       ],
+    );
+  }
+}
+
+class _SchoolMarker extends StatelessWidget {
+  final String? logoUrl;
+  final Color color;
+  const _SchoolMarker({this.logoUrl, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        border: Border.all(color: color, width: 2.5),
+        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 6, offset: const Offset(0, 2))],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: logoUrl != null && logoUrl!.isNotEmpty
+          ? CachedNetworkImage(imageUrl: logoUrl!, fit: BoxFit.cover, errorWidget: (_, __, ___) => Icon(Icons.school_rounded, color: color, size: 24))
+          : Icon(Icons.school_rounded, color: color, size: 24),
     );
   }
 }

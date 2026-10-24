@@ -272,10 +272,16 @@ export class BusTrackingService implements OnModuleInit {
 
   async dashboard(schoolId: string, userId: string, role: string | null | undefined) {
     if (role !== 'driver') throw new ForbiddenException('Μόνο ο οδηγός βλέπει το dashboard.');
-    const buses = await this.prisma.extraService.findMany({
-      where: { schoolId, serviceType: 'bus', isActive: true, driverUserId: userId },
-      include: { busPosition: true, studentServices: { where: { isActive: true } } },
-    });
+    const [buses, school] = await Promise.all([
+      this.prisma.extraService.findMany({
+        where: { schoolId, serviceType: 'bus', isActive: true, driverUserId: userId },
+        include: { busPosition: true, studentServices: { where: { isActive: true } } },
+      }),
+      this.prisma.school.findUnique({
+        where: { id: schoolId },
+        select: { latitude: true, longitude: true, logoUrl: true },
+      }),
+    ]);
     const dayKey = schoolDayKey();
 
     type BusRecord = (typeof buses)[number];
@@ -346,6 +352,9 @@ export class BusTrackingService implements OnModuleInit {
       routes,
       isActive: ageMs < 2 * 60 * 60 * 1000,
       activeServiceId: primaryBus?.id ?? null,
+      schoolLat: school?.latitude ?? null,
+      schoolLng: school?.longitude ?? null,
+      schoolLogoUrl: school?.logoUrl ?? null,
       // Legacy aliases for any other consumers
       morningRoute: routes.find((r) => r.direction === 'pickup') ?? null,
       afternoonRoute: routes.find((r) => r.direction === 'dropoff') ?? null,
