@@ -24,6 +24,9 @@ const repairs = [
   `CREATE INDEX IF NOT EXISTS "student_siblings_student_id_idx" ON "student_siblings"("student_id")`,
   `CREATE INDEX IF NOT EXISTS "student_siblings_sibling_id_idx" ON "student_siblings"("sibling_id")`,
   `ALTER TABLE "party_invitations" ADD COLUMN IF NOT EXISTS "pdf_url" TEXT`,
+  `ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "latitude" DOUBLE PRECISION`,
+  `ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "longitude" DOUBLE PRECISION`,
+  `UPDATE schools SET latitude = 38.0864, longitude = 23.7332 WHERE name ILIKE '%ονειροχ%' AND (latitude IS NULL OR longitude IS NULL)`,
   `CREATE TABLE IF NOT EXISTS "route_completions" (
     "id" TEXT NOT NULL,
     "school_id" TEXT NOT NULL,
