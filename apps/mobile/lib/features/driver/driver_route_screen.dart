@@ -103,7 +103,7 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
           .toList();
       if (!mounted) return;
       final newProgress = _totalPickup == 0 ? 0.0 : (riders.where((r) => r['pickedUp'] == true || r['isAbsent'] == true).length) / riders.where((r) => r['canPickup'] == true).length.toDouble();
-      setState(() { _riders = riders; });
+      setState(() { _riders = riders.where((r) => r['canPickup'] == true).toList(); });
       _animateProgress(newProgress);
       _currentStopCtrl.forward(from: 0);
       _fit();
