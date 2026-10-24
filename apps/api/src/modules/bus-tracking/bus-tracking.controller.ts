@@ -39,8 +39,9 @@ export class BusTrackingController {
     @Param('schoolId') schoolId: string,
     @CurrentUser() user: JwtPayload,
     @Query('serviceId') serviceId?: string,
+    @Query('direction') direction?: string,
   ) {
-    return this.service.route(schoolId, user.sub, user.role, serviceId);
+    return this.service.route(schoolId, user.sub, user.role, serviceId, direction);
   }
 
   @Post('pickup')

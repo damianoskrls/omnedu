@@ -71,7 +71,7 @@ export class BusTrackingService implements OnModuleInit {
     return { ok: true, serviceId, updatedAt: saved.updatedAt };
   }
 
-  async route(schoolId: string, userId: string, role: string | null | undefined, serviceId?: string) {
+  async route(schoolId: string, userId: string, role: string | null | undefined, serviceId?: string, direction?: string) {
     const id = await this.driverServiceId(schoolId, userId, role, serviceId);
     if (!id) return { serviceId: null, riders: [] };
     const day = schoolDay();
@@ -120,7 +120,7 @@ export class BusTrackingService implements OnModuleInit {
         parentName: parent?.fullName ?? null,
         parentPhone: parent?.phone ?? null,
         parentAvatarUrl: parent?.avatarUrl ?? null,
-        canPickup: mode !== 'dropoff',
+        canPickup: direction === 'dropoff' ? mode !== 'pickup' : mode !== 'dropoff',
         pickedUp: picked.has(row.student.id),
         pickedUpAt: picked.get(row.student.id) ?? null,
         isAbsent: absentSet.has(row.student.id),

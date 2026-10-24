@@ -38,6 +38,7 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
   bool _fitted = false;
   bool _sharing = false;
   bool _busy = false;
+  bool _routeCompleted = false;
   StreamSubscription<Position>? _posStream;
   Timer? _pingTimer;
   Position? _lastPos;
@@ -90,7 +91,10 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
     try {
       final resp = await ref.read(dioProvider).get(
         '/schools/${widget.schoolId}/bus-tracking/route',
-        queryParameters: {'serviceId': widget.serviceId},
+        queryParameters: {
+          'serviceId': widget.serviceId,
+          'direction': widget.isAfternoon ? 'dropoff' : 'pickup',
+        },
       );
       final data = resp.data is Map ? Map<String, dynamic>.from(resp.data as Map) : <String, dynamic>{};
       final riders = (data['riders'] as List? ?? [])
@@ -217,6 +221,7 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
         'studentId': rider['studentId']?.toString(),
       });
       await _load();
+      await _checkAutoComplete();
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(apiErrorText(e))));
     } finally {
@@ -249,6 +254,7 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
         'studentId': rider['studentId']?.toString(),
       });
       await _load();
+      await _checkAutoComplete();
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(apiErrorText(e))));
     } finally {
@@ -300,7 +306,30 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
     }
   }
 
+  Future<void> _doComplete() async {
+    if (_routeCompleted) return;
+    try {
+      await ref.read(dioProvider).post(
+        '/schools/${widget.schoolId}/bus-tracking/complete',
+        data: {
+          'serviceId': widget.serviceId,
+          'direction': widget.isAfternoon ? 'dropoff' : 'pickup',
+          'studentsCount': _riders.where((r) => r['canPickup'] == true).length,
+        },
+      );
+    } catch (_) {}
+    _posStream?.cancel();
+    _pingTimer?.cancel();
+    if (mounted) setState(() => _routeCompleted = true);
+  }
+
   Future<void> _completeRoute() async {
+    if (_routeCompleted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Το δρομολόγιο έχει ήδη ολοκληρωθεί.')),
+      );
+      return;
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -318,17 +347,79 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
       ),
     );
     if (confirmed != true || !mounted) return;
-    try {
-      await ref.read(dioProvider).post(
-        '/schools/${widget.schoolId}/bus-tracking/complete',
-        data: {
-          'serviceId': widget.serviceId,
-          'direction': widget.isAfternoon ? 'dropoff' : 'pickup',
-          'studentsCount': _riders.where((r) => r['canPickup'] == true).length,
-        },
-      );
-    } catch (_) {}
-    if (mounted) Navigator.pop(context);
+    await _doComplete();
+  }
+
+  Future<void> _checkAutoComplete() async {
+    final total = _riders.where((r) => r['canPickup'] == true).length;
+    final done = _riders.where((r) => r['canPickup'] == true && (r['pickedUp'] == true || r['isAbsent'] == true)).length;
+    if (total > 0 && done >= total && !_routeCompleted) {
+      await _doComplete();
+    }
+  }
+
+  Widget _buildCompletedScreen() {
+    final label = widget.isAfternoon ? 'Παράδοση' : 'Παραλαβή';
+    return Scaffold(
+      backgroundColor: const Color(0xFFF0F4F0),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.arrow_back_rounded),
+                ),
+              ),
+            ),
+            const Spacer(),
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 32),
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 24, offset: const Offset(0, 8))],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 80, height: 80,
+                    decoration: BoxDecoration(color: const Color(0xFFDCFCE7), shape: BoxShape.circle),
+                    child: const Icon(Icons.check_circle_rounded, color: Color(0xFF059669), size: 48),
+                  ),
+                  const SizedBox(height: 20),
+                  Text('$label Ολοκληρώθηκε!',
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF1F2937))),
+                  const SizedBox(height: 10),
+                  const Text('Το δρομολόγιο καταγράφηκε επιτυχώς.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 14, color: Color(0xFF6B7280), height: 1.5)),
+                  const SizedBox(height: 28),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF77328D),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Επιστροφή', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Spacer(),
+          ],
+        ),
+      ),
+    );
   }
 
   LatLng? _riderPoint(Map<String, dynamic> rider) {
@@ -340,6 +431,7 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (_routeCompleted) return _buildCompletedScreen();
     final here = _here ?? const LatLng(37.9838, 23.7275);
     final current = _currentStop;
     final done = _pickedCount + _absentCount;
