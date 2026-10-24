@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { classesApi, studentsApi, levelsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
-import { ChevronRight, ChevronLeft, Check, GraduationCap, Users, Sparkles, BookOpen, Plus } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Check, GraduationCap, Users, Sparkles, BookOpen, Plus, X } from 'lucide-react';
 
 type Student = { id: string; fullName: string; avatarUrl?: string; isActive: boolean };
 type Level = { id: string; name: string };
@@ -46,6 +46,13 @@ function NewYearWizardContent() {
   const [addClassLevel, setAddClassLevel] = useState('');
   const [addingClass, setAddingClass] = useState(false);
 
+  // Step 3 — copy from previous year
+  const [prevYearClasses, setPrevYearClasses] = useState<Class[]>([]);
+  const [prevYearLabel, setPrevYearLabel] = useState('');
+  const [copySelections, setCopySelections] = useState<Record<string, { checked: boolean; name: string; levelId: string }>>({});
+  const [copyingClasses, setCopyingClasses] = useState(false);
+  const [deletingClassId, setDeletingClassId] = useState<string | null>(null);
+
   useEffect(() => {
     if (!schoolId) return;
     Promise.all([
@@ -72,6 +79,21 @@ function NewYearWizardContent() {
       });
     }
   }, [schoolId, searchParams]);
+
+  // Load classes from the most recent OTHER year when entering Step 3
+  useEffect(() => {
+    if (step !== 3 || !schoolId || !newYearId || existingYears.length === 0) return;
+    const prevYear = existingYears.find(y => y.id !== newYearId);
+    if (!prevYear) return;
+    setPrevYearLabel(prevYear.label);
+    classesApi.list(schoolId).then((allClasses: any) => {
+      const prev = Array.isArray(allClasses) ? allClasses.filter((c: any) => c.academicYearId === prevYear.id) : [];
+      setPrevYearClasses(prev);
+      setCopySelections(Object.fromEntries(
+        prev.map((c: any) => [c.id, { checked: true, name: c.name, levelId: c.level?.id || '' }])
+      ));
+    });
+  }, [step, schoolId, newYearId, existingYears]);
 
   const suggestLabel = () => {
     const latest = existingYears[0];
@@ -134,6 +156,36 @@ function NewYearWizardContent() {
     const allClasses = await classesApi.list(schoolId) as unknown as any[];
     const yearClasses = Array.isArray(allClasses) ? allClasses.filter((c: any) => c.academicYearId === newYearId) : [];
     setNewClasses(yearClasses);
+  };
+
+  const handleCopyClasses = async () => {
+    const toCopy = prevYearClasses.filter(c => copySelections[c.id]?.checked);
+    if (!toCopy.length || !newYearId) return;
+    setCopyingClasses(true);
+    try {
+      for (const c of toCopy) {
+        const sel = copySelections[c.id];
+        const alreadyExists = newClasses.some(nc => nc.name.trim().toLowerCase() === sel.name.trim().toLowerCase());
+        if (alreadyExists) continue;
+        await classesApi.create(schoolId, {
+          name: sel.name.trim(),
+          academicYearId: newYearId,
+          ...(sel.levelId ? { levelId: sel.levelId } : {}),
+        });
+      }
+      await refreshClasses();
+    } catch (_) {}
+    finally { setCopyingClasses(false); }
+  };
+
+  const handleDeleteClass = async (classId: string) => {
+    setDeletingClassId(classId);
+    try {
+      await classesApi.remove(schoolId, classId);
+      await refreshClasses();
+      setAssignments(prev => { const n = { ...prev }; Object.keys(n).forEach(k => { if (n[k] === classId) delete n[k]; }); return n; });
+    } catch (_) {}
+    finally { setDeletingClassId(null); }
   };
 
   const handleStep3 = () => {
@@ -293,6 +345,48 @@ function NewYearWizardContent() {
           <div className="space-y-4">
             <h2 className="font-bold text-gray-900">Ανάθεση Τάξεων</h2>
 
+            {/* Copy from previous year */}
+            {prevYearClasses.length > 0 && (
+              <div className="rounded-xl bg-gray-50 border border-gray-200 p-4 space-y-3">
+                <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                  Αντέγραψε τάξεις από {prevYearLabel}
+                </p>
+                <div className="space-y-2 max-h-[24vh] overflow-y-auto">
+                  {prevYearClasses.map(c => {
+                    const sel = copySelections[c.id] ?? { checked: false, name: c.name, levelId: c.level?.id || '' };
+                    const alreadyCopied = newClasses.some(nc => nc.name.trim().toLowerCase() === c.name.trim().toLowerCase());
+                    return (
+                      <div key={c.id} className={`flex items-center gap-2 p-2 rounded-lg ${alreadyCopied ? 'opacity-40' : ''}`}>
+                        <input
+                          type="checkbox"
+                          checked={sel.checked && !alreadyCopied}
+                          disabled={alreadyCopied}
+                          onChange={() => setCopySelections(p => ({ ...p, [c.id]: { ...sel, checked: !sel.checked } }))}
+                          className="rounded accent-[#642678] shrink-0"
+                        />
+                        <input
+                          className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#77328d]/30 bg-white disabled:bg-gray-50"
+                          value={sel.name}
+                          disabled={alreadyCopied}
+                          onChange={e => setCopySelections(p => ({ ...p, [c.id]: { ...sel, name: e.target.value } }))}
+                        />
+                        {c.level && <span className="text-xs text-gray-400 shrink-0">{c.level.name}</span>}
+                        {alreadyCopied && <span className="text-xs text-emerald-600 font-medium shrink-0">✓ Αντιγράφηκε</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+                <button
+                  onClick={handleCopyClasses}
+                  disabled={copyingClasses || !prevYearClasses.some(c => copySelections[c.id]?.checked && !newClasses.some(nc => nc.name.trim().toLowerCase() === c.name.trim().toLowerCase()))}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-gray-700 text-white rounded-lg text-sm font-semibold hover:bg-gray-800 disabled:opacity-40"
+                >
+                  <Plus className="h-4 w-4" />
+                  {copyingClasses ? 'Αντιγραφή...' : 'Αντιγραφή επιλεγμένων'}
+                </button>
+              </div>
+            )}
+
             {/* Inline class creation */}
             <div className="rounded-xl bg-[#faf5fc] border border-[#e9d5f5] p-4 space-y-3">
               <p className="text-xs font-semibold text-[#642678] uppercase tracking-wide">Δημιούργησε τάξη για το έτος {yearForm.label}</p>
@@ -328,6 +422,14 @@ function NewYearWizardContent() {
                   {newClasses.map(c => (
                     <span key={c.id} className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-[#c4a1d9] rounded-lg text-xs font-medium text-[#642678]">
                       {c.name}{c.level ? ` · ${c.level.name}` : ''}
+                      <button
+                        onClick={() => handleDeleteClass(c.id)}
+                        disabled={deletingClassId === c.id}
+                        className="ml-1 text-[#c4a1d9] hover:text-red-500 disabled:opacity-40"
+                        title="Διαγραφή τάξης"
+                      >
+                        {deletingClassId === c.id ? '...' : <X className="h-3 w-3" />}
+                      </button>
                     </span>
                   ))}
                 </div>
