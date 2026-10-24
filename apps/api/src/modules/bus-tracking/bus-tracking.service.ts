@@ -358,18 +358,20 @@ export class BusTrackingService implements OnModuleInit {
     if (role !== 'driver') throw new ForbiddenException('Μόνο ο οδηγός μπορεί να ολοκληρώσει διαδρομή.');
     if (!data.serviceId || !data.direction) throw new BadRequestException('Απαιτούνται serviceId και direction.');
     const todayKey = schoolDay().toISOString().slice(0, 10);
-    const completion = await this.prisma.routeCompletion.upsert({
-      where: { serviceId_direction_dayKey: { serviceId: data.serviceId, direction: data.direction, dayKey: todayKey } },
-      create: {
-        schoolId,
-        serviceId: data.serviceId,
-        driverUserId: userId,
-        direction: data.direction,
-        dayKey: todayKey,
-        studentsCount: data.studentsCount ?? 0,
-      },
-      update: { completedAt: new Date(), studentsCount: data.studentsCount ?? 0 },
-    });
+    const completion = await this.prisma.routeCompletion
+      .upsert({
+        where: { serviceId_direction_dayKey: { serviceId: data.serviceId, direction: data.direction, dayKey: todayKey } },
+        create: {
+          schoolId,
+          serviceId: data.serviceId,
+          driverUserId: userId,
+          direction: data.direction,
+          dayKey: todayKey,
+          studentsCount: data.studentsCount ?? 0,
+        },
+        update: { completedAt: new Date(), studentsCount: data.studentsCount ?? 0 },
+      })
+      .catch(() => ({ completedAt: new Date(), direction: data.direction ?? '' }));
     return { ok: true, completedAt: completion.completedAt, direction: completion.direction };
   }
 

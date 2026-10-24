@@ -12,22 +12,6 @@ node_modules/.bin/prisma generate || echo '[prisma] generate failed, continuing 
 # Direct repair: add missing DB columns using PrismaClient (reliable on Render).
 node repair.js || echo '[repair] repair.js failed, continuing anyway'
 
-# Ensure route_completions table exists using prisma db execute (CLI, no PrismaClient needed).
-node_modules/.bin/prisma db execute --file /dev/stdin << 'ENDSQL' || echo '[db] ensure route_completions failed, continuing'
-CREATE TABLE IF NOT EXISTS "route_completions" (
-    "id" TEXT NOT NULL,
-    "school_id" TEXT NOT NULL,
-    "service_id" TEXT NOT NULL,
-    "driver_user_id" TEXT NOT NULL,
-    "direction" TEXT NOT NULL,
-    "day_key" TEXT NOT NULL,
-    "students_count" INTEGER NOT NULL DEFAULT 0,
-    "completed_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "route_completions_pkey" PRIMARY KEY ("id")
-);
-CREATE UNIQUE INDEX IF NOT EXISTS "route_completions_service_id_direction_day_key_key" ON "route_completions"("service_id", "direction", "day_key");
-CREATE INDEX IF NOT EXISTS "route_completions_school_id_day_key_idx" ON "route_completions"("school_id", "day_key");
-ENDSQL
 
 (node_modules/.bin/prisma migrate deploy || {
   node_modules/.bin/prisma migrate resolve --applied 20261008160000_conversation_delete || true
