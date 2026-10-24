@@ -3,7 +3,6 @@ import 'package:dio/dio.dart' as osrm;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -178,12 +177,10 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
             .length ?? 0;
     final userId = user?.id ?? '';
 
-    String today = '';
-    try {
-      today = DateFormat('EEEE, d MMMM', 'el').format(DateTime.now());
-    } catch (_) {
-      today = DateFormat('EEEE, d MMMM').format(DateTime.now());
-    }
+    final now = DateTime.now();
+    const weekdayNames = ['', 'Δευτέρα', 'Τρίτη', 'Τετάρτη', 'Πέμπτη', 'Παρασκευή', 'Σάββατο', 'Κυριακή'];
+    const monthNames = ['', 'Ιανουαρίου', 'Φεβρουαρίου', 'Μαρτίου', 'Απριλίου', 'Μαΐου', 'Ιουνίου', 'Ιουλίου', 'Αυγούστου', 'Σεπτεμβρίου', 'Οκτωβρίου', 'Νοεμβρίου', 'Δεκεμβρίου'];
+    final today = '${weekdayNames[now.weekday]}, ${now.day} ${monthNames[now.month]}';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF6F3FA),

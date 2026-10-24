@@ -308,6 +308,7 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
 
   Future<void> _doComplete() async {
     if (_routeCompleted) return;
+    bool saved = false;
     try {
       await ref.read(dioProvider).post(
         '/schools/${widget.schoolId}/bus-tracking/complete',
@@ -317,10 +318,18 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
           'studentsCount': _riders.where((r) => r['canPickup'] == true).length,
         },
       );
+      saved = true;
     } catch (_) {}
     _posStream?.cancel();
     _pingTimer?.cancel();
-    if (mounted) setState(() => _routeCompleted = true);
+    if (!mounted) return;
+    if (saved) {
+      setState(() => _routeCompleted = true);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Αποτυχία αποθήκευσης ολοκλήρωσης. Δοκίμασε ξανά.')),
+      );
+    }
   }
 
   Future<void> _completeRoute() async {

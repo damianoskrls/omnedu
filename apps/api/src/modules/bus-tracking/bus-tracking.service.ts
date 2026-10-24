@@ -384,6 +384,25 @@ export class BusTrackingService implements OnModuleInit {
         update: { completedAt: new Date(), studentsCount: data.studentsCount ?? 0 },
       })
       .catch(() => ({ completedAt: new Date(), direction: data.direction ?? '' }));
+    // Notify school admins
+    try {
+      const admins = await this.prisma.schoolMember.findMany({
+        where: { schoolId, role: { in: ['admin', 'teacher'] }, isActive: true },
+        select: { userId: true },
+      });
+      const adminIds = admins.map((a) => a.userId);
+      if (adminIds.length > 0) {
+        const label = data.direction === 'dropoff' ? 'Απογευματινής Παράδοσης' : 'Πρωινής Παραλαβής';
+        await this.notifications.notifyUsers(schoolId, adminIds, {
+          event: 'route_completed',
+          type: 'route_completed',
+          title: 'Ολοκλήρωση Δρομολογίου',
+          body: `Το δρομολόγιο ${label} ολοκληρώθηκε επιτυχώς.`,
+          data: { screen: 'bus', direction: data.direction ?? '' },
+        });
+      }
+    } catch (_) {}
+
     return { ok: true, completedAt: completion.completedAt, direction: completion.direction };
   }
 
