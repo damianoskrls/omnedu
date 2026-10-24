@@ -63,6 +63,7 @@ export const schoolNav: NavGroup[] = [
   {
     label: 'Λειτουργία',
     items: [
+      { href: '/school/school-years', label: 'Σχολικά Έτη', icon: CalendarDays },
       { href: '/school/new-year', label: 'Νέα Σχολική Χρονιά', icon: CalendarPlus },
       { href: '/school/routes', label: 'Σχολικό', icon: Bus },
       { href: '/school/services', label: 'Παροχές', icon: Wrench },

@@ -189,6 +189,31 @@ export class ClassesService {
     });
   }
 
+  async updateAcademicYear(schoolId: string, yearId: string, data: { label?: string; startsOn?: string; endsOn?: string; isCurrent?: boolean }) {
+    const year = await this.prisma.academicYear.findFirst({ where: { id: yearId, schoolId } });
+    if (!year) throw new NotFoundException('Σχολικό έτος δεν βρέθηκε');
+    if (data.isCurrent) {
+      await this.prisma.academicYear.updateMany({ where: { schoolId }, data: { isCurrent: false } });
+    }
+    return this.prisma.academicYear.update({
+      where: { id: yearId },
+      data: {
+        ...(data.label !== undefined && { label: data.label }),
+        ...(data.startsOn !== undefined && { startsOn: new Date(data.startsOn) }),
+        ...(data.endsOn !== undefined && { endsOn: new Date(data.endsOn) }),
+        ...(data.isCurrent !== undefined && { isCurrent: data.isCurrent }),
+      },
+    });
+  }
+
+  async deleteAcademicYear(schoolId: string, yearId: string) {
+    const year = await this.prisma.academicYear.findFirst({ where: { id: yearId, schoolId } });
+    if (!year) throw new NotFoundException('Σχολικό έτος δεν βρέθηκε');
+    if (year.isCurrent) throw new Error('Δεν μπορείς να διαγράψεις το τρέχον έτος.');
+    await this.prisma.academicYear.delete({ where: { id: yearId } });
+    return { ok: true };
+  }
+
   async rolloverToYear(
     schoolId: string,
     yearId: string,

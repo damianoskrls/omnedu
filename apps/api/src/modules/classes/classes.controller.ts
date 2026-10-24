@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ClassesService } from './classes.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -70,6 +70,18 @@ export class ClassesController {
   @Roles('school_admin')
   createAcademicYear(@Param('schoolId') schoolId: string, @Body() body: any) {
     return this.classes.createAcademicYear(schoolId, body);
+  }
+
+  @Patch('academic-years/:yearId')
+  @Roles('school_admin')
+  updateAcademicYear(@Param('schoolId') schoolId: string, @Param('yearId') yearId: string, @Body() body: any) {
+    return this.classes.updateAcademicYear(schoolId, yearId, body);
+  }
+
+  @Delete('academic-years/:yearId')
+  @Roles('school_admin')
+  deleteAcademicYear(@Param('schoolId') schoolId: string, @Param('yearId') yearId: string) {
+    return this.classes.deleteAcademicYear(schoolId, yearId);
   }
 
   @Post('academic-years/:yearId/rollover')

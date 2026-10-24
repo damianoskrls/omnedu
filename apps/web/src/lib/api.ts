@@ -192,6 +192,10 @@ export const classesApi = {
     api.get(`/schools/${schoolId}/classes/academic-years/list`),
   createAcademicYear: (schoolId: string, data: { label: string; startsOn: string; endsOn: string; isCurrent?: boolean }) =>
     api.post(`/schools/${schoolId}/classes/academic-years`, data),
+  updateAcademicYear: (schoolId: string, yearId: string, data: { label?: string; startsOn?: string; endsOn?: string; isCurrent?: boolean }) =>
+    api.patch(`/schools/${schoolId}/classes/academic-years/${yearId}`, data),
+  deleteAcademicYear: (schoolId: string, yearId: string) =>
+    api.delete(`/schools/${schoolId}/classes/academic-years/${yearId}`),
   rollover: (schoolId: string, yearId: string, data: { studentRollovers: { studentId: string; newClassId: string }[]; deactivateStudentIds: string[]; activate: boolean }) =>
     api.post(`/schools/${schoolId}/classes/academic-years/${yearId}/rollover`, data),
   createInstruction: (schoolId: string, classId: string, data: { title: string; content: string; category?: string }) =>

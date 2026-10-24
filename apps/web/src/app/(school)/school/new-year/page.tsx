@@ -1,15 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { classesApi, studentsApi, levelsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
-import { ChevronRight, ChevronLeft, Check, GraduationCap, Users, Sparkles, BookOpen } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Check, GraduationCap, Users, Sparkles, BookOpen, Plus } from 'lucide-react';
 
 type Student = { id: string; fullName: string; avatarUrl?: string; isActive: boolean };
 type Level = { id: string; name: string };
 type Class = { id: string; name: string; academicYearId: string; level?: { id: string; name: string } };
-type AcademicYear = { id: string; label: string; isCurrent: boolean };
+type AcademicYear = { id: string; label: string; isCurrent: boolean; startsOn?: string; endsOn?: string };
 
 const STEPS = [
   { id: 1, label: 'Νέο Σχολικό Έτος', icon: Sparkles },
@@ -20,6 +20,7 @@ const STEPS = [
 
 export default function NewYearWizardPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const user = useStoredUser();
   const schoolId = user?.schoolId ?? '';
 
@@ -30,15 +31,20 @@ export default function NewYearWizardPage() {
   // Step 1 — new year data
   const [yearForm, setYearForm] = useState({ label: '', startsOn: '', endsOn: '' });
   const [newYearId, setNewYearId] = useState('');
+  const [existingYearWarning, setExistingYearWarning] = useState<AcademicYear | null>(null);
 
   // Step 2 — students
   const [students, setStudents] = useState<Student[]>([]);
   const [continuing, setContinuing] = useState<Set<string>>(new Set());
 
-  // Step 3 — class assignments
+  // Step 3 — class assignments + inline class creation
+  const [levels, setLevels] = useState<Level[]>([]);
   const [newClasses, setNewClasses] = useState<Class[]>([]);
   const [assignments, setAssignments] = useState<Record<string, string>>({}); // studentId → classId
   const [existingYears, setExistingYears] = useState<AcademicYear[]>([]);
+  const [addClassName, setAddClassName] = useState('');
+  const [addClassLevel, setAddClassLevel] = useState('');
+  const [addingClass, setAddingClass] = useState(false);
 
   useEffect(() => {
     if (!schoolId) return;
@@ -46,12 +52,26 @@ export default function NewYearWizardPage() {
       studentsApi.list(schoolId, undefined, true) as Promise<any>,
       levelsApi.list(schoolId) as Promise<any>,
       classesApi.academicYears(schoolId) as Promise<any>,
-    ]).then(([s, _l, y]) => {
+    ]).then(([s, l, y]) => {
       setStudents(Array.isArray(s) ? s : []);
       setContinuing(new Set((Array.isArray(s) ? s : []).map((st: Student) => st.id)));
+      setLevels(Array.isArray(l) ? l : []);
       setExistingYears(Array.isArray(y) ? y : []);
     });
-  }, [schoolId]);
+
+    // Support resuming setup of an existing year via ?yearId=...&yearLabel=...
+    const resumeId = searchParams.get('yearId');
+    const resumeLabel = searchParams.get('yearLabel');
+    if (resumeId && resumeLabel) {
+      setNewYearId(resumeId);
+      setYearForm(p => ({ ...p, label: resumeLabel }));
+      classesApi.list(schoolId).then((allClasses: any) => {
+        const yearClasses = Array.isArray(allClasses) ? allClasses.filter((c: any) => c.academicYearId === resumeId) : [];
+        setNewClasses(yearClasses);
+        setStep(2);
+      });
+    }
+  }, [schoolId, searchParams]);
 
   const suggestLabel = () => {
     const latest = existingYears[0];
@@ -63,6 +83,22 @@ export default function NewYearWizardPage() {
 
   const handleStep1 = async () => {
     if (!yearForm.label || !yearForm.startsOn || !yearForm.endsOn) { setError('Συμπλήρωσε όλα τα πεδία'); return; }
+    const duplicate = existingYears.find(y => y.label.trim() === yearForm.label.trim());
+    if (duplicate) { setExistingYearWarning(duplicate); return; }
+    await doCreateYear();
+  };
+
+  const doCreateYear = async (existingId?: string) => {
+    if (existingId) {
+      setNewYearId(existingId);
+      setExistingYearWarning(null);
+      setError('');
+      const allClasses = await classesApi.list(schoolId) as unknown as any[];
+      const yearClasses = Array.isArray(allClasses) ? allClasses.filter((c: any) => c.academicYearId === existingId) : [];
+      setNewClasses(yearClasses);
+      setStep(2);
+      return;
+    }
     setSaving(true); setError('');
     try {
       const res = await classesApi.createAcademicYear(schoolId, { ...yearForm, isCurrent: false }) as any;
@@ -76,6 +112,22 @@ export default function NewYearWizardPage() {
   };
 
   const handleStep2 = () => { setError(''); setStep(3); };
+
+  const handleAddClass = async () => {
+    if (!addClassName.trim() || !newYearId) return;
+    setAddingClass(true);
+    try {
+      await classesApi.create(schoolId, {
+        name: addClassName.trim(),
+        academicYearId: newYearId,
+        ...(addClassLevel ? { levelId: addClassLevel } : {}),
+      });
+      setAddClassName('');
+      setAddClassLevel('');
+      await refreshClasses();
+    } catch (_) {}
+    finally { setAddingClass(false); }
+  };
 
   const refreshClasses = async () => {
     if (!newYearId) return;
@@ -145,12 +197,33 @@ export default function NewYearWizardPage() {
         {step === 1 && (
           <div className="space-y-5">
             <h2 className="font-bold text-gray-900">Στοιχεία Σχολικού Έτους</h2>
+            {existingYearWarning && (
+              <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 space-y-3">
+                <p className="text-sm text-amber-800">
+                  Το έτος <strong>{existingYearWarning.label}</strong> υπάρχει ήδη. Θέλεις να συνεχίσεις τη ρύθμισή του;
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => doCreateYear(existingYearWarning.id)}
+                    className="px-4 py-2 bg-[#642678] text-white rounded-lg text-sm font-semibold hover:bg-[#4e1d5e]"
+                  >
+                    Συνέχεια ρύθμισης &rarr;
+                  </button>
+                  <button
+                    onClick={() => setExistingYearWarning(null)}
+                    className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50"
+                  >
+                    Άκυρο
+                  </button>
+                </div>
+              </div>
+            )}
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Τίτλος (π.χ. 2025-2026) *</label>
               <input
                 className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#77328d]/30"
                 value={yearForm.label}
-                onChange={e => setYearForm(p => ({ ...p, label: e.target.value }))}
+                onChange={e => { setYearForm(p => ({ ...p, label: e.target.value })); setExistingYearWarning(null); }}
                 placeholder={suggestLabel() || '2025-2026'}
               />
               {suggestLabel() && (
@@ -215,19 +288,55 @@ export default function NewYearWizardPage() {
           </div>
         )}
 
-        {/* ── Step 3: Class assignments ── */}
+        {/* ── Step 3: Class assignments + inline class creation ── */}
         {step === 3 && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="font-bold text-gray-900">Ανάθεση Τάξεων</h2>
-              <button onClick={refreshClasses} className="text-xs text-[#642678] hover:underline">Ανανέωση τάξεων</button>
-            </div>
-            {newClasses.length === 0 ? (
-              <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">
-                Δεν υπάρχουν τάξεις για το νέο έτος. Πήγαινε στη σελίδα <strong>Τάξεις</strong> και δημιούργησε τάξεις για το έτος <strong>{yearForm.label}</strong>, μετά επέστρεψε εδώ και πάτα &ldquo;Ανανέωση τάξεων&rdquo;.
+            <h2 className="font-bold text-gray-900">Ανάθεση Τάξεων</h2>
+
+            {/* Inline class creation */}
+            <div className="rounded-xl bg-[#faf5fc] border border-[#e9d5f5] p-4 space-y-3">
+              <p className="text-xs font-semibold text-[#642678] uppercase tracking-wide">Δημιούργησε τάξη για το έτος {yearForm.label}</p>
+              <div className="flex gap-2">
+                <input
+                  className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#77328d]/30 bg-white"
+                  placeholder="π.χ. Α1, Νηπιαγωγείο..."
+                  value={addClassName}
+                  onChange={e => setAddClassName(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleAddClass(); }}
+                />
+                {levels.length > 0 && (
+                  <select
+                    className="border border-gray-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#77328d]/30 bg-white"
+                    value={addClassLevel}
+                    onChange={e => setAddClassLevel(e.target.value)}
+                  >
+                    <option value="">Επίπεδο</option>
+                    {levels.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  </select>
+                )}
+                <button
+                  onClick={handleAddClass}
+                  disabled={addingClass || !addClassName.trim()}
+                  className="flex items-center gap-1 px-3 py-2 bg-[#642678] text-white rounded-lg text-sm font-semibold hover:bg-[#4e1d5e] disabled:opacity-50"
+                >
+                  <Plus className="h-4 w-4" />
+                  {addingClass ? '...' : 'Προσθήκη'}
+                </button>
               </div>
-            ) : (
-              <div className="space-y-2 max-h-[40vh] overflow-y-auto">
+              {newClasses.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {newClasses.map(c => (
+                    <span key={c.id} className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-[#c4a1d9] rounded-lg text-xs font-medium text-[#642678]">
+                      {c.name}{c.level ? ` · ${c.level.name}` : ''}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Student → class assignment */}
+            {continuingStudents.length > 0 && newClasses.length > 0 && (
+              <div className="space-y-2 max-h-[35vh] overflow-y-auto">
                 {continuingStudents.map(s => (
                   <div key={s.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50">
                     <GraduationCap className="h-4 w-4 text-gray-400 shrink-0" />
@@ -246,12 +355,19 @@ export default function NewYearWizardPage() {
                 ))}
               </div>
             )}
+            {continuingStudents.length === 0 && (
+              <p className="text-sm text-gray-500 text-center py-4">Δεν υπάρχουν μαθητές που συνεχίζουν.</p>
+            )}
+
             <div className="flex justify-between pt-2">
               <button onClick={() => setStep(2)} className="flex items-center gap-1 px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50">
                 <ChevronLeft className="h-4 w-4" /> Πίσω
               </button>
-              <button onClick={handleStep3} disabled={newClasses.length === 0}
-                className="flex items-center gap-2 px-5 py-2.5 bg-[#642678] text-white rounded-xl text-sm font-semibold hover:bg-[#4e1d5e] disabled:opacity-50">
+              <button
+                onClick={handleStep3}
+                disabled={continuingStudents.length > 0 && newClasses.length === 0}
+                className="flex items-center gap-2 px-5 py-2.5 bg-[#642678] text-white rounded-xl text-sm font-semibold hover:bg-[#4e1d5e] disabled:opacity-50"
+              >
                 Επόμενο <ChevronRight className="h-4 w-4" />
               </button>
             </div>
