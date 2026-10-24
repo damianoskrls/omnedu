@@ -56,13 +56,11 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
     }
   }
 
-  void _startRoute({bool afternoon = false}) {
-    final d = _dashboard;
-    final route = afternoon ? (d?['afternoonRoute']) : (d?['morningRoute']);
-    final serviceId = (route is Map ? route['serviceId']?.toString() : null)
-        ?? d?['activeServiceId']?.toString();
+  void _startRoute(Map<String, dynamic> route) {
+    final serviceId = route['serviceId']?.toString() ?? _dashboard?['activeServiceId']?.toString();
     if (serviceId == null) return;
-    final busName = (route is Map ? route['name']?.toString() : null) ?? 'Σχολικό';
+    final busName = route['name']?.toString() ?? 'Σχολικό';
+    final isAfternoon = route['direction']?.toString() == 'dropoff';
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -70,17 +68,16 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
           schoolId: widget.schoolId,
           serviceId: serviceId,
           busName: busName,
-          isAfternoon: afternoon,
+          isAfternoon: isAfternoon,
         ),
       ),
     ).then((_) => _load());
   }
 
-  Future<void> _showPreview({bool afternoon = false}) async {
-    final d = _dashboard;
-    final route = afternoon ? (d?['afternoonRoute']) : (d?['morningRoute']);
-    final serviceId = (route is Map ? route['serviceId']?.toString() : null);
-    final busName = (route is Map ? route['name']?.toString() : null) ?? 'Σχολικό';
+  Future<void> _showPreview(Map<String, dynamic> route) async {
+    final serviceId = route['serviceId']?.toString();
+    final busName = route['name']?.toString() ?? 'Σχολικό';
+    final isAfternoon = route['direction']?.toString() == 'dropoff';
     if (serviceId == null) return;
     final userId = ref.read(authProvider).user?.id ?? '';
 
@@ -88,30 +85,15 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
     try {
       final resp = await ref.read(dioProvider).get(
         '/schools/${widget.schoolId}/bus-tracking/route',
-        queryParameters: {'serviceId': serviceId},
+        queryParameters: {'serviceId': serviceId, 'direction': isAfternoon ? 'dropoff' : 'pickup'},
       );
       final data = resp.data is Map ? resp.data as Map : {};
       riders = (data['riders'] as List? ?? [])
           .whereType<Map>()
           .map((r) => Map<String, dynamic>.from(r))
+          .where((r) => r['canPickup'] == true)
           .toList();
     } catch (_) {}
-
-    // Filter by direction: morning = canPickup, afternoon = can dropoff
-    List<Map<String, dynamic>> filteredRiders;
-    if (afternoon) {
-      filteredRiders = riders.where((r) {
-        final mode = r['serviceMode']?.toString() ?? 'both';
-        return mode != 'pickup';
-      }).toList();
-      if (filteredRiders.isEmpty) filteredRiders = riders;
-    } else {
-      filteredRiders = riders.where((r) {
-        final mode = r['serviceMode']?.toString() ?? 'both';
-        return mode != 'dropoff';
-      }).toList();
-      if (filteredRiders.isEmpty) filteredRiders = riders;
-    }
 
     if (!mounted) return;
     await Navigator.push(
@@ -119,73 +101,53 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
       MaterialPageRoute(
         builder: (_) => _RoutePreviewScreen(
           busName: busName,
-          isAfternoon: afternoon,
-          riders: filteredRiders,
+          isAfternoon: isAfternoon,
+          riders: riders,
           schoolId: widget.schoolId,
           driverUserId: userId,
           onStart: () {
             Navigator.pop(context);
-            _startRoute(afternoon: afternoon);
+            _startRoute(route);
           },
         ),
       ),
     );
   }
 
-  static String _appBarTitle(Map<String, dynamic>? morning, Map<String, dynamic>? afternoon) {
-    final hasMorning = morning != null;
-    final hasAfternoon = afternoon != null;
+  static String _appBarTitle(List<Map<String, dynamic>> routes) {
+    final hasMorning = routes.any((r) => r['direction'] == 'pickup');
+    final hasAfternoon = routes.any((r) => r['direction'] == 'dropoff');
     if (hasMorning && hasAfternoon) return 'Οι Διαδρομές μου';
     if (hasMorning) return 'Πρωινή Παραλαβή';
     if (hasAfternoon) return 'Απογευματινή Παράδοση';
     return 'Σήμερα';
   }
 
-  List<Widget> _buildRouteCards(
-    Map<String, dynamic>? morning,
-    Map<String, dynamic>? afternoon,
-    String today,
-  ) {
-    if (morning == null && afternoon == null) return [];
-    final morningDone = morning?['status'] == 'completed';
-    final afternoonDone = afternoon?['status'] == 'completed';
+  List<Widget> _buildRouteCards(List<Map<String, dynamic>> routes, String today) {
+    if (routes.isEmpty) return [];
+    final allDone = routes.every((r) => r['status'] == 'completed');
     final widgets = <Widget>[];
 
-    if (morning != null) {
+    for (final route in routes) {
+      final isAfternoon = route['direction']?.toString() == 'dropoff';
+      final done = route['status'] == 'completed';
       widgets.add(_RouteCard(
-        label: 'Πρωινή Παραλαβή',
-        badge: 'ΠΡΩΙΝΟ',
-        badgeColor: const Color(0xFF77328D),
+        label: isAfternoon ? 'Απογευματινή Παράδοση' : 'Πρωινή Παραλαβή',
+        badge: isAfternoon ? 'ΑΠΟΓΕΥΜΑ' : 'ΠΡΩΙΝΟ',
+        badgeColor: isAfternoon ? const Color(0xFFD97706) : const Color(0xFF77328D),
         date: today,
-        startTime: morning['startTime']?.toString(),
-        stopsCount: morning['stopsCount'] as int? ?? 0,
-        studentsCount: morning['studentsCount'] as int? ?? 0,
+        startTime: route['startTime']?.toString(),
+        stopsCount: route['stopsCount'] as int? ?? 0,
+        studentsCount: route['studentsCount'] as int? ?? 0,
         pulseAnim: _pulseAnim,
-        completed: morningDone,
-        onStart: morningDone ? null : () => _startRoute(afternoon: false),
-        onPreview: () => _showPreview(afternoon: false),
+        completed: done,
+        onStart: done ? null : () => _startRoute(route),
+        onPreview: () => _showPreview(route),
       ));
       widgets.add(const SizedBox(height: 12));
     }
 
-    if (afternoon != null) {
-      widgets.add(_RouteCard(
-        label: 'Απογευματινή Παράδοση',
-        badge: 'ΑΠΟΓΕΥΜΑ',
-        badgeColor: const Color(0xFFD97706),
-        date: today,
-        startTime: afternoon['startTime']?.toString(),
-        stopsCount: afternoon['stopsCount'] as int? ?? 0,
-        studentsCount: afternoon['studentsCount'] as int? ?? 0,
-        pulseAnim: _pulseAnim,
-        completed: afternoonDone,
-        onStart: afternoonDone ? null : () => _startRoute(afternoon: true),
-        onPreview: () => _showPreview(afternoon: true),
-      ));
-      widgets.add(const SizedBox(height: 12));
-    }
-
-    if (morningDone && afternoonDone) {
+    if (allDone) {
       widgets.add(const _DayCompleteCard());
     }
 
@@ -197,10 +159,13 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
     final user = ref.watch(authProvider).user;
     final firstName = (user?.fullName ?? 'Οδηγέ').split(' ').first;
     final d = _dashboard;
-    final morning = d?['morningRoute'] != null ? Map<String, dynamic>.from(d!['morningRoute'] as Map) : null;
-    final afternoon = d?['afternoonRoute'] != null ? Map<String, dynamic>.from(d!['afternoonRoute'] as Map) : null;
-    final busName = morning?['name']?.toString() ?? afternoon?['name']?.toString() ?? 'Σχολικό';
-    final busNumber = morning?['busNumber']?.toString() ?? afternoon?['busNumber']?.toString() ?? '';
+    final routes = (d?['routes'] as List? ?? [])
+        .whereType<Map>()
+        .map((r) => Map<String, dynamic>.from(r))
+        .toList();
+    final firstRoute = routes.isNotEmpty ? routes.first : null;
+    final busName = firstRoute?['name']?.toString() ?? 'Σχολικό';
+    final busNumber = firstRoute?['busNumber']?.toString() ?? '';
 
     final conversations = ref.watch(conversationsProvider(widget.schoolId));
     final unread = conversations.asData?.value
@@ -220,7 +185,7 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
       appBar: AppBar(
         backgroundColor: const Color(0xFF77328D),
         foregroundColor: Colors.white,
-        title: Text(_appBarTitle(morning, afternoon), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
+        title: Text(_appBarTitle(routes), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
         actions: [
           IconButton(
             icon: Badge(
@@ -250,8 +215,8 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
                     children: [
                       _GreetingCard(firstName: firstName, busName: busName, busNumber: busNumber),
                       const SizedBox(height: 16),
-                      ..._buildRouteCards(morning, afternoon, today),
-                      if (morning == null && afternoon == null && d != null)
+                      ..._buildRouteCards(routes, today),
+                      if (routes.isEmpty && d != null)
                         _EmptyState(onRetry: _load),
                     ],
                   ),
@@ -908,22 +873,21 @@ class DriverMessagesScreen extends ConsumerStatefulWidget {
 
 class _DriverMessagesScreenState extends ConsumerState<DriverMessagesScreen> {
   Future<void> _newMessage() async {
-    // Load all riders from today's routes (morning + afternoon)
+    // Load all riders from today's routes
     List<Map<String, dynamic>> allRiders = [];
     try {
       final dash = await ref.read(dioProvider).get('/schools/${widget.schoolId}/bus-tracking/dashboard');
       final d = dash.data is Map ? dash.data as Map : {};
-      final morning = d['morningRoute'] is Map ? d['morningRoute'] as Map : null;
-      final afternoon = d['afternoonRoute'] is Map ? d['afternoonRoute'] as Map : null;
+      final routes = (d['routes'] as List? ?? []).whereType<Map>().map((r) => Map<String, dynamic>.from(r)).toList();
 
-      for (final route in [morning, afternoon]) {
-        if (route == null) continue;
+      for (final route in routes) {
         final svcId = route['serviceId']?.toString();
+        final direction = route['direction']?.toString() ?? 'pickup';
         if (svcId == null) continue;
         try {
           final resp = await ref.read(dioProvider).get(
             '/schools/${widget.schoolId}/bus-tracking/route',
-            queryParameters: {'serviceId': svcId},
+            queryParameters: {'serviceId': svcId, 'direction': direction},
           );
           final data = resp.data is Map ? resp.data as Map : {};
           final riders = (data['riders'] as List? ?? []).whereType<Map>().map((r) => Map<String, dynamic>.from(r)).toList();

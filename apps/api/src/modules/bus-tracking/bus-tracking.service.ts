@@ -277,16 +277,12 @@ export class BusTrackingService implements OnModuleInit {
       include: { busPosition: true, studentServices: { where: { isActive: true } } },
     });
     const dayKey = schoolDayKey();
-    const primaryBus = buses[0] ?? null;
-    // If there are 2+ separate bus records, use them as morning/afternoon respectively.
-    // Otherwise (the common case: one bus does both), split students by serviceMode.
-    const dedicatedAfternoonBus = buses.length >= 2 ? buses[1] : null;
 
-    type BusRecord = typeof primaryBus;
-    type StudentService = NonNullable<BusRecord>['studentServices'][number];
+    type BusRecord = (typeof buses)[number];
+    type StudentService = BusRecord['studentServices'][number];
 
-    const toStats = (bus: BusRecord, students: StudentService[], kind: 'pickup' | 'dropoff') => {
-      if (!bus || students.length === 0) return null;
+    const toEntry = (bus: BusRecord, students: StudentService[], kind: 'pickup' | 'dropoff') => {
+      if (students.length === 0) return null;
       const times = students
         .map((ss: Record<string, unknown>) => clockOf(ss as unknown as Parameters<typeof clockOf>[0], kind, dayKey))
         .filter(Boolean);
@@ -296,56 +292,63 @@ export class BusTrackingService implements OnModuleInit {
         serviceId: bus.id,
         name: bus.name,
         busNumber: bus.busNumber ?? null,
+        direction: kind,
         startTime: times[0] ?? null,
         stopsCount: stops || students.length,
         studentsCount: students.length,
+        status: 'pending' as string,
       };
     };
 
-    let morningRoute = null;
-    let afternoonRoute = null;
-
-    if (primaryBus) {
-      const pickupStudents = primaryBus.studentServices.filter((ss) => {
+    const routes: NonNullable<ReturnType<typeof toEntry>>[] = [];
+    for (const bus of buses) {
+      const pickupStudents = bus.studentServices.filter((ss) => {
         const mode = (ss as { serviceMode?: string }).serviceMode;
         return !mode || mode === 'pickup' || mode === 'both';
       });
-      morningRoute = toStats(primaryBus, pickupStudents, 'pickup');
+      const dropoffStudents = bus.studentServices.filter((ss) => {
+        const mode = (ss as { serviceMode?: string }).serviceMode;
+        return !mode || mode === 'dropoff' || mode === 'both';
+      });
+      // If no direction-specific students at all, treat all as both
+      const effectiveDropoff = dropoffStudents.length > 0 ? dropoffStudents : (pickupStudents.length === 0 ? bus.studentServices : []);
+      const morningEntry = toEntry(bus, pickupStudents, 'pickup');
+      const afternoonEntry = toEntry(bus, effectiveDropoff, 'dropoff');
+      if (morningEntry) routes.push(morningEntry);
+      if (afternoonEntry) routes.push(afternoonEntry);
+    }
 
-      if (dedicatedAfternoonBus) {
-        afternoonRoute = toStats(dedicatedAfternoonBus, dedicatedAfternoonBus.studentServices, 'dropoff');
-      } else {
-        const dropoffStudents = primaryBus.studentServices.filter((ss) => {
-          const mode = (ss as { serviceMode?: string }).serviceMode;
-          return !mode || mode === 'dropoff' || mode === 'both';
-        });
-        // Fallback: if no explicit dropoff students, the whole bus does both directions
-        const afternoonStudents = dropoffStudents.length > 0 ? dropoffStudents : primaryBus.studentServices;
-        afternoonRoute = toStats(primaryBus, afternoonStudents, 'dropoff');
+    // Sort: pickup before dropoff, then by startTime
+    routes.sort((a, b) => {
+      if (a.direction !== b.direction) return a.direction === 'pickup' ? -1 : 1;
+      return (a.startTime ?? '').localeCompare(b.startTime ?? '');
+    });
+
+    // Check completions for today
+    const todayKey = schoolDay().toISOString().slice(0, 10);
+    if (buses.length > 0) {
+      const serviceIds = buses.map((b) => b.id);
+      const completions = await this.prisma.routeCompletion
+        .findMany({ where: { serviceId: { in: serviceIds }, dayKey: todayKey } })
+        .catch(() => []);
+      for (const entry of routes) {
+        if (completions.some((c) => c.serviceId === entry.serviceId && c.direction === entry.direction)) {
+          entry.status = 'completed';
+        }
       }
     }
 
-    // Check completions for today
-    const todayDate = schoolDay();
-    const todayKey = todayDate.toISOString().slice(0, 10);
-    const completions = primaryBus
-      ? await this.prisma.routeCompletion
-          .findMany({ where: { serviceId: primaryBus.id, dayKey: todayKey } })
-          .catch(() => [])
-      : [];
-    const morningDone = completions.some((c) => c.direction === 'pickup');
-    const afternoonDone = completions.some((c) => c.direction === 'dropoff');
-
-    if (morningRoute) (morningRoute as Record<string, unknown>).status = morningDone ? 'completed' : 'pending';
-    if (afternoonRoute) (afternoonRoute as Record<string, unknown>).status = afternoonDone ? 'completed' : 'pending';
-
+    const primaryBus = buses[0] ?? null;
     const position = primaryBus?.busPosition;
     const ageMs = position ? Date.now() - position.updatedAt.getTime() : Infinity;
+
     return {
-      morningRoute,
-      afternoonRoute,
+      routes,
       isActive: ageMs < 2 * 60 * 60 * 1000,
       activeServiceId: primaryBus?.id ?? null,
+      // Legacy aliases for any other consumers
+      morningRoute: routes.find((r) => r.direction === 'pickup') ?? null,
+      afternoonRoute: routes.find((r) => r.direction === 'dropoff') ?? null,
     };
   }
 
