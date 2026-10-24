@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart' as osrm;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -471,8 +472,49 @@ class _RoutePreviewScreen extends ConsumerStatefulWidget {
   ConsumerState<_RoutePreviewScreen> createState() => _RoutePreviewScreenState();
 }
 
-class _RoutePreviewScreenState extends ConsumerState<_RoutePreviewScreen> {
+class _RoutePreviewScreenState extends ConsumerState<_RoutePreviewScreen>
+    with SingleTickerProviderStateMixin {
   final _map = MapController();
+  List<LatLng> _routePoints = [];
+  late AnimationController _drawCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _drawCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1600),
+    );
+    _fetchRoute();
+  }
+
+  @override
+  void dispose() {
+    _drawCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchRoute() async {
+    final pts = widget.riders.map(_riderPoint).whereType<LatLng>().toList();
+    if (pts.length < 2) return;
+    try {
+      final coords = pts.map((p) => '${p.longitude},${p.latitude}').join(';');
+      final url =
+          'https://router.project-osrm.org/route/v1/driving/$coords?overview=full&geometries=geojson';
+      final resp = await osrm.Dio().get(url);
+      final routes = ((resp.data as Map)['routes'] as List?) ?? [];
+      if (routes.isEmpty || !mounted) return;
+      final geometry = (routes[0] as Map)['geometry'] as Map?;
+      final coordinates = (geometry?['coordinates'] as List?) ?? [];
+      setState(() {
+        _routePoints = coordinates.map((c) {
+          final arr = c as List;
+          return LatLng((arr[1] as num).toDouble(), (arr[0] as num).toDouble());
+        }).toList();
+      });
+      _drawCtrl.forward();
+    } catch (_) {}
+  }
 
   LatLng? _riderPoint(Map<String, dynamic> r) {
     final lat = double.tryParse(r['latitude']?.toString() ?? '');
@@ -640,6 +682,26 @@ class _RoutePreviewScreenState extends ConsumerState<_RoutePreviewScreen> {
                 TileLayer(
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   userAgentPackageName: 'com.omnedu.omnedu',
+                ),
+                // Animated route polyline from OSRM routing
+                AnimatedBuilder(
+                  animation: _drawCtrl,
+                  builder: (_, __) {
+                    final total = _routePoints.length;
+                    if (total < 2 || _drawCtrl.value == 0) return const SizedBox.shrink();
+                    final count = ((_drawCtrl.value) * total).round().clamp(2, total);
+                    return PolylineLayer(
+                      polylines: [
+                        Polyline(
+                          points: _routePoints.sublist(0, count),
+                          strokeWidth: 4.5,
+                          color: color.withValues(alpha: 0.85),
+                          borderStrokeWidth: 2.5,
+                          borderColor: Colors.white.withValues(alpha: 0.7),
+                        ),
+                      ],
+                    );
+                  },
                 ),
                 MarkerLayer(
                   markers: [
