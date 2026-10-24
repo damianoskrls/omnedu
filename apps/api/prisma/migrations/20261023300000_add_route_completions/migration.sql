@@ -1,5 +1,5 @@
 -- CreateTable
-CREATE TABLE "route_completions" (
+CREATE TABLE IF NOT EXISTS "route_completions" (
     "id" TEXT NOT NULL,
     "school_id" TEXT NOT NULL,
     "service_id" TEXT NOT NULL,
@@ -13,10 +13,14 @@ CREATE TABLE "route_completions" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "route_completions_service_id_direction_day_key_key" ON "route_completions"("service_id", "direction", "day_key");
+CREATE UNIQUE INDEX IF NOT EXISTS "route_completions_service_id_direction_day_key_key" ON "route_completions"("service_id", "direction", "day_key");
 
 -- CreateIndex
-CREATE INDEX "route_completions_school_id_day_key_idx" ON "route_completions"("school_id", "day_key");
+CREATE INDEX IF NOT EXISTS "route_completions_school_id_day_key_idx" ON "route_completions"("school_id", "day_key");
 
--- AddForeignKey
-ALTER TABLE "route_completions" ADD CONSTRAINT "route_completions_school_id_fkey" FOREIGN KEY ("school_id") REFERENCES "schools"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- AddForeignKey (IF NOT EXISTS guard via DO block)
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'route_completions_school_id_fkey') THEN
+    ALTER TABLE "route_completions" ADD CONSTRAINT "route_completions_school_id_fkey" FOREIGN KEY ("school_id") REFERENCES "schools"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
