@@ -329,9 +329,9 @@ export class BusTrackingService implements OnModuleInit {
     const todayDate = schoolDay();
     const todayKey = todayDate.toISOString().slice(0, 10);
     const completions = primaryBus
-      ? await this.prisma.routeCompletion.findMany({
-          where: { serviceId: primaryBus.id, dayKey: todayKey },
-        })
+      ? await this.prisma.routeCompletion
+          .findMany({ where: { serviceId: primaryBus.id, dayKey: todayKey } })
+          .catch(() => [])
       : [];
     const morningDone = completions.some((c) => c.direction === 'pickup');
     const afternoonDone = completions.some((c) => c.direction === 'dropoff');
@@ -375,10 +375,9 @@ export class BusTrackingService implements OnModuleInit {
 
   async completedToday(schoolId: string) {
     const todayKey = schoolDay().toISOString().slice(0, 10);
-    const completions = await this.prisma.routeCompletion.findMany({
-      where: { schoolId, dayKey: todayKey },
-      orderBy: { completedAt: 'desc' },
-    });
+    const completions = await this.prisma.routeCompletion
+      .findMany({ where: { schoolId, dayKey: todayKey }, orderBy: { completedAt: 'desc' } })
+      .catch(() => []);
     return completions.map((c) => ({
       direction: c.direction,
       studentsCount: c.studentsCount,
