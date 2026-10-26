@@ -387,7 +387,7 @@ export class BusTrackingService implements OnModuleInit {
     // Notify school admins
     try {
       const admins = await this.prisma.schoolMember.findMany({
-        where: { schoolId, role: { in: ['admin', 'teacher'] }, isActive: true },
+        where: { schoolId, role: { in: ['school_admin'] }, isActive: true },
         select: { userId: true },
       });
       const adminIds = admins.map((a) => a.userId);
