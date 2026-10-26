@@ -435,6 +435,67 @@ export default function RoutesPage() {
                   </div>
                 </div>
 
+                {/* Routes section */}
+                {(isAdmin || service.routes.length > 0) && (
+                  <div className="border-t border-gray-100">
+                    <div className="px-4 pt-3 pb-1 flex items-center justify-between">
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Δρομολόγια</span>
+                      {isAdmin && (
+                        <button
+                          onClick={() => setRouteModal({ serviceId: service.id, route: { direction: 'pickup' } })}
+                          className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Νέο
+                        </button>
+                      )}
+                    </div>
+                    <div className="px-4 pb-3">
+                      {service.routes.length === 0 ? (
+                        <p className="text-xs text-gray-400 py-1">Χωρίς δρομολόγια — ο οδηγός βλέπει παραλαβή/αποστολή.</p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {service.routes.map(route => (
+                            <div key={route.id} className="flex items-center gap-2 py-1">
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${route.direction === 'pickup' ? 'bg-green-50 text-green-700' : route.direction === 'dropoff' ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                                {route.direction === 'pickup' ? '↑' : route.direction === 'dropoff' ? '↓' : '↑↓'}
+                              </span>
+                              <span className="text-sm text-gray-800 flex-1 min-w-0 truncate">{route.name}</span>
+                              {(route.stops ?? []).length > 0 && (
+                                <span className="text-xs text-gray-400 shrink-0">{route.stops!.length} στάσεις</span>
+                              )}
+                              {isAdmin && (
+                                <div className="flex gap-1 shrink-0">
+                                  <button
+                                    onClick={() => setStopModal({ serviceId: service.id, routeId: route.id })}
+                                    className="p-1 rounded hover:bg-gray-100 text-gray-400"
+                                    title="Στάσεις"
+                                  >
+                                    <MapPin className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => setRouteModal({ serviceId: service.id, route: route as any })}
+                                    className="p-1 rounded hover:bg-gray-100 text-gray-400"
+                                    title="Επεξεργασία"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => deleteRoute(service.id, route.id)}
+                                    className="p-1 rounded hover:bg-red-50 text-red-400"
+                                    title="Διαγραφή"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Students — always visible */}
                 <div className="border-t border-gray-100">
                   <div className="px-4 pt-3 pb-1 flex items-center justify-between">
