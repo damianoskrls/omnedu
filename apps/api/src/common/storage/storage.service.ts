@@ -42,7 +42,7 @@ export class StorageService {
         {
           folder: `omnedu/${folder}`,
           resource_type: raw ? 'raw' : resourceType,
-          ...(raw ? { use_filename: true, unique_filename: true, ...(rawExt ? { format: rawExt } : {}) } : {}),
+          ...(raw ? { use_filename: true, unique_filename: true, access_mode: 'public', ...(rawExt ? { format: rawExt } : {}) } : {}),
         },
         (error, result) => {
           if (error) return reject(error);
