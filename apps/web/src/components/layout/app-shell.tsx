@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Menu, ChevronDown, Check, Plus } from 'lucide-react';
 import { AdminAlerts } from '@/components/layout/admin-alerts';
@@ -75,12 +75,16 @@ function AppShellInner({
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const [today, setToday] = useState('');
   const user = useStoredUser();
-  const today = new Intl.DateTimeFormat('el-GR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  }).format(new Date());
+
+  useEffect(() => {
+    setToday(new Intl.DateTimeFormat('el-GR', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+    }).format(new Date()));
+  }, []);
 
   return (
     <div className="min-h-screen">
