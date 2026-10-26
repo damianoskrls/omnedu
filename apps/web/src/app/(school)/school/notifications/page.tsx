@@ -68,6 +68,8 @@ export default function NotificationsPage() {
   const [form, setForm]             = useState(defaultForm());
   const [imageFile, setImageFile]   = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState('');
+  const [pdfFile, setPdfFile]       = useState<File | null>(null);
+  const [pdfName, setPdfName]       = useState('');
   const [sent, setSent]             = useState(false);
   const [sendNote, setSendNote]     = useState('');
   const [showHistory, setShowHistory]   = useState(false);
@@ -128,6 +130,15 @@ export default function NotificationsPage() {
           return;
         }
       }
+      let pdfUrl: string | undefined;
+      if (pdfFile) {
+        const uploadedPdf: any = await broadcastsApi.uploadPdf(schoolId, pdfFile);
+        pdfUrl = uploadedPdf?.pdfUrl;
+        if (!pdfUrl) {
+          setSendNote('Το PDF δεν ανέβηκε.');
+          return;
+        }
+      }
       const customEmails = form.customEmailsText
         ? form.customEmailsText.split(/[\n,]+/).map(e => e.trim()).filter(Boolean)
         : undefined;
@@ -135,6 +146,7 @@ export default function NotificationsPage() {
         title: form.title,
         body: form.body,
         imageUrl,
+        pdfUrl,
         targetType: form.targetType,
         targetClassId: form.targetClassId || undefined,
         targetStudentId: form.targetStudentId || undefined,
@@ -479,6 +491,27 @@ export default function NotificationsPage() {
                   />
                   {imagePreview && (
                     <img src={imagePreview} alt="" className="mt-2 h-32 w-full rounded-lg object-cover" />
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    PDF <span className="text-gray-400 font-normal">(προαιρετικό)</span>
+                  </label>
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    className="block w-full text-sm text-gray-600"
+                    onChange={e => {
+                      const file = e.target.files?.[0] ?? null;
+                      setPdfFile(file);
+                      setPdfName(file?.name ?? '');
+                    }}
+                  />
+                  {pdfName && (
+                    <p className="mt-1 text-xs text-gray-500 flex items-center gap-1">
+                      📄 {pdfName}
+                    </p>
                   )}
                 </div>
 

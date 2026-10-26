@@ -30,6 +30,7 @@ interface BroadcastData {
   title: string;
   body: string;
   imageUrl?: string;
+  pdfUrl?: string;
   targetType: 'all' | 'teachers' | 'parents' | 'class' | 'student';
   targetClassId?: string;
   targetStudentId?: string;
@@ -469,7 +470,7 @@ export class NotificationsService implements OnModuleInit {
 
       const schoolName = school?.name ?? 'Σχολείο';
       const logoUrl = (school as any)?.logoUrl ?? null;
-      const html = this.buildEmailHtml({ schoolName, logoUrl, title: data.title, body: data.body });
+      const html = this.buildEmailHtml({ schoolName, logoUrl, title: data.title, body: data.body, pdfUrl: data.pdfUrl });
 
       const BATCH_SIZE = 100;
       let sent = 0;
@@ -481,6 +482,7 @@ export class NotificationsService implements OnModuleInit {
             to,
             subject: data.title,
             html,
+            ...(data.pdfUrl ? { attachments: [{ path: data.pdfUrl, filename: 'attachment.pdf' }] } : {}),
           }));
           const result = await this.resendClient!.batch.send(messages);
           if (result.error) {
@@ -501,7 +503,7 @@ export class NotificationsService implements OnModuleInit {
     }
   }
 
-  private buildEmailHtml(opts: { schoolName: string; logoUrl: string | null; title: string; body: string }): string {
+  private buildEmailHtml(opts: { schoolName: string; logoUrl: string | null; title: string; body: string; pdfUrl?: string }): string {
     const headerContent = opts.logoUrl
       ? `<img src="${opts.logoUrl}" alt="${opts.schoolName}" style="height:56px;max-width:200px;object-fit:contain;display:block;margin:0 auto;" />`
       : `<h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.3px;">${opts.schoolName}</h1>`;
@@ -510,6 +512,9 @@ export class NotificationsService implements OnModuleInit {
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/\n/g, '<br>');
+    const pdfBlock = opts.pdfUrl
+      ? `<div style="margin-top:20px;"><a href="${opts.pdfUrl}" style="display:inline-block;background:#642678;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:10px 20px;border-radius:8px;">📄 Άνοιγμα PDF</a></div>`
+      : '';
     return `<!DOCTYPE html>
 <html lang="el">
 <head>
@@ -525,6 +530,7 @@ export class NotificationsService implements OnModuleInit {
     <div style="padding:28px 32px;">
       <h2 style="margin:0 0 16px;font-size:18px;font-weight:600;color:#111827;">${opts.title}</h2>
       <p style="margin:0;color:#374151;font-size:15px;line-height:1.65;">${bodyHtml}</p>
+      ${pdfBlock}
     </div>
     <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 32px;text-align:center;">
       <p style="margin:0;color:#9ca3af;font-size:12px;">${opts.schoolName}</p>

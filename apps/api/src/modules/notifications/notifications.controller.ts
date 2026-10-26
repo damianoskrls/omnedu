@@ -80,6 +80,27 @@ export class NotificationsController {
     }
   }
 
+  @Post('pdf')
+  @Roles('school_admin')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: memoryStorage(),
+    fileFilter: (_req, file, cb) => {
+      if (file.mimetype !== 'application/pdf') return cb(new BadRequestException('Μόνο PDF επιτρέπεται.'), false);
+      cb(null, true);
+    },
+    limits: { fileSize: 20 * 1024 * 1024 },
+  }))
+  async uploadPdf(@UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('Διάλεξε PDF.');
+    try {
+      const pdfUrl = await this.storage.upload(file, 'notifications', 'raw');
+      return { pdfUrl };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new BadRequestException('Το PDF δεν ανέβηκε.');
+    }
+  }
+
   @Get()
   @Roles('school_admin', 'teacher')
   findAll(@Param('schoolId') schoolId: string) {

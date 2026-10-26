@@ -425,6 +425,7 @@ export const broadcastsApi = {
     title: string;
     body: string;
     imageUrl?: string;
+    pdfUrl?: string;
     targetType: string;
     targetClassId?: string;
     targetStudentId?: string;
@@ -439,6 +440,11 @@ export const broadcastsApi = {
     const form = new FormData();
     form.append('file', file);
     return api.post(`/schools/${schoolId}/notifications/image`, form);
+  },
+  uploadPdf: (schoolId: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.post(`/schools/${schoolId}/notifications/pdf`, form);
   },
   getSettings: (schoolId: string) => api.get(`/schools/${schoolId}/notifications/settings`),
   updateSettings: (schoolId: string, data: any) =>
