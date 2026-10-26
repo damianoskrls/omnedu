@@ -118,7 +118,7 @@ export class ExtraServicesService {
     if (!service) throw new NotFoundException('Service not found');
 
     return this.prisma.studentService.findMany({
-      where: { serviceId },
+      where: { serviceId, isActive: true },
       include: {
         student: { select: { id: true, fullName: true, avatarUrl: true } },
         route: { select: { id: true, name: true } },
