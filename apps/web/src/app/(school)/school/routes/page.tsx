@@ -59,6 +59,7 @@ type StudentEntry = {
   notes?: string;
   student: { id: string; fullName: string; avatarUrl?: string };
   route?: { id: string; name: string };
+  dropoffRoute?: { id: string; name: string };
   stop?: { id: string; name: string; pickupTime?: string; dropoffTime?: string };
 };
 type Student = { id: string; fullName: string; avatarUrl?: string; parents?: { user: { id: string } }[] };
@@ -245,7 +246,7 @@ export default function RoutesPage() {
 
   const openAssign = async (serviceId: string) => {
     await loadAllStudents();
-    setAssignForm({ studentIds: [] as string[], routeId: '', stopId: '', serviceMode: 'both', pickupTime: '', dropoffTime: '', dailyTimes: {} as DailyTimes, pickupContact: '', dropoffContact: '', pickupPersons: [], homeAddress: '', homeLat: undefined, homeLng: undefined, discountAmount: '', notes: '' });
+    setAssignForm({ studentIds: [] as string[], routeId: '', dropoffRouteId: '', stopId: '', dropoffStopId: '', serviceMode: 'both', pickupTime: '', dropoffTime: '', dailyTimes: {} as DailyTimes, pickupContact: '', dropoffContact: '', pickupPersons: [], homeAddress: '', homeLat: undefined, homeLng: undefined, discountAmount: '', notes: '' });
     setAssignModal({ serviceId });
   };
 
@@ -256,6 +257,7 @@ export default function RoutesPage() {
       const hasDailyTimes = Object.keys(assignForm.dailyTimes ?? {}).length > 0;
       const basePayload = {
         routeId: assignForm.routeId || undefined,
+        dropoffRouteId: assignForm.dropoffRouteId || undefined,
         stopId: assignForm.stopId || undefined,
         serviceMode: assignForm.serviceMode ?? 'both',
         pickupTime: assignForm.pickupTime || undefined,
@@ -284,7 +286,9 @@ export default function RoutesPage() {
   const openEditStudent = async (serviceId: string, ss: StudentEntry) => {
     setEditStudentForm({
       routeId: ss.route?.id ?? '',
+      dropoffRouteId: ss.dropoffRoute?.id ?? '',
       stopId: ss.stop?.id ?? '',
+      dropoffStopId: '',
       serviceMode: ss.serviceMode ?? 'both',
       pickupTime: ss.pickupTime ?? '',
       dropoffTime: ss.dropoffTime ?? '',
@@ -310,6 +314,7 @@ export default function RoutesPage() {
         schoolId, editStudentModal.serviceId, editStudentModal.ssId,
         {
           routeId: editStudentForm.routeId || undefined,
+          dropoffRouteId: editStudentForm.dropoffRouteId || null,
           stopId: editStudentForm.stopId || undefined,
           serviceMode: editStudentForm.serviceMode ?? 'both',
           pickupTime: editStudentForm.pickupTime || undefined,
@@ -536,8 +541,9 @@ export default function RoutesPage() {
                                 )}
                               </div>
                               <div className="flex gap-3 text-xs text-gray-500 flex-wrap mt-0.5">
-                                {ss.route && <span className="flex items-center gap-0.5"><Bus className="w-3 h-3" />{ss.route.name}</span>}
-                                {ss.stop && <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3" />{ss.stop.name}</span>}
+                                {ss.route && <span className="flex items-center gap-0.5 text-green-700"><Bus className="w-3 h-3" />↑ {ss.route.name}</span>}
+                                {ss.dropoffRoute && <span className="flex items-center gap-0.5 text-blue-700"><Bus className="w-3 h-3" />↓ {ss.dropoffRoute.name}</span>}
+                                {!ss.route && !ss.dropoffRoute && ss.stop && <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3" />{ss.stop.name}</span>}
                                 {ss.homeAddress && <span className="flex items-center gap-0.5"><Home className="w-3 h-3" />{ss.homeAddress}</span>}
                                 {ss.pickupContact && <span className="flex items-center gap-0.5"><User className="w-3 h-3" />{ss.pickupContact}</span>}
                               </div>
@@ -1001,75 +1007,94 @@ function StudentAssignForm({ form, onChange, svc, selectedRoute }: {
     onChange({ ...form, pickupPersons: persons });
   };
 
-  const routeDirection = selectedRoute?.direction ?? 'both';
-  const availableModes = routeDirection === 'pickup'
-    ? SERVICE_MODES.filter(m => m.value === 'pickup')
-    : routeDirection === 'dropoff'
-    ? SERVICE_MODES.filter(m => m.value === 'dropoff')
-    : SERVICE_MODES;
+  const serviceMode: string = form.serviceMode ?? 'both';
+  const hasRoutes = svc && svc.routes.length > 0;
+  const pickupRoutes = svc?.routes.filter(r => !r.direction || r.direction === 'pickup' || r.direction === 'both') ?? [];
+  const dropoffRoutes = svc?.routes.filter(r => !r.direction || r.direction === 'dropoff' || r.direction === 'both') ?? [];
+  const selectedDropoffRoute = svc?.routes.find(r => r.id === form.dropoffRouteId);
+
+  const wantsPickup = serviceMode === 'pickup' || serviceMode === 'both';
+  const wantsDropoff = serviceMode === 'dropoff' || serviceMode === 'both';
 
   return (
     <div className="space-y-4">
-      {/* Route + Stop — first so direction filtering works */}
-      {svc && svc.routes.length > 0 && (
-        <Field label="Δρομολόγιο">
-          <select
-            className={inputCls}
-            value={form.routeId ?? ''}
-            onChange={e => {
-              const routeId = e.target.value;
-              const route = svc.routes.find(r => r.id === routeId);
-              const dir = route?.direction ?? 'both';
-              const newMode = dir !== 'both' ? dir : form.serviceMode ?? 'both';
-              onChange({ ...form, routeId, stopId: '', serviceMode: newMode });
-            }}
-          >
-            <option value="">— χωρίς δρομολόγιο —</option>
-            {svc.routes.map(r => (
-              <option key={r.id} value={r.id}>
-                {r.name}{r.direction === 'pickup' ? ' ↑' : r.direction === 'dropoff' ? ' ↓' : ' ↑↓'}
-              </option>
-            ))}
-          </select>
-        </Field>
-      )}
-      {selectedRoute && (selectedRoute.stops ?? []).length > 0 && (
-        <Field label="Στάση">
-          <select className={inputCls} value={form.stopId ?? ''} onChange={e => onChange({ ...form, stopId: e.target.value })}>
-            <option value="">— χωρίς στάση —</option>
-            {[...(selectedRoute.stops ?? [])].sort((a, b) => a.order - b.order).map(s => (
-              <option key={s.id} value={s.id}>{s.name}{s.pickupTime ? ` (↑${s.pickupTime})` : ''}</option>
-            ))}
-          </select>
-        </Field>
+      {/* Service mode FIRST — drives which route dropdowns appear */}
+      <Field label="Τύπος Υπηρεσίας">
+        <div className="grid grid-cols-3 gap-2">
+          {SERVICE_MODES.map(m => (
+            <button
+              key={m.value}
+              type="button"
+              onClick={() => onChange({ ...form, serviceMode: m.value, routeId: '', dropoffRouteId: '', stopId: '' })}
+              className={`py-2 px-3 text-xs rounded-lg border-2 font-medium transition-colors ${
+                serviceMode === m.value
+                  ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                  : 'border-gray-200 text-gray-600 hover:border-indigo-200'
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      {/* Pickup route (shown when serviceMode includes pickup) */}
+      {hasRoutes && wantsPickup && pickupRoutes.length > 0 && (
+        <>
+          <Field label="Δρομολόγιο Πρωί ↑">
+            <select
+              className={inputCls}
+              value={form.routeId ?? ''}
+              onChange={e => onChange({ ...form, routeId: e.target.value, stopId: '' })}
+            >
+              <option value="">— χωρίς δρομολόγιο πρωί —</option>
+              {pickupRoutes.map(r => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
+          </Field>
+          {selectedRoute && (selectedRoute.stops ?? []).length > 0 && (
+            <Field label="Στάση Πρωί">
+              <select className={inputCls} value={form.stopId ?? ''} onChange={e => onChange({ ...form, stopId: e.target.value })}>
+                <option value="">— χωρίς στάση —</option>
+                {[...(selectedRoute.stops ?? [])].sort((a, b) => a.order - b.order).map(s => (
+                  <option key={s.id} value={s.id}>{s.name}{s.pickupTime ? ` (↑${s.pickupTime})` : ''}</option>
+                ))}
+              </select>
+            </Field>
+          )}
+        </>
       )}
 
-      {/* Service mode — filtered based on selected route direction */}
-      <Field label="Τύπος Υπηρεσίας">
-        {availableModes.length === 1 ? (
-          <div className={`py-2 px-3 text-xs rounded-lg border-2 font-medium border-indigo-500 bg-indigo-50 text-indigo-700 inline-block`}>
-            {availableModes[0]!.label}
-            <span className="ml-1 text-indigo-400 font-normal">(καθορίστηκε από το δρομολόγιο)</span>
-          </div>
-        ) : (
-          <div className="grid grid-cols-3 gap-2">
-            {availableModes.map(m => (
-              <button
-                key={m.value}
-                type="button"
-                onClick={() => onChange({ ...form, serviceMode: m.value })}
-                className={`py-2 px-3 text-xs rounded-lg border-2 font-medium transition-colors ${
-                  form.serviceMode === m.value
-                    ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                    : 'border-gray-200 text-gray-600 hover:border-indigo-200'
-                }`}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-        )}
-      </Field>
+      {/* Dropoff route (shown when serviceMode includes dropoff) */}
+      {hasRoutes && wantsDropoff && dropoffRoutes.length > 0 && (
+        <>
+          <Field label="Δρομολόγιο Απόγευμα ↓">
+            <select
+              className={inputCls}
+              value={form.dropoffRouteId ?? ''}
+              onChange={e => onChange({ ...form, dropoffRouteId: e.target.value })}
+            >
+              <option value="">— χωρίς δρομολόγιο απόγευμα —</option>
+              {dropoffRoutes.map(r => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
+          </Field>
+          {selectedDropoffRoute && (selectedDropoffRoute.stops ?? []).length > 0 && (
+            <Field label="Στάση Απόγευμα">
+              <select className={inputCls} value={form.dropoffStopId ?? ''} onChange={e => onChange({ ...form, dropoffStopId: e.target.value })}>
+                <option value="">— χωρίς στάση —</option>
+                {[...(selectedDropoffRoute.stops ?? [])].sort((a, b) => a.order - b.order).map(s => (
+                  <option key={s.id} value={s.id}>{s.name}{s.dropoffTime ? ` (↓${s.dropoffTime})` : ''}</option>
+                ))}
+              </select>
+            </Field>
+          )}
+        </>
+      )}
+
+      {/* Fallback: no routes defined — legacy mode, no dropdowns shown */}
 
       {/* Home address with map */}
       {(form.serviceMode === 'both' || form.serviceMode === 'pickup') && (

@@ -1217,9 +1217,10 @@ model ServiceRoute {
   busNumber   String? @map("bus_number")
   isActive    Boolean @default(true) @map("is_active")
 
-  service         ExtraService     @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  stops           RouteStop[]
-  studentServices StudentService[]
+  service               ExtraService     @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  stops                 RouteStop[]
+  studentServices       StudentService[] @relation("StudentPickupRoute")
+  dropoffStudentServices StudentService[] @relation("StudentDropoffRoute")
 
   @@index([serviceId])
   @@map("service_routes")
@@ -1248,6 +1249,7 @@ model StudentService {
   studentId      String    @map("student_id")
   serviceId      String    @map("service_id")
   routeId        String?   @map("route_id")
+  dropoffRouteId String?   @map("dropoff_route_id")
   stopId         String?   @map("stop_id")
   serviceMode    String    @default("both") @map("service_mode") // pickup | dropoff | both
   homeAddress    String?   @map("home_address")  // student's home/pickup address (text)
@@ -1266,8 +1268,9 @@ model StudentService {
 
   student Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
   service ExtraService  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  route   ServiceRoute? @relation(fields: [routeId], references: [id])
-  stop    RouteStop?    @relation(fields: [stopId], references: [id])
+  route        ServiceRoute? @relation("StudentPickupRoute", fields: [routeId], references: [id])
+  dropoffRoute ServiceRoute? @relation("StudentDropoffRoute", fields: [dropoffRouteId], references: [id])
+  stop         RouteStop?    @relation(fields: [stopId], references: [id])
 
   @@unique([studentId, serviceId])
   @@index([serviceId])

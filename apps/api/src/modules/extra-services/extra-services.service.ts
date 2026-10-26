@@ -122,6 +122,7 @@ export class ExtraServicesService {
       include: {
         student: { select: { id: true, fullName: true, avatarUrl: true } },
         route: { select: { id: true, name: true } },
+        dropoffRoute: { select: { id: true, name: true } },
         stop: { select: { id: true, name: true, pickupTime: true, dropoffTime: true } },
       },
       orderBy: { enrolledAt: 'desc' },

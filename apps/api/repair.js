@@ -43,6 +43,7 @@ const repairs = [
   `ALTER TABLE "route_completions" ADD COLUMN IF NOT EXISTS "route_id" TEXT`,
   `DROP INDEX IF EXISTS "route_completions_service_id_direction_day_key_key"`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "rc_service_route_day_idx" ON "route_completions"(service_id, COALESCE(route_id, direction), day_key)`,
+  `ALTER TABLE "student_services" ADD COLUMN IF NOT EXISTS "dropoff_route_id" TEXT`,
 ];
 
 (async () => {

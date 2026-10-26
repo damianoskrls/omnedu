@@ -79,7 +79,14 @@ export class BusTrackingService implements OnModuleInit {
     const dayStr = day.toISOString().slice(0, 10);
     const [rows, pickups, absentRows] = await Promise.all([
       this.prisma.studentService.findMany({
-        where: { serviceId: id, isActive: true, student: { schoolId, isActive: true }, ...(routeId ? { routeId } : {}) },
+        where: {
+          serviceId: id, isActive: true, student: { schoolId, isActive: true },
+          ...(routeId
+            ? direction === 'dropoff'
+              ? { dropoffRouteId: routeId }
+              : { routeId }
+            : {}),
+        },
         include: {
           student: {
             select: {
@@ -326,8 +333,18 @@ export class BusTrackingService implements OnModuleInit {
         // Use explicit routes — one entry per route
         for (const r of activeRoutes) {
           const dir = r.direction === 'dropoff' ? 'dropoff' : 'pickup';
-          const students = r.studentServices.length > 0 ? r.studentServices : bus.studentServices;
-          const entry = toEntry(bus, students as StudentService[], dir, r.id, r.name);
+          let students: StudentService[];
+          if (dir === 'dropoff') {
+            // Dropoff route: find students by dropoffRouteId
+            students = bus.studentServices.filter(
+              (ss) => (ss as unknown as { dropoffRouteId?: string }).dropoffRouteId === r.id,
+            );
+            // Fallback to routeId-linked students (legacy / direction=both routes)
+            if (students.length === 0) students = r.studentServices as StudentService[];
+          } else {
+            students = r.studentServices as StudentService[];
+          }
+          const entry = toEntry(bus, students, dir, r.id, r.name);
           if (entry) routes.push(entry);
         }
       } else {
