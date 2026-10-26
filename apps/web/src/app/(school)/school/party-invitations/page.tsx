@@ -475,6 +475,16 @@ export default function PartyInvitationsPage() {
                         <div className="px-3 py-4 text-sm text-gray-400 text-center">Δεν υπάρχουν μαθητές</div>
                       )}
                     </div>
+                    {selectedClassId && (() => {
+                      const hiddenCount = form.recipientStudentIds.filter(
+                        id => !studentsInClass.some((s: any) => s.id === id)
+                      ).length;
+                      return hiddenCount > 0 ? (
+                        <div className="px-3 py-2 bg-amber-50 border-t border-amber-100 text-xs text-amber-700 text-center">
+                          + {hiddenCount} επιλεγμένα παιδιά από άλλες τάξεις
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
                 )}
               </div>

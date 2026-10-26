@@ -467,7 +467,7 @@ export class NotificationsService implements OnModuleInit {
         return 0;
       }
 
-      const schoolName = school?.name ?? 'omnedu';
+      const schoolName = school?.name ?? 'Σχολείο';
       const logoUrl = (school as any)?.logoUrl ?? null;
       const html = this.buildEmailHtml({ schoolName, logoUrl, title: data.title, body: data.body });
 
@@ -502,9 +502,9 @@ export class NotificationsService implements OnModuleInit {
   }
 
   private buildEmailHtml(opts: { schoolName: string; logoUrl: string | null; title: string; body: string }): string {
-    const logoHtml = opts.logoUrl
-      ? `<img src="${opts.logoUrl}" alt="${opts.schoolName}" style="height:48px;max-width:160px;object-fit:contain;margin-bottom:12px;display:block;margin-left:auto;margin-right:auto;" />`
-      : '';
+    const headerContent = opts.logoUrl
+      ? `<img src="${opts.logoUrl}" alt="${opts.schoolName}" style="height:56px;max-width:200px;object-fit:contain;display:block;margin:0 auto;" />`
+      : `<h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.3px;">${opts.schoolName}</h1>`;
     const bodyHtml = opts.body
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
@@ -519,16 +519,15 @@ export class NotificationsService implements OnModuleInit {
 </head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
   <div style="max-width:600px;margin:32px auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
-    <div style="background:#6366f1;padding:28px 32px;text-align:center;">
-      ${logoHtml}
-      <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:700;letter-spacing:-0.3px;">${opts.schoolName}</h1>
+    <div style="background:#642678;padding:28px 32px;text-align:center;">
+      ${headerContent}
     </div>
     <div style="padding:28px 32px;">
       <h2 style="margin:0 0 16px;font-size:18px;font-weight:600;color:#111827;">${opts.title}</h2>
       <p style="margin:0;color:#374151;font-size:15px;line-height:1.65;">${bodyHtml}</p>
     </div>
     <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 32px;text-align:center;">
-      <p style="margin:0;color:#9ca3af;font-size:12px;">Powered by <strong>omnedu</strong></p>
+      <p style="margin:0;color:#9ca3af;font-size:12px;">${opts.schoolName}</p>
     </div>
   </div>
 </body>
