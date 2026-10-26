@@ -425,7 +425,7 @@ export class BusTrackingService implements OnModuleInit {
       }
     } catch (_) {}
 
-    return { ok: true, completedAt: completion.completed_at ?? completion.completedAt, direction: completion.direction };
+    return { ok: true, completedAt: completion.completed_at, direction: completion.direction };
   }
 
   async resetToday(schoolId: string) {
