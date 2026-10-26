@@ -5,6 +5,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api/api_client.dart';
@@ -45,6 +46,21 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
 
   List<String>? _customOrder;
 
+  String get _orderKey => 'stop_order_${widget.serviceId}_${widget.isAfternoon ? 'drop' : 'pick'}';
+
+  Future<void> _loadSavedOrder() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_orderKey);
+    if (saved != null && saved.isNotEmpty) {
+      _customOrder = saved.split(',');
+    }
+  }
+
+  Future<void> _saveOrder(List<String> order) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_orderKey, order.join(','));
+  }
+
   // Animation for current stop card
   late AnimationController _currentStopCtrl;
   late Animation<double> _currentStopScale;
@@ -76,7 +92,7 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
     _progressAnim = Tween<double>(begin: 0.0, end: 0.0).animate(
       CurvedAnimation(parent: _progressCtrl, curve: Curves.easeOut),
     );
-    _load();
+    _loadSavedOrder().then((_) => _load());
     WidgetsBinding.instance.addPostFrameCallback((_) => _askGpsConsent());
   }
 
@@ -143,7 +159,9 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
         riders: List<Map<String, dynamic>>.from(_riders),
         direction: widget.isAfternoon ? 'παράδοσης' : 'παραλαβής',
         onNewOrder: (reordered) {
-          _customOrder = reordered.map((r) => r['studentId']?.toString() ?? '').toList();
+          final order = reordered.map((r) => r['studentId']?.toString() ?? '').toList();
+          _customOrder = order;
+          _saveOrder(order);
           setState(() => _riders = reordered);
         },
       ),
@@ -155,21 +173,32 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
     }
   }
 
-  void _showReorderSheet() {
+  Future<void> _showReorderSheet() async {
     final pending = _riders.where((r) => r['pickedUp'] != true && r['isAbsent'] != true).toList();
     final done = _riders.where((r) => r['pickedUp'] == true || r['isAbsent'] == true).toList();
-    showModalBottomSheet<void>(
+    bool reordered = false;
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => _ReorderSheet(
         riders: pending,
-        onNewOrder: (reordered) {
-          _customOrder = [...done, ...reordered].map((r) => r['studentId']?.toString() ?? '').toList();
-          setState(() => _riders = [...done, ...reordered]);
+        onNewOrder: (newOrder) {
+          reordered = true;
+          final order = [...done, ...newOrder].map((r) => r['studentId']?.toString() ?? '').toList();
+          _customOrder = order;
+          _saveOrder(order);
+          setState(() => _riders = [...done, ...newOrder]);
         },
       ),
     );
+    if (reordered && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Η σειρά στάσεων ενημερώθηκε'),
+        duration: Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
   }
 
   Future<void> _startGps() async {
@@ -577,18 +606,22 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
                         if (_riders.any((r) => r['pickedUp'] != true && r['isAbsent'] != true))
                           GestureDetector(
                             onTap: _showReorderSheet,
-                            child: Container(
-                              margin: const EdgeInsets.only(right: 8),
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF3E8FF),
-                                borderRadius: BorderRadius.circular(8),
+                            behavior: HitTestBehavior.opaque,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+                              child: Container(
+                                margin: const EdgeInsets.only(right: 4),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF3E8FF),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Row(children: [
+                                  Icon(Icons.swap_vert_rounded, size: 15, color: Color(0xFF77328D)),
+                                  SizedBox(width: 4),
+                                  Text('Σειρά', style: TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w700, fontSize: 12)),
+                                ]),
                               ),
-                              child: const Row(children: [
-                                Icon(Icons.swap_vert_rounded, size: 13, color: Color(0xFF77328D)),
-                                SizedBox(width: 3),
-                                Text('Σειρά', style: TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w700, fontSize: 11)),
-                              ]),
                             ),
                           ),
                         Container(
@@ -1126,7 +1159,8 @@ class _StartRouteSheetState extends State<_StartRouteSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final listHeight = (_list.length * 58.0).clamp(0.0, 260.0);
+    final maxListH = MediaQuery.of(context).size.height * 0.42;
+    final listHeight = (_list.length * 58.0).clamp(0.0, maxListH);
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
@@ -1176,7 +1210,7 @@ class _StartRouteSheetState extends State<_StartRouteSheet> {
                   SizedBox(width: 6),
                   Text('Σειρά στάσεων', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF6B7280))),
                   Spacer(),
-                  Text('Σύρε για αλλαγή', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+                  Text('Σύρε ή χρησιμοποίησε βέλη', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
                 ],
               ),
             ),
@@ -1195,7 +1229,26 @@ class _StartRouteSheetState extends State<_StartRouteSheet> {
                 },
                 itemBuilder: (_, i) {
                   final r = _list[i];
-                  return _ReorderRow(key: ValueKey(r['studentId'] ?? i), index: i, rider: r);
+                  return _ReorderRow(
+                    key: ValueKey(r['studentId'] ?? i),
+                    index: i,
+                    total: _list.length,
+                    rider: r,
+                    onMoveUp: i == 0 ? null : () {
+                      setState(() {
+                        final item = _list.removeAt(i);
+                        _list.insert(i - 1, item);
+                      });
+                      widget.onNewOrder(List.from(_list));
+                    },
+                    onMoveDown: i == _list.length - 1 ? null : () {
+                      setState(() {
+                        final item = _list.removeAt(i);
+                        _list.insert(i + 1, item);
+                      });
+                      widget.onNewOrder(List.from(_list));
+                    },
+                  );
                 },
               ),
             ),
@@ -1259,7 +1312,8 @@ class _ReorderSheetState extends State<_ReorderSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final listHeight = (_list.length * 58.0).clamp(0.0, 320.0);
+    final maxListH = MediaQuery.of(context).size.height * 0.55;
+    final listHeight = (_list.length * 58.0).clamp(0.0, maxListH);
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
@@ -1283,7 +1337,7 @@ class _ReorderSheetState extends State<_ReorderSheet> {
                 SizedBox(width: 10),
                 Text('Αλλαγή σειράς στάσεων', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
                 Spacer(),
-                Text('Σύρε για αλλαγή', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+                Text('Σύρε ή χρησιμοποίησε βέλη', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
               ],
             ),
           ),
@@ -1302,7 +1356,26 @@ class _ReorderSheetState extends State<_ReorderSheet> {
               },
               itemBuilder: (_, i) {
                 final r = _list[i];
-                return _ReorderRow(key: ValueKey(r['studentId'] ?? i), index: i, rider: r);
+                return _ReorderRow(
+                  key: ValueKey(r['studentId'] ?? i),
+                  index: i,
+                  total: _list.length,
+                  rider: r,
+                  onMoveUp: i == 0 ? null : () {
+                    setState(() {
+                      final item = _list.removeAt(i);
+                      _list.insert(i - 1, item);
+                    });
+                    widget.onNewOrder(List.from(_list));
+                  },
+                  onMoveDown: i == _list.length - 1 ? null : () {
+                    setState(() {
+                      final item = _list.removeAt(i);
+                      _list.insert(i + 1, item);
+                    });
+                    widget.onNewOrder(List.from(_list));
+                  },
+                );
               },
             ),
           ),
@@ -1329,9 +1402,19 @@ class _ReorderSheetState extends State<_ReorderSheet> {
 
 class _ReorderRow extends StatelessWidget {
   final int index;
+  final int total;
   final Map<String, dynamic> rider;
+  final VoidCallback? onMoveUp;
+  final VoidCallback? onMoveDown;
 
-  const _ReorderRow({super.key, required this.index, required this.rider});
+  const _ReorderRow({
+    super.key,
+    required this.index,
+    required this.total,
+    required this.rider,
+    this.onMoveUp,
+    this.onMoveDown,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1339,7 +1422,7 @@ class _ReorderRow extends StatelessWidget {
     final address = rider['address']?.toString() ?? '';
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 2),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.fromLTRB(12, 6, 4, 6),
       decoration: BoxDecoration(
         color: const Color(0xFFF6F3FA),
         borderRadius: BorderRadius.circular(12),
@@ -1366,6 +1449,31 @@ class _ReorderRow extends StatelessWidget {
                   Text(address, style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
               ],
             ),
+          ),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 36, height: 36,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  iconSize: 18,
+                  icon: const Icon(Icons.keyboard_arrow_up_rounded),
+                  color: index == 0 ? const Color(0xFFD1D5DB) : const Color(0xFF77328D),
+                  onPressed: index == 0 ? null : onMoveUp,
+                ),
+              ),
+              SizedBox(
+                width: 36, height: 36,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  iconSize: 18,
+                  icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                  color: index == total - 1 ? const Color(0xFFD1D5DB) : const Color(0xFF77328D),
+                  onPressed: index == total - 1 ? null : onMoveDown,
+                ),
+              ),
+            ],
           ),
         ],
       ),
