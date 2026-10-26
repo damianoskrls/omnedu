@@ -28,6 +28,11 @@ export class CreateStudentDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsString()
+  gender?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsDateString()
   dob?: string;
 

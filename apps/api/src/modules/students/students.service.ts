@@ -310,6 +310,7 @@ export class StudentsService {
         data: {
           schoolId,
           fullName: dto.fullName,
+          gender: dto.gender,
           dob: dto.dob ? new Date(dto.dob) : undefined,
           notes: dto.notes,
         },
