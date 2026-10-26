@@ -49,7 +49,7 @@ const repairs = [
     process.exit(0);
   }
   console.log('[repair] connecting to database...');
-  const pool = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } });
+  const pool = new Pool({ connectionString: url });
   let ok = 0;
   let fail = 0;
   for (const sql of repairs) {
