@@ -406,6 +406,24 @@ export class BusTrackingService implements OnModuleInit {
     return { ok: true, completedAt: completion.completedAt, direction: completion.direction };
   }
 
+  async resetToday(schoolId: string) {
+    const today = schoolDay();
+    const todayKey = today.toISOString().slice(0, 10);
+    const [pickups, completions] = await Promise.all([
+      this.prisma.$executeRawUnsafe(
+        `DELETE FROM bus_pickups WHERE school_id = $1 AND day = $2::date`,
+        schoolId,
+        todayKey,
+      ),
+      this.prisma.$executeRawUnsafe(
+        `DELETE FROM route_completions WHERE school_id = $1 AND day_key = $2`,
+        schoolId,
+        todayKey,
+      ),
+    ]);
+    return { ok: true, deletedPickups: Number(pickups), deletedCompletions: Number(completions) };
+  }
+
   async completedToday(schoolId: string) {
     const todayKey = schoolDay().toISOString().slice(0, 10);
     const completions = await this.prisma.routeCompletion

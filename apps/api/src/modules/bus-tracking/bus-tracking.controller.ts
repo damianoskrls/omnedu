@@ -108,6 +108,12 @@ export class BusTrackingController {
     return this.service.completedToday(schoolId);
   }
 
+  @Delete('reset-today')
+  @Roles('school_admin')
+  resetToday(@Param('schoolId') schoolId: string) {
+    return this.service.resetToday(schoolId);
+  }
+
   @Get('student/:studentId')
   forStudent(
     @Param('schoolId') schoolId: string,
