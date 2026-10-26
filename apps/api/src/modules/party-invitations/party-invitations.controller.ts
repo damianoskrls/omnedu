@@ -37,12 +37,12 @@ export class PartyInvitationsController {
 
   @Get('received')
   listReceived(@Param('schoolId') schoolId: string, @Request() req: any) {
-    return this.service.listReceived(schoolId, req.user.id);
+    return this.service.listReceived(schoolId, req.user.sub);
   }
 
   @Get('sent-by-my-child')
   listSentByMyChild(@Param('schoolId') schoolId: string, @Request() req: any) {
-    return this.service.listSentByMyChild(schoolId, req.user.id);
+    return this.service.listSentByMyChild(schoolId, req.user.sub);
   }
 
   @Get(':id')

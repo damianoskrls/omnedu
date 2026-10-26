@@ -1,3 +1,3 @@
--- AlterTable: add latitude/longitude to schools
-ALTER TABLE "schools" ADD COLUMN "latitude" DOUBLE PRECISION;
-ALTER TABLE "schools" ADD COLUMN "longitude" DOUBLE PRECISION;
+-- AlterTable: add latitude/longitude to schools (idempotent)
+ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "latitude" DOUBLE PRECISION;
+ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "longitude" DOUBLE PRECISION;

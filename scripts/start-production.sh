@@ -25,6 +25,8 @@ node repair.js || echo '[repair] repair.js failed, continuing anyway'
   node_modules/.bin/prisma migrate resolve --applied 20261023100000_add_student_siblings_table || true
   node_modules/.bin/prisma migrate resolve --applied 20261023200000_add_party_invitation_pdf_url || true
   node_modules/.bin/prisma migrate resolve --applied 20261023300000_add_route_completions || true
+  node_modules/.bin/prisma migrate resolve --applied 20261024000000_ensure_route_completions || true
+  node_modules/.bin/prisma migrate resolve --applied 20261024200000_add_school_lat_lng || true
   node_modules/.bin/prisma migrate deploy || echo 'migration failed, starting api anyway'
 })
 cd "$ROOT"
