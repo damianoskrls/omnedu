@@ -136,7 +136,8 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      barrierDismissible: false,
+      isDismissible: false,
+      enableDrag: false,
       backgroundColor: Colors.transparent,
       builder: (ctx) => _StartRouteSheet(
         riders: List<Map<String, dynamic>>.from(_riders),
