@@ -47,7 +47,7 @@ export class PartyInvitationsController {
 
   @Get(':id')
   get(@Param('schoolId') schoolId: string, @Param('id') id: string, @Request() req: any) {
-    return this.service.get(schoolId, id, req.user.id);
+    return this.service.get(schoolId, id, req.user.sub);
   }
 
   @Post()
