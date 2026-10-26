@@ -471,11 +471,24 @@ export class NotificationsService implements OnModuleInit {
 
       const schoolName = school?.name ?? 'Σχολείο';
       const logoUrl = (school as any)?.logoUrl ?? null;
-      // Generate a 30-day signed URL so email links and attachments work even if Cloudinary ACL is restricted
-      const signedPdfUrl = data.pdfUrl
-        ? this.storage.generateSignedDownloadUrl(data.pdfUrl, 30 * 24 * 3600)
-        : undefined;
-      const html = this.buildEmailHtml({ schoolName, logoUrl, title: data.title, body: data.body, imageUrl: data.imageUrl, pdfUrl: signedPdfUrl });
+      // Use the original Cloudinary URL directly (public upload, no signing needed)
+      const html = this.buildEmailHtml({ schoolName, logoUrl, title: data.title, body: data.body, imageUrl: data.imageUrl, pdfUrl: data.pdfUrl });
+
+      // Download PDF bytes server-side so Resend attaches the actual file
+      let pdfAttachment: { filename: string; content: Buffer } | undefined;
+      if (data.pdfUrl) {
+        try {
+          const res = await fetch(data.pdfUrl);
+          if (res.ok) {
+            const buf = Buffer.from(await res.arrayBuffer());
+            pdfAttachment = { filename: 'attachment.pdf', content: buf };
+          } else {
+            this.logger.warn(`[EMAIL] PDF fetch failed ${res.status}: ${data.pdfUrl}`);
+          }
+        } catch (e) {
+          this.logger.warn('[EMAIL] Could not fetch PDF for attachment', e);
+        }
+      }
 
       const BATCH_SIZE = 100;
       let sent = 0;
@@ -487,7 +500,7 @@ export class NotificationsService implements OnModuleInit {
             to,
             subject: data.title,
             html,
-            ...(signedPdfUrl ? { attachments: [{ path: signedPdfUrl, filename: 'attachment.pdf' }] } : {}),
+            ...(pdfAttachment ? { attachments: [pdfAttachment] } : {}),
           }));
           const result = await this.resendClient!.batch.send(messages);
           if (result.error) {
