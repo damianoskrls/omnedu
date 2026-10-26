@@ -43,6 +43,8 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
   Timer? _pingTimer;
   Position? _lastPos;
 
+  List<String>? _customOrder;
+
   // Animation for current stop card
   late AnimationController _currentStopCtrl;
   late Animation<double> _currentStopScale;
@@ -103,7 +105,18 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
           .toList();
       if (!mounted) return;
       final newProgress = _totalPickup == 0 ? 0.0 : (riders.where((r) => r['pickedUp'] == true || r['isAbsent'] == true).length) / riders.where((r) => r['canPickup'] == true).length.toDouble();
-      setState(() { _riders = riders.where((r) => r['canPickup'] == true).toList(); });
+      var filtered = riders.where((r) => r['canPickup'] == true).toList();
+      if (_customOrder != null) {
+        filtered.sort((a, b) {
+          final ai = _customOrder!.indexOf(a['studentId']?.toString() ?? '');
+          final bi = _customOrder!.indexOf(b['studentId']?.toString() ?? '');
+          if (ai == -1 && bi == -1) return 0;
+          if (ai == -1) return 1;
+          if (bi == -1) return -1;
+          return ai.compareTo(bi);
+        });
+      }
+      setState(() { _riders = filtered; });
       _animateProgress(newProgress);
       _currentStopCtrl.forward(from: 0);
       _fit();
@@ -120,33 +133,18 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
 
   Future<void> _askGpsConsent() async {
     if (!mounted) return;
-    final direction = widget.isAfternoon ? 'παράδοσης' : 'παραλαβής';
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showModalBottomSheet<bool>(
       context: context,
+      isScrollControlled: true,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(children: [
-          Icon(Icons.gps_fixed_rounded, color: Color(0xFF77328D), size: 24),
-          SizedBox(width: 10),
-          Text('Κοινοποίηση τοποθεσίας', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-        ]),
-        content: Text(
-          'Κατά τη διάρκεια της διαδρομής $direction, η τοποθεσία σου θα είναι ορατή στους γονείς των παιδιών μέσω της εφαρμογής.',
-          style: const TextStyle(fontSize: 14, color: Color(0xFF374151), height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Ακύρωση', style: TextStyle(color: Color(0xFF6B7280))),
-          ),
-          FilledButton.icon(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF77328D), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-            onPressed: () => Navigator.pop(ctx, true),
-            icon: const Icon(Icons.play_arrow_rounded, size: 18),
-            label: const Text('Έναρξη GPS'),
-          ),
-        ],
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _StartRouteSheet(
+        riders: List<Map<String, dynamic>>.from(_riders),
+        direction: widget.isAfternoon ? 'παράδοσης' : 'παραλαβής',
+        onNewOrder: (reordered) {
+          _customOrder = reordered.map((r) => r['studentId']?.toString() ?? '').toList();
+          setState(() => _riders = reordered);
+        },
       ),
     );
     if (confirmed == true) {
@@ -154,6 +152,23 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
     } else if (mounted) {
       Navigator.pop(context);
     }
+  }
+
+  void _showReorderSheet() {
+    final pending = _riders.where((r) => r['pickedUp'] != true && r['isAbsent'] != true).toList();
+    final done = _riders.where((r) => r['pickedUp'] == true || r['isAbsent'] == true).toList();
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _ReorderSheet(
+        riders: pending,
+        onNewOrder: (reordered) {
+          _customOrder = [...done, ...reordered].map((r) => r['studentId']?.toString() ?? '').toList();
+          setState(() => _riders = [...done, ...reordered]);
+        },
+      ),
+    );
   }
 
   Future<void> _startGps() async {
@@ -558,6 +573,23 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
                       children: [
                         const Text('Στάσεις Διαδρομής', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
                         const Spacer(),
+                        if (_riders.any((r) => r['pickedUp'] != true && r['isAbsent'] != true))
+                          GestureDetector(
+                            onTap: _showReorderSheet,
+                            child: Container(
+                              margin: const EdgeInsets.only(right: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF3E8FF),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Row(children: [
+                                Icon(Icons.swap_vert_rounded, size: 13, color: Color(0xFF77328D)),
+                                SizedBox(width: 3),
+                                Text('Σειρά', style: TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w700, fontSize: 11)),
+                              ]),
+                            ),
+                          ),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(20)),
@@ -1065,4 +1097,277 @@ String _firstName(String name) {
   final trimmed = name.trim();
   if (trimmed.isEmpty) return 'Παιδί';
   return trimmed.split(RegExp(r'\s+')).first;
+}
+
+class _StartRouteSheet extends StatefulWidget {
+  final List<Map<String, dynamic>> riders;
+  final String direction;
+  final ValueChanged<List<Map<String, dynamic>>> onNewOrder;
+
+  const _StartRouteSheet({
+    required this.riders,
+    required this.direction,
+    required this.onNewOrder,
+  });
+
+  @override
+  State<_StartRouteSheet> createState() => _StartRouteSheetState();
+}
+
+class _StartRouteSheetState extends State<_StartRouteSheet> {
+  late List<Map<String, dynamic>> _list;
+
+  @override
+  void initState() {
+    super.initState();
+    _list = List.from(widget.riders);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final listHeight = (_list.length * 58.0).clamp(0.0, 260.0);
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Center(
+            child: Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 8),
+              width: 40, height: 4,
+              decoration: BoxDecoration(color: const Color(0xFFE5E7EB), borderRadius: BorderRadius.circular(2)),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: const Color(0xFFF3E8FF), borderRadius: BorderRadius.circular(12)),
+                  child: const Icon(Icons.gps_fixed_rounded, color: Color(0xFF77328D), size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Έναρξη Διαδρομής', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+                      Text(
+                        'Η τοποθεσία σου θα κοινοποιείται κατά τη διαδρομή ${widget.direction}.',
+                        style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13, height: 1.4),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_list.isNotEmpty) ...[
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 6),
+              child: Row(
+                children: [
+                  Icon(Icons.swap_vert_rounded, size: 15, color: Color(0xFF6B7280)),
+                  SizedBox(width: 6),
+                  Text('Σειρά στάσεων', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF6B7280))),
+                  Spacer(),
+                  Text('Σύρε για αλλαγή', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+                ],
+              ),
+            ),
+            SizedBox(
+              height: listHeight,
+              child: ReorderableListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: _list.length,
+                onReorder: (oldIdx, newIdx) {
+                  setState(() {
+                    if (newIdx > oldIdx) newIdx--;
+                    final item = _list.removeAt(oldIdx);
+                    _list.insert(newIdx, item);
+                  });
+                  widget.onNewOrder(List.from(_list));
+                },
+                itemBuilder: (_, i) {
+                  final r = _list[i];
+                  return _ReorderRow(key: ValueKey(r['studentId'] ?? i), index: i, rider: r);
+                },
+              ),
+            ),
+          ],
+          Padding(
+            padding: EdgeInsets.fromLTRB(16, 12, 16, MediaQuery.of(context).padding.bottom + 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFFE5E7EB)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Ακύρωση', style: TextStyle(color: Color(0xFF6B7280), fontWeight: FontWeight.w700)),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF77328D),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    onPressed: () => Navigator.pop(context, true),
+                    icon: const Icon(Icons.play_arrow_rounded, size: 20),
+                    label: const Text('Έναρξη GPS', style: TextStyle(fontWeight: FontWeight.w800)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReorderSheet extends StatefulWidget {
+  final List<Map<String, dynamic>> riders;
+  final ValueChanged<List<Map<String, dynamic>>> onNewOrder;
+
+  const _ReorderSheet({required this.riders, required this.onNewOrder});
+
+  @override
+  State<_ReorderSheet> createState() => _ReorderSheetState();
+}
+
+class _ReorderSheetState extends State<_ReorderSheet> {
+  late List<Map<String, dynamic>> _list;
+
+  @override
+  void initState() {
+    super.initState();
+    _list = List.from(widget.riders);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final listHeight = (_list.length * 58.0).clamp(0.0, 320.0);
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Center(
+            child: Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 8),
+              width: 40, height: 4,
+              decoration: BoxDecoration(color: const Color(0xFFE5E7EB), borderRadius: BorderRadius.circular(2)),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 8, 20, 12),
+            child: Row(
+              children: [
+                Icon(Icons.swap_vert_rounded, size: 20, color: Color(0xFF77328D)),
+                SizedBox(width: 10),
+                Text('Αλλαγή σειράς στάσεων', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                Spacer(),
+                Text('Σύρε για αλλαγή', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+              ],
+            ),
+          ),
+          SizedBox(
+            height: listHeight,
+            child: ReorderableListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: _list.length,
+              onReorder: (oldIdx, newIdx) {
+                setState(() {
+                  if (newIdx > oldIdx) newIdx--;
+                  final item = _list.removeAt(oldIdx);
+                  _list.insert(newIdx, item);
+                });
+                widget.onNewOrder(List.from(_list));
+              },
+              itemBuilder: (_, i) {
+                final r = _list[i];
+                return _ReorderRow(key: ValueKey(r['studentId'] ?? i), index: i, rider: r);
+              },
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(16, 12, 16, MediaQuery.of(context).padding.bottom + 16),
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF77328D),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Εφαρμογή', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReorderRow extends StatelessWidget {
+  final int index;
+  final Map<String, dynamic> rider;
+
+  const _ReorderRow({super.key, required this.index, required this.rider});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = rider['name']?.toString() ?? '';
+    final address = rider['address']?.toString() ?? '';
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF6F3FA),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.drag_handle_rounded, color: Color(0xFF9CA3AF), size: 20),
+          const SizedBox(width: 10),
+          Container(
+            width: 24, height: 24,
+            decoration: BoxDecoration(color: const Color(0xFFE9D5FF), borderRadius: BorderRadius.circular(6)),
+            child: Center(
+              child: Text('${index + 1}', style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w800, fontSize: 12)),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                if (address.isNotEmpty)
+                  Text(address, style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
