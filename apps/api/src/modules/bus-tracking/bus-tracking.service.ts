@@ -71,7 +71,7 @@ export class BusTrackingService implements OnModuleInit {
     return { ok: true, serviceId, updatedAt: saved.updatedAt };
   }
 
-  async route(schoolId: string, userId: string, role: string | null | undefined, serviceId?: string, direction?: string) {
+  async route(schoolId: string, userId: string, role: string | null | undefined, serviceId?: string, direction?: string, routeId?: string) {
     const id = await this.driverServiceId(schoolId, userId, role, serviceId);
     if (!id) return { serviceId: null, riders: [] };
     const day = schoolDay();
@@ -79,7 +79,7 @@ export class BusTrackingService implements OnModuleInit {
     const dayStr = day.toISOString().slice(0, 10);
     const [rows, pickups, absentRows] = await Promise.all([
       this.prisma.studentService.findMany({
-        where: { serviceId: id, isActive: true, student: { schoolId, isActive: true } },
+        where: { serviceId: id, isActive: true, student: { schoolId, isActive: true }, ...(routeId ? { routeId } : {}) },
         include: {
           student: {
             select: {
@@ -275,7 +275,11 @@ export class BusTrackingService implements OnModuleInit {
     const [buses, school] = await Promise.all([
       this.prisma.extraService.findMany({
         where: { schoolId, serviceType: 'bus', isActive: true, driverUserId: userId },
-        include: { busPosition: true, studentServices: { where: { isActive: true } } },
+        include: {
+          busPosition: true,
+          studentServices: { where: { isActive: true } },
+          routes: { where: { isActive: true }, include: { studentServices: { where: { isActive: true } } } },
+        },
       }),
       this.prisma.school.findUnique({
         where: { id: schoolId },
@@ -287,7 +291,13 @@ export class BusTrackingService implements OnModuleInit {
     type BusRecord = (typeof buses)[number];
     type StudentService = BusRecord['studentServices'][number];
 
-    const toEntry = (bus: BusRecord, students: StudentService[], kind: 'pickup' | 'dropoff') => {
+    const toEntry = (
+      bus: BusRecord,
+      students: StudentService[],
+      kind: 'pickup' | 'dropoff',
+      routeId?: string,
+      routeName?: string,
+    ) => {
       if (students.length === 0) return null;
       const times = students
         .map((ss: Record<string, unknown>) => clockOf(ss as unknown as Parameters<typeof clockOf>[0], kind, dayKey))
@@ -296,7 +306,9 @@ export class BusTrackingService implements OnModuleInit {
       const stops = new Set(students.map((ss: Record<string, unknown>) => (ss as { stopId?: string }).stopId).filter(Boolean)).size;
       return {
         serviceId: bus.id,
+        routeId: routeId ?? null,
         name: bus.name,
+        routeName: routeName ?? null,
         busNumber: bus.busNumber ?? null,
         direction: kind,
         startTime: times[0] ?? null,
@@ -308,20 +320,32 @@ export class BusTrackingService implements OnModuleInit {
 
     const routes: NonNullable<ReturnType<typeof toEntry>>[] = [];
     for (const bus of buses) {
-      const pickupStudents = bus.studentServices.filter((ss) => {
-        const mode = (ss as { serviceMode?: string }).serviceMode;
-        return !mode || mode === 'pickup' || mode === 'both';
-      });
-      const dropoffStudents = bus.studentServices.filter((ss) => {
-        const mode = (ss as { serviceMode?: string }).serviceMode;
-        return !mode || mode === 'dropoff' || mode === 'both';
-      });
-      // If no direction-specific students at all, treat all as both
-      const effectiveDropoff = dropoffStudents.length > 0 ? dropoffStudents : (pickupStudents.length === 0 ? bus.studentServices : []);
-      const morningEntry = toEntry(bus, pickupStudents, 'pickup');
-      const afternoonEntry = toEntry(bus, effectiveDropoff, 'dropoff');
-      if (morningEntry) routes.push(morningEntry);
-      if (afternoonEntry) routes.push(afternoonEntry);
+      const activeRoutes = (bus as typeof bus & { routes: { id: string; name: string; direction: string; studentServices: StudentService[] }[] }).routes ?? [];
+
+      if (activeRoutes.length > 0) {
+        // Use explicit routes — one entry per route
+        for (const r of activeRoutes) {
+          const dir = r.direction === 'dropoff' ? 'dropoff' : 'pickup';
+          const students = r.studentServices.length > 0 ? r.studentServices : bus.studentServices;
+          const entry = toEntry(bus, students as StudentService[], dir, r.id, r.name);
+          if (entry) routes.push(entry);
+        }
+      } else {
+        // Legacy: no routes defined — derive from studentService.serviceMode
+        const pickupStudents = bus.studentServices.filter((ss) => {
+          const mode = (ss as { serviceMode?: string }).serviceMode;
+          return !mode || mode === 'pickup' || mode === 'both';
+        });
+        const dropoffStudents = bus.studentServices.filter((ss) => {
+          const mode = (ss as { serviceMode?: string }).serviceMode;
+          return !mode || mode === 'dropoff' || mode === 'both';
+        });
+        const effectiveDropoff = dropoffStudents.length > 0 ? dropoffStudents : (pickupStudents.length === 0 ? bus.studentServices : []);
+        const morningEntry = toEntry(bus, pickupStudents, 'pickup');
+        const afternoonEntry = toEntry(bus, effectiveDropoff, 'dropoff');
+        if (morningEntry) routes.push(morningEntry);
+        if (afternoonEntry) routes.push(afternoonEntry);
+      }
     }
 
     // Sort: pickup before dropoff, then by startTime
@@ -334,13 +358,15 @@ export class BusTrackingService implements OnModuleInit {
     const todayKey = schoolDay().toISOString().slice(0, 10);
     if (buses.length > 0) {
       const serviceIds = buses.map((b) => b.id);
-      const completions = await this.prisma.routeCompletion
-        .findMany({ where: { serviceId: { in: serviceIds }, dayKey: todayKey } })
-        .catch(() => []);
+      const completions = await this.prisma.$queryRawUnsafe<{ service_id: string; route_id: string | null; direction: string }[]>(
+        `SELECT service_id, route_id, direction FROM route_completions WHERE service_id = ANY($1::text[]) AND day_key = $2`,
+        serviceIds, todayKey,
+      ).catch(() => [] as { service_id: string; route_id: string | null; direction: string }[]);
       for (const entry of routes) {
-        if (completions.some((c) => c.serviceId === entry.serviceId && c.direction === entry.direction)) {
-          entry.status = 'completed';
-        }
+        const done = entry.routeId
+          ? completions.some((c) => c.service_id === entry.serviceId && c.route_id === entry.routeId)
+          : completions.some((c) => c.service_id === entry.serviceId && c.direction === entry.direction && !c.route_id);
+        if (done) entry.status = 'completed';
       }
     }
 
@@ -365,25 +391,21 @@ export class BusTrackingService implements OnModuleInit {
     schoolId: string,
     userId: string,
     role: string | null | undefined,
-    data: { serviceId?: string; direction?: string; studentsCount?: number },
+    data: { serviceId?: string; direction?: string; routeId?: string; studentsCount?: number },
   ) {
     if (role !== 'driver') throw new ForbiddenException('Μόνο ο οδηγός μπορεί να ολοκληρώσει διαδρομή.');
     if (!data.serviceId || !data.direction) throw new BadRequestException('Απαιτούνται serviceId και direction.');
     const todayKey = schoolDay().toISOString().slice(0, 10);
-    const completion = await this.prisma.routeCompletion
-      .upsert({
-        where: { serviceId_direction_dayKey: { serviceId: data.serviceId, direction: data.direction, dayKey: todayKey } },
-        create: {
-          schoolId,
-          serviceId: data.serviceId,
-          driverUserId: userId,
-          direction: data.direction,
-          dayKey: todayKey,
-          studentsCount: data.studentsCount ?? 0,
-        },
-        update: { completedAt: new Date(), studentsCount: data.studentsCount ?? 0 },
-      })
-      .catch(() => ({ completedAt: new Date(), direction: data.direction ?? '' }));
+    const routeId = data.routeId ?? null;
+    const rows = await this.prisma.$queryRawUnsafe<{ completed_at: Date; direction: string }[]>(
+      `INSERT INTO route_completions (id, school_id, service_id, driver_user_id, direction, route_id, day_key, students_count, completed_at)
+       VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, NOW())
+       ON CONFLICT (service_id, COALESCE(route_id, direction), day_key)
+       DO UPDATE SET completed_at = NOW(), students_count = EXCLUDED.students_count
+       RETURNING completed_at, direction`,
+      schoolId, data.serviceId, userId, data.direction, routeId, todayKey, data.studentsCount ?? 0,
+    ).catch(() => [] as { completed_at: Date; direction: string }[]);
+    const completion = rows[0] ?? { completed_at: new Date(), direction: data.direction ?? '' };
     // Notify school admins
     try {
       const admins = await this.prisma.schoolMember.findMany({
@@ -403,7 +425,7 @@ export class BusTrackingService implements OnModuleInit {
       }
     } catch (_) {}
 
-    return { ok: true, completedAt: completion.completedAt, direction: completion.direction };
+    return { ok: true, completedAt: completion.completed_at ?? completion.completedAt, direction: completion.direction };
   }
 
   async resetToday(schoolId: string) {

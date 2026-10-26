@@ -40,8 +40,9 @@ export class BusTrackingController {
     @CurrentUser() user: JwtPayload,
     @Query('serviceId') serviceId?: string,
     @Query('direction') direction?: string,
+    @Query('routeId') routeId?: string,
   ) {
-    return this.service.route(schoolId, user.sub, user.role, serviceId, direction);
+    return this.service.route(schoolId, user.sub, user.role, serviceId, direction, routeId);
   }
 
   @Post('pickup')
@@ -98,7 +99,7 @@ export class BusTrackingController {
   completeRoute(
     @Param('schoolId') schoolId: string,
     @CurrentUser() user: JwtPayload,
-    @Body() body: { serviceId?: string; direction?: string; studentsCount?: number },
+    @Body() body: { serviceId?: string; direction?: string; routeId?: string; studentsCount?: number },
   ) {
     return this.service.completeRoute(schoolId, user.sub, user.role, body);
   }

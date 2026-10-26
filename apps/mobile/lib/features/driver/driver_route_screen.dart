@@ -17,6 +17,7 @@ class DriverRouteScreen extends ConsumerStatefulWidget {
   final String serviceId;
   final String busName;
   final bool isAfternoon;
+  final String? routeId;
 
   const DriverRouteScreen({
     super.key,
@@ -24,6 +25,7 @@ class DriverRouteScreen extends ConsumerStatefulWidget {
     required this.serviceId,
     required this.busName,
     this.isAfternoon = false,
+    this.routeId,
   });
 
   @override
@@ -46,7 +48,7 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
 
   List<String>? _customOrder;
 
-  String get _orderKey => 'stop_order_${widget.serviceId}_${widget.isAfternoon ? 'drop' : 'pick'}';
+  String get _orderKey => 'stop_order_${widget.routeId ?? widget.serviceId}_${widget.isAfternoon ? 'drop' : 'pick'}';
 
   Future<void> _loadSavedOrder() async {
     final prefs = await SharedPreferences.getInstance();
@@ -112,6 +114,7 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
         queryParameters: {
           'serviceId': widget.serviceId,
           'direction': widget.isAfternoon ? 'dropoff' : 'pickup',
+          if (widget.routeId != null) 'routeId': widget.routeId,
         },
       );
       final data = resp.data is Map ? Map<String, dynamic>.from(resp.data as Map) : <String, dynamic>{};
@@ -360,6 +363,7 @@ class _DriverRouteScreenState extends ConsumerState<DriverRouteScreen>
         data: {
           'serviceId': widget.serviceId,
           'direction': widget.isAfternoon ? 'dropoff' : 'pickup',
+          if (widget.routeId != null) 'routeId': widget.routeId,
           'studentsCount': _riders.where((r) => r['canPickup'] == true).length,
         },
       );

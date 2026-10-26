@@ -60,8 +60,9 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
   void _startRoute(Map<String, dynamic> route) {
     final serviceId = route['serviceId']?.toString() ?? _dashboard?['activeServiceId']?.toString();
     if (serviceId == null) return;
-    final busName = route['name']?.toString() ?? 'Σχολικό';
+    final busName = route['routeName']?.toString() ?? route['name']?.toString() ?? 'Σχολικό';
     final isAfternoon = route['direction']?.toString() == 'dropoff';
+    final routeId = route['routeId']?.toString();
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -70,6 +71,7 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
           serviceId: serviceId,
           busName: busName,
           isAfternoon: isAfternoon,
+          routeId: routeId,
         ),
       ),
     ).then((_) => _load());
@@ -77,8 +79,9 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
 
   Future<void> _showPreview(Map<String, dynamic> route) async {
     final serviceId = route['serviceId']?.toString();
-    final busName = route['name']?.toString() ?? 'Σχολικό';
+    final busName = route['routeName']?.toString() ?? route['name']?.toString() ?? 'Σχολικό';
     final isAfternoon = route['direction']?.toString() == 'dropoff';
+    final routeId = route['routeId']?.toString();
     if (serviceId == null) return;
     final userId = ref.read(authProvider).user?.id ?? '';
 
@@ -86,7 +89,11 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
     try {
       final resp = await ref.read(dioProvider).get(
         '/schools/${widget.schoolId}/bus-tracking/route',
-        queryParameters: {'serviceId': serviceId, 'direction': isAfternoon ? 'dropoff' : 'pickup'},
+        queryParameters: {
+          'serviceId': serviceId,
+          'direction': isAfternoon ? 'dropoff' : 'pickup',
+          if (routeId != null) 'routeId': routeId,
+        },
       );
       final data = resp.data is Map ? resp.data as Map : {};
       riders = (data['riders'] as List? ?? [])
@@ -135,8 +142,9 @@ class _DriverDashboardScreenState extends ConsumerState<DriverDashboardScreen>
     for (final route in routes) {
       final isAfternoon = route['direction']?.toString() == 'dropoff';
       final done = route['status'] == 'completed';
+      final routeName = route['routeName']?.toString();
       widgets.add(_RouteCard(
-        label: isAfternoon ? 'Απογευματινή Παράδοση' : 'Πρωινή Παραλαβή',
+        label: routeName ?? (isAfternoon ? 'Απογευματινή Παράδοση' : 'Πρωινή Παραλαβή'),
         badge: isAfternoon ? 'ΑΠΟΓΕΥΜΑ' : 'ΠΡΩΙΝΟ',
         badgeColor: isAfternoon ? const Color(0xFFD97706) : const Color(0xFF77328D),
         date: today,
