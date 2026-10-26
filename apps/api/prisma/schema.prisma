@@ -635,6 +635,7 @@ model Message {
   senderId       String   @map("sender_id")
   body           String?
   mediaUrl       String?  @map("media_url")
+  fileUrls       String[] @default([]) @map("file_urls")
   isDeleted      Boolean  @default(false) @map("is_deleted")
   sentAt         DateTime @default(now()) @map("sent_at")
 

@@ -1,5 +1,5 @@
-import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpException, Param, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpException, Param, Post, Query, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { MessagesService } from './messages.service';
@@ -105,6 +105,33 @@ export class MessagesController {
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new BadRequestException('Η εικόνα δεν ανέβηκε. Δοκίμασε μια μικρότερη JPG ή PNG.');
+    }
+  }
+
+  @Post(':conversationId/messages/files')
+  @UseInterceptors(FilesInterceptor('files', 5, {
+    storage: memoryStorage(),
+    fileFilter: (_req, file, cb) => {
+      if (!file.mimetype.startsWith('image/') && file.mimetype !== 'application/pdf') {
+        return cb(new BadRequestException('Μόνο εικόνες και PDF επιτρέπονται.'), false);
+      }
+      cb(null, true);
+    },
+    limits: { fileSize: 20 * 1024 * 1024 },
+  }))
+  async sendFiles(
+    @Param('conversationId') conversationId: string,
+    @CurrentUser() user: JwtPayload,
+    @UploadedFiles() files: Express.Multer.File[],
+    @Body() body: { body?: string },
+  ) {
+    if (!files?.length) throw new BadRequestException('Διάλεξε τουλάχιστον ένα αρχείο.');
+    try {
+      const urls = await Promise.all(files.map((f) => this.storage.upload(f, 'messages')));
+      return await this.messages.sendMessage(conversationId, user.sub, body?.body, undefined, urls);
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new BadRequestException('Τα αρχεία δεν ανέβηκαν. Δοκίμασε ξανά.');
     }
   }
 

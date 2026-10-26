@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
-import { ImagePlus, MessageSquare, Search, Send, Smile, Trash2 } from 'lucide-react';
+import { ImagePlus, MessageSquare, Paperclip, Search, Send, Smile, Trash2, X } from 'lucide-react';
 
 const EMOJIS = ['😀', '😁', '😂', '😊', '😍', '🤗', '👍', '👏', '🙏', '❤️', '🎉', '🌟', '✅', '📷'];
 
@@ -29,12 +29,14 @@ export default function MessagesPage() {
   const [draft, setDraft] = useState('');
   const [image, setImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState('');
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [emojisOpen, setEmojisOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [query, setQuery] = useState('');
   const [typing, setTyping] = useState<{ conversationId: string; name: string }[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+  const filesRef = useRef<HTMLInputElement>(null);
   const lastTypingPost = useRef(0);
 
   const loadConversations = () => {
@@ -136,10 +138,16 @@ export default function MessagesPage() {
 
   const send = async () => {
     const text = draft.trim();
-    if ((!text && !image) || !activeId) return;
+    if ((!text && !image && !pendingFiles.length) || !activeId) return;
     setSending(true);
     try {
-      if (image) {
+      if (pendingFiles.length > 0) {
+        const form = new FormData();
+        for (const f of pendingFiles) form.append('files', f);
+        if (text) form.append('body', text);
+        await api.post(`/schools/${schoolId}/conversations/${activeId}/messages/files`, form);
+        setPendingFiles([]);
+      } else if (image) {
         const form = new FormData();
         form.append('file', image);
         if (text) form.append('body', text);
@@ -306,6 +314,7 @@ export default function MessagesPage() {
               <div className="flex-1 space-y-2 overflow-y-auto px-5 py-4">
                 {messages.map((message) => {
                   const mine = message.senderId === user?.id;
+                  const fileUrls: string[] = Array.isArray(message.fileUrls) ? message.fileUrls : [];
                   return (
                     <div key={message.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                       <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm ${mine ? 'bg-[#77328D] text-white' : 'bg-gray-100 text-gray-800'}`}>
@@ -313,6 +322,17 @@ export default function MessagesPage() {
                         {message.mediaUrl && (
                           <img src={message.mediaUrl} alt="" className="mb-1 max-h-52 w-full rounded-xl object-cover" />
                         )}
+                        {fileUrls.map((url, i) => {
+                          const isPdf = url.toLowerCase().includes('.pdf') || url.toLowerCase().includes('/raw/upload/');
+                          return isPdf ? (
+                            <a key={i} href={url} target="_blank" rel="noopener noreferrer" className={`mb-1 flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium ${mine ? 'border-white/30 bg-white/10 text-white' : 'border-gray-300 bg-white text-gray-700'}`}>
+                              <Paperclip className="h-3.5 w-3.5 shrink-0" />
+                              Άνοιγμα PDF
+                            </a>
+                          ) : (
+                            <img key={i} src={url} alt="" className="mb-1 max-h-52 w-full rounded-xl object-cover" />
+                          );
+                        })}
                         {message.body && <div className="whitespace-pre-wrap">{message.body}</div>}
                       </div>
                     </div>
@@ -335,12 +355,28 @@ export default function MessagesPage() {
                     <button type="button" onClick={clearImage} className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 text-xs text-white">×</button>
                   </div>
                 )}
+                {pendingFiles.length > 0 && (
+                  <div className="mb-2 flex flex-wrap gap-1.5">
+                    {pendingFiles.map((f, i) => (
+                      <span key={i} className="flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs text-gray-700">
+                        <Paperclip className="h-3 w-3 text-gray-400" />
+                        {f.name}
+                        <button type="button" onClick={() => setPendingFiles((prev) => prev.filter((_, j) => j !== i))} className="ml-0.5 rounded-full p-0.5 hover:bg-gray-200">
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <div className="flex gap-2">
                   <button type="button" onClick={() => setEmojisOpen((value) => !value)} className="rounded-xl border border-gray-200 px-2 text-[#77328D]">
                     <Smile className="h-4 w-4" />
                   </button>
                   <button type="button" onClick={() => fileRef.current?.click()} className="rounded-xl border border-gray-200 px-2 text-[#E95926]">
                     <ImagePlus className="h-4 w-4" />
+                  </button>
+                  <button type="button" onClick={() => filesRef.current?.click()} className="rounded-xl border border-gray-200 px-2 text-gray-500">
+                    <Paperclip className="h-4 w-4" />
                   </button>
                   <input
                     ref={fileRef}
@@ -358,6 +394,18 @@ export default function MessagesPage() {
                     }}
                   />
                   <input
+                    ref={filesRef}
+                    type="file"
+                    accept=".pdf,image/*"
+                    multiple
+                    hidden
+                    onChange={(event) => {
+                      const selected = Array.from(event.target.files ?? []);
+                      if (selected.length) setPendingFiles((prev) => [...prev, ...selected]);
+                      event.target.value = '';
+                    }}
+                  />
+                  <input
                     value={draft}
                     onChange={(event) => {
                       const value = event.target.value;
@@ -368,7 +416,7 @@ export default function MessagesPage() {
                     placeholder="Γράψε μήνυμα"
                     className="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm"
                   />
-                  <button onClick={send} disabled={sending || (!draft.trim() && !image)} className="rounded-xl bg-[#77328D] px-3 text-white disabled:opacity-50">
+                  <button onClick={send} disabled={sending || (!draft.trim() && !image && !pendingFiles.length)} className="rounded-xl bg-[#77328D] px-3 text-white disabled:opacity-50">
                     <Send className="h-4 w-4" />
                   </button>
                 </div>

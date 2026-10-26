@@ -251,18 +251,20 @@ export class MessagesService {
     return messages.reverse();
   }
 
-  async sendMessage(conversationId: string, senderId: string, body?: string, mediaUrl?: string) {
+  async sendMessage(conversationId: string, senderId: string, body?: string, mediaUrl?: string, fileUrls?: string[]) {
     await this.assertCanRead(conversationId, senderId);
     await this.ensureParticipant(conversationId, senderId);
     const text = (body ?? '').trim();
     const image = mediaUrl?.trim() || '';
-    if (!text && !image) throw new BadRequestException('Το μήνυμα είναι κενό');
+    const files = (fileUrls ?? []).filter((u) => u.trim());
+    if (!text && !image && !files.length) throw new BadRequestException('Το μήνυμα είναι κενό');
     const created = await this.prisma.message.create({
       data: {
         conversationId,
         senderId,
         body: text || null,
         ...(image ? { mediaUrl: image } : {}),
+        ...(files.length ? { fileUrls: files } : {}),
       },
       include: { sender: { select: userCard } },
     });

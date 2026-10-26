@@ -124,6 +124,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       `ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "latitude" DOUBLE PRECISION`,
       `ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "longitude" DOUBLE PRECISION`,
       `UPDATE schools SET latitude = 38.0864, longitude = 23.7332 WHERE name ILIKE '%ονειροχ%' AND (latitude IS NULL OR longitude IS NULL)`,
+      `ALTER TABLE "messages" ADD COLUMN IF NOT EXISTS "file_urls" TEXT[] DEFAULT ARRAY[]::TEXT[]`,
       `ALTER TABLE "student_services" ADD COLUMN IF NOT EXISTS "dropoff_route_id" TEXT`,
       `ALTER TABLE "service_routes" ADD COLUMN IF NOT EXISTS "direction" TEXT NOT NULL DEFAULT 'both'`,
       `CREATE TABLE IF NOT EXISTS "route_completions" (

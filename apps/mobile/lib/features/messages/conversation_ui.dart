@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/api/api_client.dart';
 import '../../core/notifications/open_conversation.dart';
 import '../../core/utils/system_insets.dart';
@@ -348,6 +350,11 @@ class ChatScreen extends ConsumerStatefulWidget {
 String _lastLine(Map<String, dynamic>? message) {
   final text = message?['body']?.toString().trim() ?? '';
   if (text.isNotEmpty) return text;
+  final fileUrls = message?['fileUrls'] as List?;
+  if (fileUrls != null && fileUrls.isNotEmpty) {
+    final hasPdf = fileUrls.any((u) => u.toString().toLowerCase().contains('.pdf') || u.toString().contains('/raw/upload/'));
+    return hasPdf ? 'PDF' : 'Αρχεία';
+  }
   final media = message?['mediaUrl']?.toString() ?? '';
   if (media.isNotEmpty) return 'Εικόνα';
   return 'Ξεκινήστε μια συνομιλία';
@@ -361,6 +368,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   String? _error;
   DateTime _lastTyping = DateTime.fromMillisecondsSinceEpoch(0);
   Timer? _refresh;
+  List<PlatformFile> _pendingFiles = [];
 
   @override
   void initState() {
@@ -393,8 +401,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Future<void> _send({XFile? image}) async {
     final text = _ctrl.text.trim();
-    if (text.isEmpty && image == null) return;
-    setState(() => _sending = true);
+    final files = List<PlatformFile>.from(_pendingFiles);
+    if (text.isEmpty && image == null && files.isEmpty) return;
+    setState(() { _sending = true; _pendingFiles = []; });
     try {
       final dio = ref.read(dioProvider);
       if (image != null) {
@@ -403,6 +412,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           if (text.isNotEmpty) 'body': text,
         });
         await dio.post('/schools/${widget.schoolId}/conversations/${widget.convId}/messages/image', data: form);
+      } else if (files.isNotEmpty) {
+        final parts = await Future.wait(files.map((f) => MultipartFile.fromFile(f.path!, filename: f.name)));
+        final form = FormData.fromMap({
+          'files': parts,
+          if (text.isNotEmpty) 'body': text,
+        });
+        await dio.post('/schools/${widget.schoolId}/conversations/${widget.convId}/messages/files', data: form);
       } else {
         await dio.post(
           '/schools/${widget.schoolId}/conversations/${widget.convId}/messages',
@@ -566,6 +582,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       ],
                     ),
                   ),
+                if (_pendingFiles.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Wrap(
+                      spacing: 6,
+                      children: [
+                        for (final f in _pendingFiles)
+                          Chip(
+                            label: Text(f.name, style: const TextStyle(fontSize: 11)),
+                            onDeleted: () => setState(() => _pendingFiles.remove(f)),
+                            deleteIcon: const Icon(Icons.close, size: 14),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                      ],
+                    ),
+                  ),
                 Row(
                   children: [
                     IconButton(
@@ -580,6 +612,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               if (file != null) await _send(image: file);
                             },
                       icon: const Icon(Icons.image_outlined, color: Color(0xFFE95926)),
+                    ),
+                    IconButton(
+                      onPressed: _sending
+                          ? null
+                          : () async {
+                              final result = await FilePicker.platform.pickFiles(
+                                allowMultiple: true,
+                                type: FileType.custom,
+                                allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+                              );
+                              if (result != null && result.files.isNotEmpty) {
+                                setState(() => _pendingFiles = [..._pendingFiles, ...result.files]);
+                              }
+                            },
+                      icon: const Icon(Icons.attach_file_outlined, color: Color(0xFF4B5563)),
                     ),
                     Expanded(
                       child: TextField(
@@ -671,10 +718,24 @@ class _Bubble extends StatelessWidget {
   final bool isMe;
   const _Bubble({required this.message, required this.isMe});
 
+  bool _isPdf(String url) =>
+      url.toLowerCase().contains('.pdf') || url.toLowerCase().contains('/raw/upload/');
+
+  Future<void> _openUrl(BuildContext context, String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Το αρχείο δεν άνοιξε.')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final body = message['body'] as String? ?? '';
     final mediaUrl = message['mediaUrl'] as String? ?? '';
+    final rawFileUrls = message['fileUrls'];
+    final fileUrls = (rawFileUrls is List) ? rawFileUrls.map((u) => u.toString()).toList() : <String>[];
     final sender = message['sender'] as Map?;
     final senderName = sender?['fullName'] as String? ?? '';
 
@@ -709,6 +770,34 @@ class _Bubble extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                   child: AppImage(mediaUrl, width: 220, height: 180, fit: BoxFit.cover),
                 ),
+              ),
+            for (final url in fileUrls)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: _isPdf(url)
+                    ? GestureDetector(
+                        onTap: () => _openUrl(context, url),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: isMe ? Colors.white.withAlpha(30) : const Color(0xFFF3F4F6),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: isMe ? Colors.white.withAlpha(60) : const Color(0xFFD1D5DB)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.picture_as_pdf_outlined, color: isMe ? Colors.white : const Color(0xFFE95926), size: 20),
+                              const SizedBox(width: 8),
+                              Text('Άνοιγμα PDF', style: TextStyle(color: isMe ? Colors.white : const Color(0xFF111827), fontSize: 13, fontWeight: FontWeight.w500)),
+                            ],
+                          ),
+                        ),
+                      )
+                    : ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: AppImage(url, width: 220, height: 180, fit: BoxFit.cover),
+                      ),
               ),
             if (body.trim().isNotEmpty)
               Text(body, style: TextStyle(color: isMe ? Colors.white : const Color(0xFF111827), fontSize: 14)),
