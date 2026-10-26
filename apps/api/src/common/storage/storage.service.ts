@@ -36,12 +36,13 @@ export class StorageService {
 
   async upload(file: Express.Multer.File, folder: string, resourceType: 'auto' | 'image' | 'raw' = 'auto'): Promise<string> {
     const raw = resourceType === 'raw' || file.mimetype === 'application/pdf';
+    const rawExt = raw ? (file.originalname.split('.').pop()?.toLowerCase() || undefined) : undefined;
     return new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
         {
           folder: `omnedu/${folder}`,
           resource_type: raw ? 'raw' : resourceType,
-          ...(raw ? { use_filename: true, unique_filename: true } : {}),
+          ...(raw ? { use_filename: true, unique_filename: true, ...(rawExt ? { format: rawExt } : {}) } : {}),
         },
         (error, result) => {
           if (error) return reject(error);
