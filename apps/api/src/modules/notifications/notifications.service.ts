@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
+import { StorageService } from '../../common/storage/storage.service';
 import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
 import { Resend } from 'resend';
@@ -57,7 +58,7 @@ export class NotificationsService implements OnModuleInit {
     }
   }
 
-  constructor(private prisma: PrismaService, private config: ConfigService) {
+  constructor(private prisma: PrismaService, private config: ConfigService, private storage: StorageService) {
     const projectId = this.config.get('firebase.projectId');
     const clientEmail = this.config.get('firebase.clientEmail');
     const privateKey = this.config.get('firebase.privateKey');
@@ -470,7 +471,11 @@ export class NotificationsService implements OnModuleInit {
 
       const schoolName = school?.name ?? 'Σχολείο';
       const logoUrl = (school as any)?.logoUrl ?? null;
-      const html = this.buildEmailHtml({ schoolName, logoUrl, title: data.title, body: data.body, imageUrl: data.imageUrl, pdfUrl: data.pdfUrl });
+      // Generate a 30-day signed URL so email links and attachments work even if Cloudinary ACL is restricted
+      const signedPdfUrl = data.pdfUrl
+        ? this.storage.generateSignedDownloadUrl(data.pdfUrl, 30 * 24 * 3600)
+        : undefined;
+      const html = this.buildEmailHtml({ schoolName, logoUrl, title: data.title, body: data.body, imageUrl: data.imageUrl, pdfUrl: signedPdfUrl });
 
       const BATCH_SIZE = 100;
       let sent = 0;
@@ -482,7 +487,7 @@ export class NotificationsService implements OnModuleInit {
             to,
             subject: data.title,
             html,
-            ...(data.pdfUrl ? { attachments: [{ path: data.pdfUrl, filename: 'attachment.pdf' }] } : {}),
+            ...(signedPdfUrl ? { attachments: [{ path: signedPdfUrl, filename: 'attachment.pdf' }] } : {}),
           }));
           const result = await this.resendClient!.batch.send(messages);
           if (result.error) {
