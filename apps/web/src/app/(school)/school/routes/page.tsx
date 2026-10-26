@@ -9,6 +9,7 @@ import {
   MapPin, Clock, User, Users, Settings, Home, Phone,
 } from 'lucide-react';
 import { BusClosures } from './bus-closures';
+import { Time24Input } from '@/components/Time24Input';
 
 const MapPicker = dynamic(() => import('@/components/MapPickerInner'), {
   ssr: false,
@@ -674,10 +675,10 @@ export default function RoutesPage() {
               </Field>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Ώρα παραλαβής (↑)">
-                  <input type="time" className={inputCls} value={stopModal.stop?.pickupTime ?? ''} onChange={e => setStopModal(p => ({ ...p!, stop: { ...p!.stop!, pickupTime: e.target.value } }))} />
+                  <Time24Input className={inputCls} value={stopModal.stop?.pickupTime ?? ''} onChange={v => setStopModal(p => ({ ...p!, stop: { ...p!.stop!, pickupTime: v } }))} />
                 </Field>
                 <Field label="Ώρα αποβίβασης (↓)">
-                  <input type="time" className={inputCls} value={stopModal.stop?.dropoffTime ?? ''} onChange={e => setStopModal(p => ({ ...p!, stop: { ...p!.stop!, dropoffTime: e.target.value } }))} />
+                  <Time24Input className={inputCls} value={stopModal.stop?.dropoffTime ?? ''} onChange={v => setStopModal(p => ({ ...p!, stop: { ...p!.stop!, dropoffTime: v } }))} />
                 </Field>
               </div>
             </div>
@@ -841,10 +842,10 @@ function DailyTimesGrid({ value, onChange }: { value: DailyTimes; onChange: (v: 
             <tr key={key}>
               <td className="py-1.5 pr-2 font-medium text-gray-600 whitespace-nowrap">{label}</td>
               <td className="py-1.5 pr-1">
-                <input type="time" className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400" value={value[key]?.pickup ?? ''} onChange={e => set(key, 'pickup', e.target.value)} />
+                <Time24Input className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400" value={value[key]?.pickup ?? ''} onChange={v => set(key, 'pickup', v)} />
               </td>
               <td className="py-1.5">
-                <input type="time" className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400" value={value[key]?.dropoff ?? ''} onChange={e => set(key, 'dropoff', e.target.value)} />
+                <Time24Input className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400" value={value[key]?.dropoff ?? ''} onChange={v => set(key, 'dropoff', v)} />
               </td>
             </tr>
           ))}

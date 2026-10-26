@@ -11,6 +11,7 @@ import { PaymentConfirmModal, PaymentPrompt } from '@/components/PaymentConfirmM
 import { PaymentDetailsLink } from '@/components/PaymentDetailsLink';
 import { useStoredUser } from '@/lib/auth';
 import { PersonAvatar } from '@/components/PersonAvatar';
+import { Time24Input } from '@/components/Time24Input';
 import {
   ArrowLeft, Phone, Mail, MapPin, Droplets,
   BookOpen, ClipboardList, Users, AlertCircle,
@@ -2863,13 +2864,13 @@ export default function StudentProfilePage() {
                       {showPickup && (
                         <div>
                           <label className="block text-xs font-medium text-green-700 mb-1">Ώρα Παραλαβής ↑</label>
-                          <input type="time" value={assignPickupTime} onChange={e => setAssignPickupTime(e.target.value)} className={inputCls} />
+                          <Time24Input value={assignPickupTime} onChange={setAssignPickupTime} className={inputCls} />
                         </div>
                       )}
                       {showDropoff && (
                         <div>
                           <label className="block text-xs font-medium text-blue-700 mb-1">Ώρα Παράδοσης ↓</label>
-                          <input type="time" value={assignDropoffTime} onChange={e => setAssignDropoffTime(e.target.value)} className={inputCls} />
+                          <Time24Input value={assignDropoffTime} onChange={setAssignDropoffTime} className={inputCls} />
                         </div>
                       )}
                     </div>

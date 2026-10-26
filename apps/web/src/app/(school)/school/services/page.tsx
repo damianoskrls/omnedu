@@ -14,6 +14,7 @@ import {
   MapPin, Clock, User, Euro, Users,
 } from 'lucide-react';
 import { PersonAvatar } from '@/components/PersonAvatar';
+import { Time24Input } from '@/components/Time24Input';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -631,10 +632,10 @@ export default function ServicesPage() {
               </Field>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Ώρα παραλαβής (↑)">
-                  <input type="time" className={inputCls} value={stopModal.stop?.pickupTime ?? ''} onChange={e => setStopModal(p => ({ ...p!, stop: { ...p!.stop!, pickupTime: e.target.value } }))} />
+                  <Time24Input className={inputCls} value={stopModal.stop?.pickupTime ?? ''} onChange={v => setStopModal(p => ({ ...p!, stop: { ...p!.stop!, pickupTime: v } }))} />
                 </Field>
                 <Field label="Ώρα αποβίβασης (↓)">
-                  <input type="time" className={inputCls} value={stopModal.stop?.dropoffTime ?? ''} onChange={e => setStopModal(p => ({ ...p!, stop: { ...p!.stop!, dropoffTime: e.target.value } }))} />
+                  <Time24Input className={inputCls} value={stopModal.stop?.dropoffTime ?? ''} onChange={v => setStopModal(p => ({ ...p!, stop: { ...p!.stop!, dropoffTime: v } }))} />
                 </Field>
               </div>
             </div>
@@ -676,11 +677,11 @@ export default function ServicesPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <span className="text-xs text-gray-500 mb-1 block">Παραλαβή ↑</span>
-                      <input type="time" className={inputCls} value={editStudentForm.pickupTime} onChange={e => setEditStudentForm((p: any) => ({ ...p, pickupTime: e.target.value }))} />
+                      <Time24Input className={inputCls} value={editStudentForm.pickupTime} onChange={v => setEditStudentForm((p: any) => ({ ...p, pickupTime: v }))} />
                     </div>
                     <div>
                       <span className="text-xs text-gray-500 mb-1 block">Αποβίβαση ↓</span>
-                      <input type="time" className={inputCls} value={editStudentForm.dropoffTime} onChange={e => setEditStudentForm((p: any) => ({ ...p, dropoffTime: e.target.value }))} />
+                      <Time24Input className={inputCls} value={editStudentForm.dropoffTime} onChange={v => setEditStudentForm((p: any) => ({ ...p, dropoffTime: v }))} />
                     </div>
                   </div>
                 </Field>
@@ -739,11 +740,11 @@ export default function ServicesPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <span className="text-xs text-gray-500 mb-1 block">Παραλαβή ↑</span>
-                      <input type="time" className={inputCls} value={assignForm.pickupTime} onChange={e => setAssignForm((p: any) => ({ ...p, pickupTime: e.target.value }))} />
+                      <Time24Input className={inputCls} value={assignForm.pickupTime} onChange={v => setAssignForm((p: any) => ({ ...p, pickupTime: v }))} />
                     </div>
                     <div>
                       <span className="text-xs text-gray-500 mb-1 block">Αποβίβαση ↓</span>
-                      <input type="time" className={inputCls} value={assignForm.dropoffTime} onChange={e => setAssignForm((p: any) => ({ ...p, dropoffTime: e.target.value }))} />
+                      <Time24Input className={inputCls} value={assignForm.dropoffTime} onChange={v => setAssignForm((p: any) => ({ ...p, dropoffTime: v }))} />
                     </div>
                   </div>
                 </Field>
@@ -796,19 +797,17 @@ function DailyTimesGrid({ value, onChange }: { value: DailyTimes; onChange: (v: 
             <tr key={key}>
               <td className="py-1.5 pr-2 font-medium text-gray-600 whitespace-nowrap">{label}</td>
               <td className="py-1.5 pr-1">
-                <input
-                  type="time"
+                <Time24Input
                   className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
                   value={value[key]?.pickup ?? ''}
-                  onChange={e => set(key, 'pickup', e.target.value)}
+                  onChange={v => set(key, 'pickup', v)}
                 />
               </td>
               <td className="py-1.5">
-                <input
-                  type="time"
+                <Time24Input
                   className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
                   value={value[key]?.dropoff ?? ''}
-                  onChange={e => set(key, 'dropoff', e.target.value)}
+                  onChange={v => set(key, 'dropoff', v)}
                 />
               </td>
             </tr>
