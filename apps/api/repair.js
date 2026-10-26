@@ -1,6 +1,5 @@
 'use strict';
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const { Pool } = require('pg');
 
 const repairs = [
   `ALTER TABLE "school_members" ADD COLUMN IF NOT EXISTS "notes" TEXT`,
@@ -44,13 +43,24 @@ const repairs = [
 ];
 
 (async () => {
+  const url = process.env.DATABASE_URL || process.env.DATABASE_PRIVATE_URL;
+  if (!url) {
+    console.error('[repair] ERROR: DATABASE_URL not set, skipping repairs');
+    process.exit(0);
+  }
+  console.log('[repair] connecting to database...');
+  const pool = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } });
+  let ok = 0;
+  let fail = 0;
   for (const sql of repairs) {
     try {
-      await prisma.$executeRawUnsafe(sql);
+      await pool.query(sql);
+      ok++;
     } catch (e) {
-      console.error('[repair] failed:', sql, '->', e.message);
+      console.error('[repair] FAILED:', sql.slice(0, 80), '->', e.message);
+      fail++;
     }
   }
-  console.log('[repair] all columns ensured');
-  await prisma.$disconnect();
+  await pool.end();
+  console.log(`[repair] done: ${ok} ok, ${fail} failed`);
 })();
