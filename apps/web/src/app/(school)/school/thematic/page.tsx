@@ -61,6 +61,7 @@ export default function ThematicPage() {
   const [levels, setLevels] = useState<LevelRow[]>([]);
   const [levelFilter, setLevelFilter] = useState('');
   const [classId, setClassId] = useState('');
+  const [currentYearId, setCurrentYearId] = useState<string | undefined>(undefined);
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [plans, setPlans] = useState<Plan[]>([]);
   const [form, setForm] = useState({ ...EMPTY });
@@ -76,15 +77,23 @@ export default function ThematicPage() {
   const load = useCallback(async () => {
     if (!schoolId) return;
     try {
-      const [classRows, levelRows] = await Promise.all([
-        classesApi.list(schoolId),
+      const [levelRows, yearRows] = await Promise.all([
         levelsApi.list(schoolId).catch(() => []),
+        classesApi.academicYears(schoolId).catch(() => []),
       ]);
+      const years = Array.isArray(yearRows) ? yearRows : [];
+      const currentYear = years.find((y: any) => y.isCurrent);
+      const yearId = currentYear?.id as string | undefined;
+      setCurrentYearId(yearId);
+      const classRows = await classesApi.list(schoolId, yearId);
       const nextClasses = Array.isArray(classRows) ? classRows as ClassRow[] : [];
       const nextLevels = Array.isArray(levelRows) ? levelRows as LevelRow[] : [];
       setClasses(nextClasses);
       setLevels(nextLevels);
-      setClassId((current) => current || nextClasses[0]?.id || '');
+      setClassId((current) => {
+        const stillValid = nextClasses.some((c) => c.id === current);
+        return stillValid ? current : (nextClasses[0]?.id || '');
+      });
       setError('');
     } catch {
       setError('Οι τάξεις δεν φορτώθηκαν.');
