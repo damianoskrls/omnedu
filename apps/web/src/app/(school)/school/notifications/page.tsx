@@ -68,8 +68,7 @@ export default function NotificationsPage() {
   const [form, setForm]             = useState(defaultForm());
   const [imageFile, setImageFile]   = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState('');
-  const [pdfFile, setPdfFile]       = useState<File | null>(null);
-  const [pdfName, setPdfName]       = useState('');
+  const [pdfFiles, setPdfFiles]     = useState<File[]>([]);
   const [sent, setSent]             = useState(false);
   const [sendNote, setSendNote]     = useState('');
   const [showHistory, setShowHistory]   = useState(false);
@@ -130,14 +129,15 @@ export default function NotificationsPage() {
           return;
         }
       }
-      let pdfUrl: string | undefined;
-      if (pdfFile) {
-        const uploadedPdf: any = await broadcastsApi.uploadPdf(schoolId, pdfFile);
-        pdfUrl = uploadedPdf?.pdfUrl;
+      const pdfs: { url: string; filename: string }[] = [];
+      for (const file of pdfFiles.slice(0, 5)) {
+        const uploadedPdf: any = await broadcastsApi.uploadPdf(schoolId, file);
+        const pdfUrl = uploadedPdf?.pdfUrl as string | undefined;
         if (!pdfUrl) {
-          setSendNote('Το PDF δεν ανέβηκε.');
+          setSendNote(`Το PDF «${file.name}» δεν ανέβηκε.`);
           return;
         }
+        pdfs.push({ url: pdfUrl, filename: uploadedPdf?.filename || file.name });
       }
       const customEmails = form.customEmailsText
         ? form.customEmailsText.split(/[\n,]+/).map(e => e.trim()).filter(Boolean)
@@ -146,7 +146,7 @@ export default function NotificationsPage() {
         title: form.title,
         body: form.body,
         imageUrl,
-        pdfUrl,
+        pdfs: pdfs.length ? pdfs : undefined,
         targetType: form.targetType,
         targetClassId: form.targetClassId || undefined,
         targetStudentId: form.targetStudentId || undefined,
@@ -170,6 +170,7 @@ export default function NotificationsPage() {
       setForm(defaultForm());
       setImageFile(null);
       setImagePreview('');
+      setPdfFiles([]);
       setTimeout(() => setSent(false), 6000);
       load();
     } catch {
@@ -496,23 +497,49 @@ export default function NotificationsPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    PDF <span className="text-gray-400 font-normal">(προαιρετικό)</span>
+                    PDF <span className="text-gray-400 font-normal">(προαιρετικό, έως 5)</span>
                   </label>
                   <input
                     type="file"
                     accept="application/pdf"
+                    multiple
                     className="block w-full text-sm text-gray-600"
                     onChange={e => {
-                      const file = e.target.files?.[0] ?? null;
-                      setPdfFile(file);
-                      setPdfName(file?.name ?? '');
+                      const picked = Array.from(e.target.files ?? []).filter((f) =>
+                        f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'),
+                      );
+                      setPdfFiles((prev) => {
+                        const names = new Set(prev.map((f) => `${f.name}:${f.size}`));
+                        const merged = [...prev];
+                        for (const file of picked) {
+                          const key = `${file.name}:${file.size}`;
+                          if (!names.has(key)) merged.push(file);
+                        }
+                        return merged.slice(0, 5);
+                      });
+                      e.target.value = '';
                     }}
                   />
-                  {pdfName && (
-                    <p className="mt-1 text-xs text-gray-500 flex items-center gap-1">
-                      📄 {pdfName}
-                    </p>
+                  {pdfFiles.length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                      {pdfFiles.map((file, index) => (
+                        <li key={`${file.name}-${file.size}-${index}`} className="text-xs text-gray-600 flex items-center justify-between gap-2 bg-gray-50 rounded-lg px-2.5 py-1.5">
+                          <span className="truncate">📄 {file.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => setPdfFiles((prev) => prev.filter((_, i) => i !== index))}
+                            className="text-gray-400 hover:text-red-500 shrink-0"
+                            aria-label={`Αφαίρεση ${file.name}`}
+                          >
+                            ×
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   )}
+                  <p className="mt-1 text-xs text-gray-400">
+                    Στο email τα PDF στέλνονται ως επισυναπτόμενα αρχεία{pdfFiles.length >= 5 ? ' · μέγιστο 5 αρχεία' : ''}.
+                  </p>
                 </div>
 
                 <button

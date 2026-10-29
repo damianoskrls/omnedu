@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { BadGatewayException, HttpException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { StorageService } from '../../common/storage/storage.service';
@@ -27,11 +27,19 @@ const parentPushEvents = new Set([
   'receipt',
 ]);
 
+interface BroadcastPdf {
+  url: string;
+  filename?: string;
+}
+
 interface BroadcastData {
   title: string;
   body: string;
   imageUrl?: string;
+  /** @deprecated use pdfs / pdfUrls */
   pdfUrl?: string;
+  pdfUrls?: string[];
+  pdfs?: BroadcastPdf[];
   targetType: 'all' | 'teachers' | 'parents' | 'class' | 'student';
   targetClassId?: string;
   targetStudentId?: string;
@@ -471,26 +479,38 @@ export class NotificationsService implements OnModuleInit {
 
       const schoolName = school?.name ?? 'Σχολείο';
       const logoUrl = (school as any)?.logoUrl ?? null;
-      // Use the original Cloudinary URL directly (public upload, no signing needed)
-      const html = this.buildEmailHtml({ schoolName, logoUrl, title: data.title, body: data.body, imageUrl: data.imageUrl, pdfUrl: data.pdfUrl });
-
-      // Download PDF bytes server-side so Resend attaches the actual file
-      let pdfAttachment: { filename: string; content: Buffer } | undefined;
-      if (data.pdfUrl) {
+      const pdfs = this.resolvePdfs(data);
+      const attachments: { filename: string; content: Buffer }[] = [];
+      let attachmentBytes = 0;
+      const MAX_TOTAL_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+      for (const pdf of pdfs) {
         try {
-          const res = await fetch(data.pdfUrl);
-          if (res.ok) {
-            const buf = Buffer.from(await res.arrayBuffer());
-            pdfAttachment = { filename: 'attachment.pdf', content: buf };
-          } else {
-            this.logger.warn(`[EMAIL] PDF fetch failed ${res.status}: ${data.pdfUrl}`);
+          const content = await this.storage.fetchFile(pdf.url);
+          if (attachmentBytes + content.byteLength > MAX_TOTAL_ATTACHMENT_BYTES) {
+            this.logger.warn(`[EMAIL] Skipping ${pdf.filename}: total attachment size would exceed 15MB`);
+            continue;
           }
+          attachmentBytes += content.byteLength;
+          attachments.push({ filename: pdf.filename, content });
         } catch (e) {
-          this.logger.warn('[EMAIL] Could not fetch PDF for attachment', e);
+          this.logger.warn(`[EMAIL] Could not fetch PDF for attachment: ${pdf.url}`, e);
         }
       }
+      if (pdfs.length > 0 && attachments.length === 0) {
+        throw new BadGatewayException('Τα PDF δεν μπόρεσαν να επισυναφθούν στο email. Δοκίμασε ξανά.');
+      }
+      // Attachments only — no in-body "Άνοιγμα PDF" button (Cloudinary links often fail in mail clients).
+      const html = this.buildEmailHtml({
+        schoolName,
+        logoUrl,
+        title: data.title,
+        body: data.body,
+        imageUrl: data.imageUrl,
+        attachmentCount: attachments.length,
+      });
 
-      const BATCH_SIZE = 100;
+      // Smaller batches when carrying PDF bytes so Resend payloads stay manageable.
+      const BATCH_SIZE = attachments.length ? 20 : 100;
       let sent = 0;
       for (let i = 0; i < uniqueEmails.length; i += BATCH_SIZE) {
         const batch = uniqueEmails.slice(i, i + BATCH_SIZE);
@@ -500,7 +520,7 @@ export class NotificationsService implements OnModuleInit {
             to,
             subject: data.title,
             html,
-            ...(pdfAttachment ? { attachments: [pdfAttachment] } : {}),
+            ...(attachments.length ? { attachments } : {}),
           }));
           const result = await this.resendClient!.batch.send(messages);
           if (result.error) {
@@ -513,15 +533,72 @@ export class NotificationsService implements OnModuleInit {
         }
       }
 
-      this.logger.log(`[EMAIL] Sent "${data.title}" to ${sent} recipients via Resend`);
+      this.logger.log(`[EMAIL] Sent "${data.title}" to ${sent} recipients via Resend (${attachments.length} PDF attachment(s))`);
       return sent;
     } catch (e) {
+      if (e instanceof HttpException) throw e;
       this.logger.error('[EMAIL] sendEmails failed', e);
       return 0;
     }
   }
 
-  private buildEmailHtml(opts: { schoolName: string; logoUrl: string | null; title: string; body: string; imageUrl?: string; pdfUrl?: string }): string {
+  private resolvePdfs(data: BroadcastData): { url: string; filename: string }[] {
+    const fromObjects = (data.pdfs ?? [])
+      .filter((p) => p?.url)
+      .map((p, i) => ({
+        url: p.url,
+        filename: this.safePdfFilename(p.filename, i),
+      }));
+    const base = fromObjects.length
+      ? fromObjects.slice(0, 5)
+      : [...(data.pdfUrls ?? []), ...(data.pdfUrl ? [data.pdfUrl] : [])]
+          .filter(Boolean)
+          .slice(0, 5)
+          .map((url, i) => ({ url, filename: this.filenameFromUrl(url, i) }));
+    return this.uniquePdfFilenames(base);
+  }
+
+  private uniquePdfFilenames(pdfs: { url: string; filename: string }[]): { url: string; filename: string }[] {
+    const used = new Map<string, number>();
+    return pdfs.map((pdf) => {
+      const lower = pdf.filename.toLowerCase();
+      const count = used.get(lower) ?? 0;
+      used.set(lower, count + 1);
+      if (count === 0) return pdf;
+      const dot = pdf.filename.toLowerCase().lastIndexOf('.pdf');
+      const stem = dot > 0 ? pdf.filename.slice(0, dot) : pdf.filename;
+      return { ...pdf, filename: `${stem}-${count + 1}.pdf` };
+    });
+  }
+
+  private safePdfFilename(name: string | undefined, index: number): string {
+    const cleaned = (name ?? '')
+      .trim()
+      .replace(/[/\\?%*:|"<>]/g, '_')
+      .replace(/\s+/g, ' ')
+      .slice(0, 120);
+    if (!cleaned) return `attachment-${index + 1}.pdf`;
+    return cleaned.toLowerCase().endsWith('.pdf') ? cleaned : `${cleaned}.pdf`;
+  }
+
+  private filenameFromUrl(url: string, index: number): string {
+    try {
+      const last = decodeURIComponent(new URL(url).pathname.split('/').pop() ?? '');
+      if (last && /\.pdf$/i.test(last)) return last.slice(0, 120);
+    } catch {
+      // ignore
+    }
+    return `attachment-${index + 1}.pdf`;
+  }
+
+  private buildEmailHtml(opts: {
+    schoolName: string;
+    logoUrl: string | null;
+    title: string;
+    body: string;
+    imageUrl?: string;
+    attachmentCount?: number;
+  }): string {
     const headerContent = opts.logoUrl
       ? `<img src="${opts.logoUrl}" alt="${opts.schoolName}" style="height:56px;max-width:200px;object-fit:contain;display:block;margin:0 auto;" />`
       : `<h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.3px;">${opts.schoolName}</h1>`;
@@ -533,8 +610,9 @@ export class NotificationsService implements OnModuleInit {
     const imageBlock = opts.imageUrl
       ? `<div style="margin-bottom:20px;"><img src="${opts.imageUrl}" alt="" style="width:100%;max-width:100%;border-radius:8px;display:block;" /></div>`
       : '';
-    const pdfBlock = opts.pdfUrl
-      ? `<div style="margin-top:20px;"><a href="${opts.pdfUrl}" style="display:inline-block;background:#642678;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:10px 20px;border-radius:8px;">📄 Άνοιγμα PDF</a></div>`
+    const count = opts.attachmentCount ?? 0;
+    const attachNote = count > 0
+      ? `<p style="margin:20px 0 0;color:#6b7280;font-size:13px;line-height:1.5;">📎 ${count === 1 ? 'Το PDF επισυνάπτεται σε αυτό το email.' : `Επισυνάπτονται ${count} PDF σε αυτό το email.`}</p>`
       : '';
     return `<!DOCTYPE html>
 <html lang="el">
@@ -552,7 +630,7 @@ export class NotificationsService implements OnModuleInit {
       ${imageBlock}
       <h2 style="margin:0 0 16px;font-size:18px;font-weight:600;color:#111827;">${opts.title}</h2>
       <p style="margin:0;color:#374151;font-size:15px;line-height:1.65;">${bodyHtml}</p>
-      ${pdfBlock}
+      ${attachNote}
     </div>
     <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 32px;text-align:center;">
       <p style="margin:0;color:#9ca3af;font-size:12px;">${opts.schoolName}</p>

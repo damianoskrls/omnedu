@@ -94,7 +94,7 @@ export class NotificationsController {
     if (!file) throw new BadRequestException('Διάλεξε PDF.');
     try {
       const pdfUrl = await this.storage.upload(file, 'notifications', 'raw');
-      return { pdfUrl };
+      return { pdfUrl, filename: file.originalname };
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new BadRequestException('Το PDF δεν ανέβηκε.');

@@ -426,6 +426,8 @@ export const broadcastsApi = {
     body: string;
     imageUrl?: string;
     pdfUrl?: string;
+    pdfUrls?: string[];
+    pdfs?: { url: string; filename?: string }[];
     targetType: string;
     targetClassId?: string;
     targetStudentId?: string;
