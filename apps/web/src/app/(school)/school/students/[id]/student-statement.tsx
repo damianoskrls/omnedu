@@ -52,7 +52,18 @@ export function StudentStatement({
 
   function receiptFor(month: number, year: number) {
     const key = monthKey(month, year);
-    return receipts.filter(r => r.academicYear === key && r.category === 'receipt').sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())[0];
+    const ranked = receipts
+      .filter((r) => (r.category === 'receipt' || !r.category) && Boolean(String(r.fileUrl || '').trim()))
+      .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+    const tagged = ranked.find((r) => r.academicYear === key);
+    if (tagged) return tagged;
+    // Older receipts uploaded before academicYear tagging: match by upload month/year.
+    return ranked.find((r) => {
+      if (r.academicYear) return false;
+      const when = new Date(r.uploadedAt);
+      if (Number.isNaN(when.getTime())) return false;
+      return when.getFullYear() === year && when.getMonth() + 1 === month;
+    });
   }
 
   function triggerUpload(month: number, year: number) {

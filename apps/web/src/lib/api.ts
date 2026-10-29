@@ -166,6 +166,11 @@ export const studentsApi = {
   },
   getDocumentDownloadUrl: (schoolId: string, id: string, docId: string) =>
     api.get(`/schools/${schoolId}/students/${id}/documents/${docId}/download`),
+  downloadDocument: (schoolId: string, id: string, docId: string): Promise<Blob> =>
+    api.get(`/schools/${schoolId}/students/${id}/documents/${docId}/download`, {
+      responseType: 'blob',
+      timeout: 60000,
+    }) as Promise<Blob>,
   deleteDocument: (schoolId: string, id: string, docId: string) =>
     api.delete(`/schools/${schoolId}/students/${id}/documents/${docId}`),
   getSiblings: (schoolId: string, id: string) =>

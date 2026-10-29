@@ -1973,8 +1973,30 @@ export default function StudentProfilePage() {
                   setStudentReceipts(Array.isArray(docs) ? (docs as any[]).filter((d: any) => d.category === 'receipt') : []);
                 }}
                 onDownloadReceipt={async (docId) => {
-                  const res: any = await studentsApi.getDocumentDownloadUrl(schoolId, id, docId).catch(() => null);
-                  if (res?.url) window.open(res.url, '_blank');
+                  try {
+                    const blob = await studentsApi.downloadDocument(schoolId, id, docId);
+                    if (!(blob instanceof Blob) || blob.size === 0) {
+                      window.alert('Δεν βρέθηκε αρχείο για αυτή την απόδειξη.');
+                      return;
+                    }
+                    if ((blob.type || '').includes('json')) {
+                      window.alert('Η απόδειξη δεν κατέβηκε. Δοκίμασε ξανά.');
+                      return;
+                    }
+                    const ext = (blob.type || '').startsWith('image/')
+                      ? (blob.type.split('/')[1] || 'jpg')
+                      : 'pdf';
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `apodeixi-${docId}.${ext}`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    URL.revokeObjectURL(url);
+                  } catch {
+                    window.alert('Σφάλμα κατά το κατέβασμα της απόδειξης.');
+                  }
                 }}
                 onDeleteReceipt={async (docId) => {
                   await studentsApi.deleteDocument(schoolId, id, docId);

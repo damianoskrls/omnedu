@@ -59,6 +59,8 @@ class ParentReceipts extends ConsumerWidget {
       data: (rows) {
         final mine = rows.where((row) {
           if (row is! Map) return false;
+          final fileUrl = row['fileUrl']?.toString().trim() ?? '';
+          if (fileUrl.isEmpty) return false;
           if (studentId == null || studentId!.isEmpty) return true;
           return row['studentId']?.toString() == studentId;
         }).map((row) => Map<String, dynamic>.from(row as Map)).toList();
@@ -118,20 +120,22 @@ class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
   Future<void> _download() async {
     if (widget.onDownload != null) { widget.onDownload!(widget.receipt); return; }
     final docId = widget.receipt['id']?.toString() ?? '';
-    if (docId.isEmpty) { _say(context, 'Η απόδειξη δεν έχει αρχείο.'); return; }
+    final fileUrl = widget.receipt['fileUrl']?.toString().trim() ?? '';
+    if (docId.isEmpty || fileUrl.isEmpty) { _say(context, 'Η απόδειξη δεν έχει αρχείο.'); return; }
     setState(() => _downloading = true);
     try {
       final dioClient = ref.read(dioProvider);
-      // Get signed Cloudinary URL from API
-      final resp = await dioClient.get('/schools/${widget.schoolId}/billing/receipts/$docId/download');
-      final signedUrl = resp.data is Map ? resp.data['url']?.toString() ?? '' : '';
-      if (signedUrl.isEmpty) { if (mounted) _say(context, 'Η απόδειξη δεν έχει αρχείο.'); return; }
       final dir = await getTemporaryDirectory();
       final fileType = widget.receipt['fileType']?.toString() ?? '';
       final ext = _receiptExt(fileType);
       final filePath = '${dir.path}/receipt_${docId.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}.$ext';
-      // Download from signed URL without auth headers
-      await Dio().download(signedUrl, filePath);
+      // API streams the file bytes (fetches Cloudinary server-side) so the phone
+      // never hits a private/restricted Cloudinary URL directly.
+      await dioClient.download(
+        '/schools/${widget.schoolId}/billing/receipts/$docId/download',
+        filePath,
+        options: Options(responseType: ResponseType.bytes),
+      );
       if (!mounted) return;
       final file = File(filePath);
       if (!await file.exists() || await file.length() == 0) {

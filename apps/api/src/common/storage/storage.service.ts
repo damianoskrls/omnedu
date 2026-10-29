@@ -5,6 +5,21 @@ import { Readable } from 'stream';
 const FETCH_TIMEOUT_MS = 15_000;
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
+class CloudinaryFetchRejectedError extends Error {
+  constructor(message = 'cloudinary-fetch-rejected') {
+    super(message);
+    this.name = 'CloudinaryFetchRejectedError';
+  }
+}
+
+type CloudinaryRef = {
+  resourceType: 'image' | 'raw' | 'video';
+  deliveryType: 'upload' | 'authenticated' | 'private';
+  publicIdWithExt: string;
+  publicId: string;
+  format: string;
+};
+
 @Injectable()
 export class StorageService {
   constructor() {
@@ -15,37 +30,46 @@ export class StorageService {
     });
   }
 
+  private parseCloudinaryUrl(storedUrl: string): CloudinaryRef | null {
+    try {
+      const match = storedUrl.match(/\/(image|raw|video)\/(upload|authenticated|private)\/(?:v\d+\/)?(.+)$/);
+      if (!match) return null;
+      const resourceType = match[1] as CloudinaryRef['resourceType'];
+      const deliveryType = match[2] as CloudinaryRef['deliveryType'];
+      const publicIdWithExt = match[3].split('?')[0];
+      const dotIdx = publicIdWithExt.lastIndexOf('.');
+      const format = dotIdx !== -1 ? publicIdWithExt.slice(dotIdx + 1) : '';
+      const publicId = resourceType === 'raw' ? publicIdWithExt : (dotIdx !== -1 ? publicIdWithExt.slice(0, dotIdx) : publicIdWithExt);
+      return { resourceType, deliveryType, publicIdWithExt, publicId, format };
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * Build a signed Cloudinary delivery URL from a stored secure_url.
    * Raw public IDs must keep the file extension; image/video IDs must not.
    */
   generateSignedDownloadUrl(storedUrl: string, expiresInSeconds = 3600): string {
     try {
-      const match = storedUrl.match(/\/(image|raw|video)\/(upload|authenticated|private)\/(?:v\d+\/)?(.+)$/);
-      if (!match) return storedUrl;
-      const resourceType = match[1] as 'image' | 'raw' | 'video';
-      const deliveryType = match[2] as 'upload' | 'authenticated' | 'private';
-      const publicIdWithExt = match[3];
+      const parsed = this.parseCloudinaryUrl(storedUrl);
+      if (!parsed) return storedUrl;
       const expiresAt = Math.floor(Date.now() / 1000) + expiresInSeconds;
 
-      if (resourceType === 'raw') {
-        return cloudinary.url(publicIdWithExt, {
+      if (parsed.resourceType === 'raw') {
+        return cloudinary.url(parsed.publicIdWithExt, {
           resource_type: 'raw',
-          type: deliveryType,
+          type: parsed.deliveryType,
           sign_url: true,
           secure: true,
           expires_at: expiresAt,
         });
       }
 
-      const dotIdx = publicIdWithExt.lastIndexOf('.');
-      const format = dotIdx !== -1 ? publicIdWithExt.slice(dotIdx + 1) : '';
-      const publicId = dotIdx !== -1 ? publicIdWithExt.slice(0, dotIdx) : publicIdWithExt;
-
-      return cloudinary.url(publicId, {
-        resource_type: resourceType,
-        type: deliveryType,
-        ...(format ? { format } : {}),
+      return cloudinary.url(parsed.publicId, {
+        resource_type: parsed.resourceType,
+        type: parsed.deliveryType,
+        ...(parsed.format ? { format: parsed.format } : {}),
         sign_url: true,
         secure: true,
         expires_at: expiresAt,
@@ -55,22 +79,92 @@ export class StorageService {
     }
   }
 
+  private candidateUrls(storedUrl: string): string[] {
+    const parsed = this.parseCloudinaryUrl(storedUrl);
+    const expiresAt = Math.floor(Date.now() / 1000) + 3600;
+    const out: string[] = [storedUrl, this.generateSignedDownloadUrl(storedUrl)];
+
+    if (parsed) {
+      for (const type of ['upload', 'authenticated', 'private'] as const) {
+        try {
+          if (parsed.resourceType === 'raw') {
+            out.push(cloudinary.url(parsed.publicIdWithExt, {
+              resource_type: 'raw',
+              type,
+              sign_url: true,
+              secure: true,
+              expires_at: expiresAt,
+            }));
+          } else {
+            out.push(cloudinary.url(parsed.publicId, {
+              resource_type: parsed.resourceType,
+              type,
+              ...(parsed.format ? { format: parsed.format } : {}),
+              sign_url: true,
+              secure: true,
+              expires_at: expiresAt,
+            }));
+          }
+        } catch {
+          // ignore candidate
+        }
+      }
+
+      try {
+        out.push(cloudinary.utils.private_download_url(
+          parsed.resourceType === 'raw' ? parsed.publicIdWithExt : parsed.publicId,
+          parsed.format || (parsed.resourceType === 'raw' ? '' : 'pdf'),
+          {
+            resource_type: parsed.resourceType,
+            type: parsed.deliveryType,
+            expires_at: expiresAt,
+            attachment: true,
+          },
+        ));
+      } catch {
+        // ignore
+      }
+    }
+
+    return out.filter((url, index, all) => url && all.indexOf(url) === index && this.isAllowedFetchUrl(url));
+  }
+
   private isAllowedFetchUrl(url: string): boolean {
     try {
       const parsed = new URL(url);
       if (parsed.protocol !== 'https:') return false;
       const host = parsed.hostname.toLowerCase();
-      return host === 'res.cloudinary.com' || host.endsWith('.cloudinary.com');
+      return host === 'res.cloudinary.com' || host.endsWith('.cloudinary.com') || host === 'api.cloudinary.com';
     } catch {
       return false;
     }
   }
 
-  /** Fetch file bytes: try the stored URL, then a correctly signed Cloudinary URL. */
+  private async readResponseBytes(res: Response): Promise<Buffer> {
+    const lengthHeader = res.headers.get('content-length');
+    if (lengthHeader && Number(lengthHeader) > MAX_FILE_BYTES) {
+      throw new BadGatewayException('Το αρχείο είναι πολύ μεγάλο για λήψη.');
+    }
+    const bytes = Buffer.from(await res.arrayBuffer());
+    if (bytes.byteLength > MAX_FILE_BYTES) {
+      throw new BadGatewayException('Το αρχείο είναι πολύ μεγάλο για λήψη.');
+    }
+    const contentType = (res.headers.get('content-type') || '').toLowerCase();
+    if (contentType.includes('application/json') || contentType.includes('text/')) {
+      throw new CloudinaryFetchRejectedError();
+    }
+    if (bytes.byteLength < 64) {
+      const text = bytes.toString('utf8');
+      if (text.includes('"error"') || text.includes('deny or ACL')) {
+        throw new CloudinaryFetchRejectedError();
+      }
+    }
+    return bytes;
+  }
+
+  /** Fetch file bytes: try the stored URL, then signed / authenticated Cloudinary URLs. */
   async fetchFile(storedUrl: string): Promise<Buffer> {
-    const candidates = [storedUrl, this.generateSignedDownloadUrl(storedUrl)].filter(
-      (url, index, all) => url && all.indexOf(url) === index && this.isAllowedFetchUrl(url),
-    );
+    const candidates = this.candidateUrls(storedUrl);
     if (!candidates.length) throw new NotFoundException('Δεν βρέθηκε αρχείο για αυτή την απόδειξη.');
 
     let lastStatus: number | undefined;
@@ -81,18 +175,11 @@ export class StorageService {
           lastStatus = res.status;
           continue;
         }
-        const lengthHeader = res.headers.get('content-length');
-        if (lengthHeader && Number(lengthHeader) > MAX_FILE_BYTES) {
-          throw new BadGatewayException('Το αρχείο είναι πολύ μεγάλο για λήψη.');
-        }
-        const bytes = Buffer.from(await res.arrayBuffer());
-        if (bytes.byteLength > MAX_FILE_BYTES) {
-          throw new BadGatewayException('Το αρχείο είναι πολύ μεγάλο για λήψη.');
-        }
-        return bytes;
+        return await this.readResponseBytes(res);
       } catch (error) {
-        if (error instanceof BadGatewayException) throw error;
-        // try next candidate (timeout / network)
+        if (error instanceof BadGatewayException || error instanceof NotFoundException) throw error;
+        if (error instanceof CloudinaryFetchRejectedError) continue;
+        // timeout / network — try next candidate
       }
     }
 

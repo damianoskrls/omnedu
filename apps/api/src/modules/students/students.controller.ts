@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseInterceptors, UploadedFile, BadRequestException, StreamableFile, NotFoundException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -142,8 +142,15 @@ export class StudentsController {
     @Param('docId') docId: string,
   ) {
     const doc = await this.students.getDocumentById(docId, studentId, schoolId);
-    const url = this.storage.generateSignedDownloadUrl(doc.fileUrl);
-    return { url };
+    if (!doc?.fileUrl) throw new NotFoundException('Δεν βρέθηκε αρχείο για αυτή την απόδειξη.');
+    const bytes = await this.storage.fetchFile(doc.fileUrl);
+    const mime = doc.fileType?.startsWith('image/') ? doc.fileType : 'application/pdf';
+    const ext = mime === 'application/pdf' ? 'pdf' : mime.split('/')[1] || 'bin';
+    const safeId = docId.replace(/[^a-zA-Z0-9_-]/g, '');
+    return new StreamableFile(bytes, {
+      type: mime,
+      disposition: `attachment; filename="document-${safeId}.${ext}"`,
+    });
   }
 
   @Delete(':id/documents/:docId')

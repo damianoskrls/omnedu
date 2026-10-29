@@ -289,20 +289,27 @@ export class BillingService implements OnModuleInit {
     if (!children.length) return [];
     const names = new Map(children.map((child) => [child.id, child.fullName]));
     const docs = await this.prisma.studentDocument.findMany({
-      where: { schoolId, studentId: { in: children.map((child) => child.id) }, category: 'receipt' },
+      where: {
+        schoolId,
+        studentId: { in: children.map((child) => child.id) },
+        category: 'receipt',
+        NOT: { fileUrl: '' },
+      },
       orderBy: { uploadedAt: 'desc' },
     });
-    return docs.map((doc) => ({
-      id: doc.id,
-      title: doc.title,
-      fileUrl: doc.fileUrl,
-      fileType: doc.fileType,
-      notes: doc.notes,
-      uploadedAt: doc.uploadedAt,
-      studentId: doc.studentId,
-      studentName: names.get(doc.studentId) ?? '',
-      academicYear: doc.academicYear,
-    }));
+    return docs
+      .filter((doc) => Boolean(doc.fileUrl?.trim()))
+      .map((doc) => ({
+        id: doc.id,
+        title: doc.title,
+        fileUrl: doc.fileUrl,
+        fileType: doc.fileType,
+        notes: doc.notes,
+        uploadedAt: doc.uploadedAt,
+        studentId: doc.studentId,
+        studentName: names.get(doc.studentId) ?? '',
+        academicYear: doc.academicYear,
+      }));
   }
 
   async getReceiptForUser(docId: string, schoolId: string, parentUserId: string) {
