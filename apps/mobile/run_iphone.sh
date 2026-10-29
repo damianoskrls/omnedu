@@ -26,6 +26,9 @@ fi
 git pull --ff-only origin main
 
 cd "$ROOT/apps/mobile"
+echo "Ανεβάζω τον αριθμό έκδοσης για αυτή την εγκατάσταση..."
+bash scripts/bump_build.sh
+VERSION_LABEL="$(grep "appVersionLabel" lib/core/app_version.dart | sed -E "s/.*'([^']+)'.*/\1/")"
 echo "Καθαρίζω το παλιό build..."
 flutter clean
 flutter pub get
@@ -56,6 +59,6 @@ fi
 echo "Σβήνω την παλιά εγκατάσταση από το iPhone..."
 xcrun devicectl device uninstall app --device "$DEVICE" com.omnedu.omnedu >/dev/null 2>&1 || true
 
-echo "Εγκαθιστώ το omnedu v. 1.33 στο iPhone ($DEVICE)..."
-echo "Όταν ανοίξει, κάτω από το λογότυπο πρέπει να γράφει: omnedu v. 1.33"
+echo "Εγκαθιστώ το ${VERSION_LABEL} στο iPhone ($DEVICE)..."
+echo "Όταν ανοίξει, κάτω από το λογότυπο πρέπει να γράφει: ${VERSION_LABEL}"
 flutter run --release -d "$DEVICE"
