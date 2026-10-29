@@ -532,6 +532,8 @@ export default function StudentProfilePage() {
     detail?: string;
     chargeAmount: number;
     lockPaidAmount?: boolean;
+    chargeMonth?: number;
+    chargeYear?: number;
     run: (info: PaymentInfo) => Promise<void>;
   }) {
     const parents = payerOptions(student.parents);
@@ -1883,6 +1885,8 @@ export default function StudentProfilePage() {
             title,
             detail: 'Μηνιαία χρέωση',
             chargeAmount: remaining || due,
+            chargeMonth: charge?.month,
+            chargeYear: charge?.year,
             run: async (info) => {
               const next = Math.min(due, already + info.paidAmount);
               await billingApi.updateCharge(schoolId, charge.id, {
@@ -1964,6 +1968,15 @@ export default function StudentProfilePage() {
                     category: 'receipt',
                     academicYear: monthKey,
                   });
+                  const docs: any = await studentsApi.getDocuments(schoolId, id).catch(() => []);
+                  setStudentReceipts(Array.isArray(docs) ? (docs as any[]).filter((d: any) => d.category === 'receipt') : []);
+                }}
+                onDownloadReceipt={async (docId) => {
+                  const res: any = await studentsApi.getDocumentDownloadUrl(schoolId, id, docId).catch(() => null);
+                  if (res?.url) window.open(res.url, '_blank');
+                }}
+                onDeleteReceipt={async (docId) => {
+                  await studentsApi.deleteDocument(schoolId, id, docId);
                   const docs: any = await studentsApi.getDocuments(schoolId, id).catch(() => []);
                   setStudentReceipts(Array.isArray(docs) ? (docs as any[]).filter((d: any) => d.category === 'receipt') : []);
                 }}

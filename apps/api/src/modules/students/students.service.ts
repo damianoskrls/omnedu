@@ -420,6 +420,12 @@ export class StudentsService {
     });
   }
 
+  async getDocumentById(documentId: string, studentId: string, schoolId: string) {
+    const doc = await this.prisma.studentDocument.findFirst({ where: { id: documentId, studentId, schoolId } });
+    if (!doc) throw new NotFoundException('Document not found');
+    return doc;
+  }
+
   async deleteDocument(documentId: string, schoolId: string) {
     const doc = await this.prisma.studentDocument.findFirst({ where: { id: documentId, schoolId } });
     if (!doc) throw new NotFoundException('Document not found');

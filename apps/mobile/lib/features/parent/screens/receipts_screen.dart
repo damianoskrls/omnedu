@@ -122,17 +122,16 @@ class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
     setState(() => _downloading = true);
     try {
       final dioClient = ref.read(dioProvider);
+      // Get signed Cloudinary URL from API
+      final resp = await dioClient.get('/schools/${widget.schoolId}/billing/receipts/$docId/download');
+      final signedUrl = resp.data is Map ? resp.data['url']?.toString() ?? '' : '';
+      if (signedUrl.isEmpty) { if (mounted) _say(context, 'Η απόδειξη δεν έχει αρχείο.'); return; }
       final dir = await getTemporaryDirectory();
       final fileType = widget.receipt['fileType']?.toString() ?? '';
       final ext = _receiptExt(fileType);
       final filePath = '${dir.path}/receipt_${docId.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}.$ext';
-      // API streams the file bytes (fetches Cloudinary server-side) so the phone
-      // never hits a private/restricted Cloudinary URL directly.
-      await dioClient.download(
-        '/schools/${widget.schoolId}/billing/receipts/$docId/download',
-        filePath,
-        options: Options(responseType: ResponseType.bytes),
-      );
+      // Download from signed URL without auth headers
+      await Dio().download(signedUrl, filePath);
       if (!mounted) return;
       final file = File(filePath);
       if (!await file.exists() || await file.length() == 0) {
@@ -159,6 +158,7 @@ class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
     final child = receipt['studentName']?.toString() ?? '';
     final when = _receiptDate(receipt['uploadedAt']?.toString());
     final notes = receipt['notes']?.toString() ?? '';
+    final monthLabel = _monthLabel(receipt['academicYear']?.toString());
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
@@ -171,9 +171,13 @@ class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF111827))),
+          if (monthLabel.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(monthLabel, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF77328D))),
+          ],
           if (child.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text(child, style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w700)),
+            Text(child, style: const TextStyle(color: Color(0xFF374151), fontWeight: FontWeight.w600)),
           ],
           if (when.isNotEmpty || notes.isNotEmpty) ...[
             const SizedBox(height: 4),
@@ -215,6 +219,18 @@ String _receiptExt(String fileType) {
     default:
       return 'jpg';
   }
+}
+
+const _monthNames = ['', 'Ιανουάριος', 'Φεβρουάριος', 'Μάρτιος', 'Απρίλιος', 'Μάιος', 'Ιούνιος', 'Ιούλιος', 'Αύγουστος', 'Σεπτέμβριος', 'Οκτώβριος', 'Νοέμβριος', 'Δεκέμβριος'];
+
+String _monthLabel(String? academicYear) {
+  if (academicYear == null || academicYear.isEmpty) return '';
+  final parts = academicYear.split('-');
+  if (parts.length != 2) return '';
+  final year = int.tryParse(parts[0]);
+  final month = int.tryParse(parts[1]);
+  if (year == null || month == null || month < 1 || month > 12) return '';
+  return '${_monthNames[month]} $year';
 }
 
 String _receiptDate(String? iso) {

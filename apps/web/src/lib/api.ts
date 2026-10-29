@@ -164,6 +164,8 @@ export const studentsApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+  getDocumentDownloadUrl: (schoolId: string, id: string, docId: string) =>
+    api.get(`/schools/${schoolId}/students/${id}/documents/${docId}/download`),
   deleteDocument: (schoolId: string, id: string, docId: string) =>
     api.delete(`/schools/${schoolId}/students/${id}/documents/${docId}`),
   getSiblings: (schoolId: string, id: string) =>

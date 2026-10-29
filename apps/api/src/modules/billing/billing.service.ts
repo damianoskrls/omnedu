@@ -301,6 +301,7 @@ export class BillingService implements OnModuleInit {
       uploadedAt: doc.uploadedAt,
       studentId: doc.studentId,
       studentName: names.get(doc.studentId) ?? '',
+      academicYear: doc.academicYear,
     }));
   }
 

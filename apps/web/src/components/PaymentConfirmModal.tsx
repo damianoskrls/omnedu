@@ -16,6 +16,8 @@ export type PaymentPrompt = {
   logoUrl?: string;
   chargeAmount: number;
   lockPaidAmount?: boolean;
+  chargeMonth?: number;
+  chargeYear?: number;
   run: (info: PaymentInfo) => Promise<void>;
 };
 
@@ -129,10 +131,14 @@ export function PaymentConfirmModal({
               })
             : externalFile!;
           if (receiptMode === 'system') downloadFile(file);
+          const academicYear = prompt.chargeYear && prompt.chargeMonth
+            ? `${prompt.chargeYear}-${String(prompt.chargeMonth).padStart(2, '0')}`
+            : undefined;
           await studentsApi.uploadDocument(prompt.schoolId, prompt.studentId, file, {
             title,
             category: 'receipt',
             notes: `Προς ${info.addresseeName}`,
+            academicYear,
           });
           await broadcastsApi.send(prompt.schoolId, {
             title: `Απόδειξη · ${prompt.title}`,

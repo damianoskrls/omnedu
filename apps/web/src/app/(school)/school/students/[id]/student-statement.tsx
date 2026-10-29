@@ -26,6 +26,8 @@ export function StudentStatement({
   onPayExtra,
   receipts = [],
   onUploadReceipt,
+  onDownloadReceipt,
+  onDeleteReceipt,
 }: {
   statement: any;
   isAdmin: boolean;
@@ -35,6 +37,8 @@ export function StudentStatement({
   onPayExtra: (extra: any) => void;
   receipts?: any[];
   onUploadReceipt?: (file: File, month: number, year: number, title: string) => Promise<void>;
+  onDownloadReceipt?: (docId: string) => void;
+  onDeleteReceipt?: (docId: string) => Promise<void>;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [pendingUpload, setPendingUpload] = useState<{ month: number; year: number } | null>(null);
@@ -104,6 +108,8 @@ export function StudentStatement({
                 uploading={uploadingKey === monthKey(current.month, current.year)}
                 showUpload={isAdmin && (current.status === 'paid' || current.status === 'partial')}
                 onUpload={() => triggerUpload(current.month, current.year)}
+                onDownload={onDownloadReceipt}
+                onDelete={onDeleteReceipt}
               />
             </div>
           </div>
@@ -190,6 +196,8 @@ export function StudentStatement({
                       uploading={uploadingKey === monthKey(month.month, month.year)}
                       showUpload={isAdmin && (month.status === 'paid' || month.status === 'partial') && !quiet}
                       onUpload={() => triggerUpload(month.month, month.year)}
+                      onDownload={onDownloadReceipt}
+                      onDelete={onDeleteReceipt}
                     />
                   </div>
                 </div>
@@ -218,26 +226,45 @@ function LineList({ lines, compact }: { lines?: { label: string; amount: number 
   );
 }
 
-function ReceiptBadge({ receipt, uploading, showUpload, onUpload }: {
+function ReceiptBadge({ receipt, uploading, showUpload, onUpload, onDownload, onDelete }: {
   receipt?: any;
   uploading: boolean;
   showUpload: boolean;
   onUpload: () => void;
+  onDownload?: (docId: string) => void;
+  onDelete?: (docId: string) => Promise<void>;
 }) {
+  const [deleting, setDeleting] = useState(false);
+
   if (uploading) {
     return <p className="mt-1 text-xs text-gray-400 text-right">Ανέβασμα...</p>;
   }
   if (receipt) {
     return (
-      <a
-        href={receipt.fileUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="mt-1 flex items-center justify-end gap-1 text-xs text-emerald-700 font-medium hover:underline"
-      >
-        <FileText className="h-3 w-3" />
-        Απόδειξη ✓
-      </a>
+      <div className="mt-1 flex items-center justify-end gap-1">
+        <button
+          type="button"
+          onClick={() => onDownload?.(receipt.id)}
+          className="flex items-center gap-1 text-xs text-emerald-700 font-medium hover:underline"
+        >
+          <FileText className="h-3 w-3" />
+          Απόδειξη ✓
+        </button>
+        {onDelete && (
+          <button
+            type="button"
+            disabled={deleting}
+            onClick={async () => {
+              setDeleting(true);
+              try { await onDelete(receipt.id); } finally { setDeleting(false); }
+            }}
+            className="text-xs text-gray-400 hover:text-red-500 disabled:opacity-50 ml-1"
+            title="Διαγραφή απόδειξης"
+          >
+            ×
+          </button>
+        )}
+      </div>
     );
   }
   if (!showUpload) return null;

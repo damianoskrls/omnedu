@@ -134,6 +134,18 @@ export class StudentsController {
     return this.students.getDocuments(id, schoolId, academicYear);
   }
 
+  @Get(':id/documents/:docId/download')
+  @Roles('school_admin')
+  async downloadDocument(
+    @Param('schoolId') schoolId: string,
+    @Param('id') studentId: string,
+    @Param('docId') docId: string,
+  ) {
+    const doc = await this.students.getDocumentById(docId, studentId, schoolId);
+    const url = this.storage.generateSignedDownloadUrl(doc.fileUrl);
+    return { url };
+  }
+
   @Delete(':id/documents/:docId')
   @Roles('school_admin')
   deleteDocument(
