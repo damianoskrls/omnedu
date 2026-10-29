@@ -77,7 +77,7 @@ class ParentReceipts extends ConsumerWidget {
                 child: Text('Δεν έχουν εκδοθεί αποδείξεις ακόμα.', style: TextStyle(color: Color(0xFF9CA3AF))),
               )
             else
-              ...mine.map((receipt) => _ReceiptCard(receipt: receipt, schoolId: schoolId)),
+              _ReceiptsByYear(receipts: mine, schoolId: schoolId),
           ],
         );
       },
@@ -85,16 +85,131 @@ class ParentReceipts extends ConsumerWidget {
   }
 }
 
-class ReceiptList extends StatelessWidget {
+/// Groups receipts into year accordion panels (newest year first).
+class _ReceiptsByYear extends StatelessWidget {
   final List<Map<String, dynamic>> receipts;
   final String schoolId;
   final void Function(Map<String, dynamic> receipt)? onDownload;
-  const ReceiptList({super.key, required this.receipts, required this.schoolId, this.onDownload});
+  const _ReceiptsByYear({required this.receipts, required this.schoolId, this.onDownload});
+
+  @override
+  Widget build(BuildContext context) {
+    final byYear = <int, List<Map<String, dynamic>>>{};
+    for (final receipt in receipts) {
+      final year = _receiptYear(receipt);
+      byYear.putIfAbsent(year, () => []).add(receipt);
+    }
+    final years = byYear.keys.toList()..sort((a, b) => b.compareTo(a));
+    final newest = years.isEmpty ? DateTime.now().year : years.first;
+
+    return Column(
+      children: [
+        for (final year in years)
+          _YearAccordion(
+            key: ValueKey(year),
+            year: year,
+            count: byYear[year]!.length,
+            initiallyExpanded: year == newest,
+            child: Column(
+              children: [
+                for (final receipt in byYear[year]!)
+                  _ReceiptCard(
+                    receipt: receipt,
+                    schoolId: schoolId,
+                    onDownload: onDownload,
+                    nested: true,
+                  ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _YearAccordion extends StatelessWidget {
+  final int year;
+  final int count;
+  final bool initiallyExpanded;
+  final Widget child;
+  const _YearAccordion({
+    super.key,
+    required this.year,
+    required this.count,
+    required this.initiallyExpanded,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final label = year <= 0 ? 'Χωρίς έτος' : '$year';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE9D5FF)),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: initiallyExpanded,
+          tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(16))),
+          collapsedShape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(16))),
+          iconColor: const Color(0xFF77328D),
+          collapsedIconColor: const Color(0xFF77328D),
+          title: Row(
+            children: [
+              const Icon(Icons.folder_outlined, size: 20, color: Color(0xFF77328D)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF111827)),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF3E8F7),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '$count',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF642678)),
+                ),
+              ),
+            ],
+          ),
+          children: [child],
+        ),
+      ),
+    );
+  }
+}
+
+class ReceiptList extends StatelessWidget {
+  final List<Map<String, dynamic>> receipts;
+  final String schoolId;
+  final bool groupByYear;
+  final void Function(Map<String, dynamic> receipt)? onDownload;
+  const ReceiptList({
+    super.key,
+    required this.receipts,
+    this.schoolId = '',
+    this.groupByYear = false,
+    this.onDownload,
+  });
 
   @override
   Widget build(BuildContext context) {
     if (receipts.isEmpty) {
       return const Text('Δεν έχουν εκδοθεί αποδείξεις ακόμα.', style: TextStyle(color: Color(0xFF9CA3AF)));
+    }
+    if (groupByYear) {
+      return _ReceiptsByYear(receipts: receipts, schoolId: schoolId, onDownload: onDownload);
     }
     return Column(
       children: [
@@ -107,8 +222,14 @@ class ReceiptList extends StatelessWidget {
 class _ReceiptCard extends ConsumerStatefulWidget {
   final Map<String, dynamic> receipt;
   final String schoolId;
+  final bool nested;
   final void Function(Map<String, dynamic> receipt)? onDownload;
-  const _ReceiptCard({required this.receipt, required this.schoolId, this.onDownload});
+  const _ReceiptCard({
+    required this.receipt,
+    required this.schoolId,
+    this.onDownload,
+    this.nested = false,
+  });
 
   @override
   ConsumerState<_ReceiptCard> createState() => _ReceiptCardState();
@@ -164,12 +285,12 @@ class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
     final notes = receipt['notes']?.toString() ?? '';
     final monthLabel = _monthLabel(receipt['academicYear']?.toString());
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: EdgeInsets.only(bottom: widget.nested ? 8 : 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE9D5FF)),
+        color: widget.nested ? const Color(0xFFFaf5fc) : Colors.white,
+        borderRadius: BorderRadius.circular(widget.nested ? 12 : 16),
+        border: Border.all(color: widget.nested ? const Color(0xFFF3E8F7) : const Color(0xFFE9D5FF)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -206,6 +327,17 @@ class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
       ),
     );
   }
+}
+
+int _receiptYear(Map<String, dynamic> receipt) {
+  final academicYear = receipt['academicYear']?.toString() ?? '';
+  if (academicYear.contains('-')) {
+    final year = int.tryParse(academicYear.split('-').first);
+    if (year != null && year > 1990) return year;
+  }
+  final uploaded = DateTime.tryParse(receipt['uploadedAt']?.toString() ?? '');
+  if (uploaded != null) return uploaded.toLocal().year;
+  return 0;
 }
 
 String _receiptExt(String fileType) {

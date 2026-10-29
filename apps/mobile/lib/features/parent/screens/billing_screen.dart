@@ -98,8 +98,6 @@ class BillingScreen extends ConsumerWidget {
                   _NextPaymentBanner(billingDueDay: billingDueDay ?? 10),
                   const SizedBox(height: 12),
                 ],
-                ParentReceipts(schoolId: schoolId),
-                const SizedBox(height: 8),
                 if (data.isEmpty)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 24),
@@ -123,6 +121,10 @@ class BillingScreen extends ConsumerWidget {
                     events: events,
                   );
                 }),
+
+                // Receipts last — year accordion so charges stay visible first
+                const SizedBox(height: 8),
+                ParentReceipts(schoolId: schoolId),
               ],
             ),
           );

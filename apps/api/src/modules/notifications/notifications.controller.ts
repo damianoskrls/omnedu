@@ -136,6 +136,8 @@ export class NotificationsController {
       ...body,
       channels: parseJson(body?.channels) ?? ['push'],
       customEmails: parseJson(body?.customEmails),
+      targetUserIds: parseJson(body?.targetUserIds),
+      targetStudentIds: parseJson(body?.targetStudentIds),
       // File field is named "pdfs"; URL metadata (if any) arrives as pdfsMeta.
       pdfs: parseJson(body?.pdfsMeta) ?? parseJson(body?.pdfs),
       pdfUrls: parseJson(body?.pdfUrls),

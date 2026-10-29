@@ -1,23 +1,21 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { broadcastsApi, classesApi, studentsApi } from '@/lib/api';
+import { useEffect, useState, useCallback, useMemo } from 'react';
+import { broadcastsApi, classesApi, studentsApi, parentsApi, staffApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
 import {
   Bell, Send, Users, GraduationCap, Baby, User, Image, Smartphone, Mail, MessageSquare as SmsIcon,
-  Settings, ChevronLeft,
+  Settings, ChevronLeft, Search,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { el } from 'date-fns/locale';
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-
 const TARGET_OPTIONS = [
-  { value: 'all',      label: 'Όλοι',      desc: 'Δάσκαλοι + Γονείς',           icon: Users },
-  { value: 'teachers', label: 'Δάσκαλοι', desc: 'Όλοι οι εκπαιδευτικοί',        icon: GraduationCap },
-  { value: 'parents',  label: 'Γονείς',   desc: 'Όλοι οι γονείς',               icon: Baby },
-  { value: 'class',    label: 'Τμήμα',    desc: 'Γονείς συγκεκριμένης τάξης',   icon: User },
-  { value: 'student',  label: 'Μαθητής',  desc: 'Γονείς ενός μαθητή',           icon: User },
+  { value: 'all',      label: 'Όλοι',      desc: 'Δάσκαλοι + Γονείς', icon: Users },
+  { value: 'teachers', label: 'Δάσκαλοι', desc: 'Όλοι ή επιλογή',     icon: GraduationCap },
+  { value: 'parents',  label: 'Γονείς',   desc: 'Όλοι ή επιλογή',     icon: Baby },
+  { value: 'class',    label: 'Τμήμα',    desc: 'Γονείς τάξης',       icon: User },
+  { value: 'student',  label: 'Μαθητής',  desc: 'Γονείς μαθητή/ών',   icon: User },
 ];
 
 const CHANNEL_OPTIONS = [
@@ -43,14 +41,108 @@ const AUTO_EVENTS = [
   { key: 'teacher_absence', label: 'Απουσία εκπαιδευτικού' },
 ];
 
+type PickPerson = { id: string; fullName: string; detail?: string };
+
 const defaultForm = () => ({
-  title: '', body: '',
-  targetType: 'all', targetClassId: '', targetStudentId: '',
+  title: '',
+  body: '',
+  targetType: 'all',
+  targetMode: 'all' as 'all' | 'pick',
+  targetClassId: '',
+  targetStudentIds: [] as string[],
+  targetUserIds: [] as string[],
   channels: ['push'] as string[],
   customEmailsText: '',
 });
 
-// ─── Page ────────────────────────────────────────────────────────────────────
+function PersonPicker({
+  people,
+  selectedIds,
+  onChange,
+  searchPlaceholder,
+}: {
+  people: PickPerson[];
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+  searchPlaceholder: string;
+}) {
+  const [query, setQuery] = useState('');
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return people;
+    return people.filter((p) =>
+      `${p.fullName} ${p.detail ?? ''}`.toLowerCase().includes(q),
+    );
+  }, [people, query]);
+
+  const allFilteredSelected = filtered.length > 0 && filtered.every((p) => selectedIds.includes(p.id));
+
+  return (
+    <div className="rounded-xl border border-gray-200 overflow-hidden">
+      <div className="flex items-center gap-2 border-b border-gray-100 px-3 py-2 bg-gray-50">
+        <Search className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={searchPlaceholder}
+          aria-label={searchPlaceholder}
+          className="flex-1 bg-transparent text-sm outline-none"
+        />
+        <button
+          type="button"
+          onClick={() => {
+            if (allFilteredSelected) {
+              const drop = new Set(filtered.map((p) => p.id));
+              onChange(selectedIds.filter((id) => !drop.has(id)));
+            } else {
+              onChange(Array.from(new Set([...selectedIds, ...filtered.map((p) => p.id)])));
+            }
+          }}
+          className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 shrink-0"
+        >
+          {allFilteredSelected ? 'Αποεπιλογή' : 'Επιλογή όλων'}
+        </button>
+      </div>
+      <div className="max-h-48 overflow-y-auto divide-y divide-gray-50">
+        {filtered.length === 0 ? (
+          <p className="px-3 py-4 text-center text-xs text-gray-400">Δεν βρέθηκαν</p>
+        ) : filtered.map((person) => {
+          const checked = selectedIds.includes(person.id);
+          return (
+            <label
+              key={person.id}
+              className="flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() => {
+                  onChange(
+                    checked
+                      ? selectedIds.filter((id) => id !== person.id)
+                      : [...selectedIds, person.id],
+                  );
+                }}
+                className="h-4 w-4 accent-indigo-600"
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-gray-900 truncate">{person.fullName}</span>
+                {person.detail && (
+                  <span className="block text-xs text-gray-500 truncate">{person.detail}</span>
+                )}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      {selectedIds.length > 0 && (
+        <div className="border-t border-gray-100 px-3 py-2 text-xs text-indigo-700 bg-indigo-50 font-medium">
+          {selectedIds.length} επιλεγμένοι
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function NotificationsPage() {
   const user = useStoredUser();
@@ -59,19 +151,21 @@ export default function NotificationsPage() {
 
   const [view, setView] = useState<'compose' | 'settings'>('compose');
   const [broadcasts, setBroadcasts] = useState<any[]>([]);
-  const [classes, setClasses]       = useState<any[]>([]);
-  const [students, setStudents]     = useState<any[]>([]);
-  const [settings, setSettings]     = useState<any>(null);
-  const [loading, setLoading]       = useState(true);
-  const [sending, setSending]       = useState(false);
+  const [classes, setClasses] = useState<any[]>([]);
+  const [students, setStudents] = useState<any[]>([]);
+  const [parents, setParents] = useState<PickPerson[]>([]);
+  const [teachers, setTeachers] = useState<PickPerson[]>([]);
+  const [settings, setSettings] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
-  const [form, setForm]             = useState(defaultForm());
-  const [imageFile, setImageFile]   = useState<File | null>(null);
+  const [form, setForm] = useState(defaultForm());
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState('');
-  const [pdfFiles, setPdfFiles]     = useState<File[]>([]);
-  const [sent, setSent]             = useState(false);
-  const [sendNote, setSendNote]     = useState('');
-  const [showHistory, setShowHistory]   = useState(false);
+  const [pdfFiles, setPdfFiles] = useState<File[]>([]);
+  const [sent, setSent] = useState(false);
+  const [sendNote, setSendNote] = useState('');
+  const [showHistory, setShowHistory] = useState(false);
   const [pushConfigured, setPushConfigured] = useState<boolean | null>(null);
   const [pushDevices, setPushDevices] = useState(0);
 
@@ -79,15 +173,37 @@ export default function NotificationsPage() {
     if (!schoolId) return;
     setLoading(true);
     try {
-      const [bData, cData, sData, settingsData] = await Promise.all([
+      const [bData, cData, sData, pData, staffData, settingsData] = await Promise.all([
         broadcastsApi.list(schoolId),
         classesApi.list(schoolId),
         studentsApi.list(schoolId),
+        isAdmin ? parentsApi.list(schoolId) : Promise.resolve([]),
+        isAdmin ? staffApi.list(schoolId) : Promise.resolve([]),
         isAdmin ? broadcastsApi.getSettings(schoolId) : Promise.resolve(null),
       ]);
       setBroadcasts(Array.isArray(bData) ? bData : []);
       setClasses(Array.isArray(cData) ? cData : []);
-      setStudents(Array.isArray(sData) ? sData : []);
+      const studentList = Array.isArray(sData) ? sData : (sData as any)?.students ?? [];
+      setStudents(studentList);
+      const parentList = Array.isArray(pData) ? pData : [];
+      setParentRows(parentList);
+      setParents(
+        parentList.map((p: any) => ({
+          id: p.id,
+          fullName: p.fullName,
+          detail: [p.phone, p.email].filter(Boolean).join(' · ') || undefined,
+        })),
+      );
+      setTeachers(
+        (Array.isArray(staffData) ? staffData : [])
+          .filter((m: any) => ['teacher', 'school_admin', 'owner'].includes(m.role))
+          .map((m: any) => ({
+            id: m.userId ?? m.user?.id,
+            fullName: m.user?.fullName ?? m.fullName ?? '—',
+            detail: m.role === 'teacher' ? 'Εκπαιδευτικός' : m.role === 'owner' ? 'Ιδιοκτήτης' : 'Διαχειριστής',
+          }))
+          .filter((m: PickPerson) => m.id),
+      );
       if (settingsData) {
         setPushConfigured(Boolean((settingsData as any).pushConfigured));
         setPushDevices(Number((settingsData as any).pushDevices ?? 0));
@@ -106,19 +222,91 @@ export default function NotificationsPage() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { if (view === 'settings') loadSettings(); }, [view, loadSettings]);
 
+  const [parentRows, setParentRows] = useState<any[]>([]);
+
+  const classParentPeople = useMemo((): PickPerson[] => {
+    if (!form.targetClassId) return [];
+    const classStudentIds = new Set(
+      students
+        .filter((s: any) => {
+          const enrollments = s.enrollments ?? [];
+          if (enrollments.some((e: any) => e.classId === form.targetClassId || e.class?.id === form.targetClassId)) return true;
+          return s.classId === form.targetClassId;
+        })
+        .map((s: any) => s.id),
+    );
+    return parentRows
+      .filter((p: any) => (p.children ?? []).some((c: any) => classStudentIds.has(c.id)))
+      .map((p: any) => ({
+        id: p.id,
+        fullName: p.fullName,
+        detail: (p.children ?? [])
+          .filter((c: any) => classStudentIds.has(c.id))
+          .map((c: any) => c.fullName)
+          .join(', ') || undefined,
+      }));
+  }, [form.targetClassId, students, parentRows]);
+
+  const peopleForTarget = useMemo((): PickPerson[] => {
+    if (form.targetType === 'teachers') return teachers;
+    if (form.targetType === 'parents') return parents;
+    if (form.targetType === 'all') {
+      const seen = new Set<string>();
+      const merged: PickPerson[] = [];
+      for (const p of [...teachers, ...parents]) {
+        if (seen.has(p.id)) continue;
+        seen.add(p.id);
+        merged.push(p);
+      }
+      return merged.sort((a, b) => a.fullName.localeCompare(b.fullName, 'el'));
+    }
+    if (form.targetType === 'class') return classParentPeople;
+    return [];
+  }, [form.targetType, teachers, parents, classParentPeople]);
+
+  const studentPeople = useMemo((): PickPerson[] => (
+    students.map((s: any) => ({
+      id: s.id,
+      fullName: s.fullName,
+      detail: s.className ?? s.enrollments?.[0]?.class?.name,
+    }))
+  ), [students]);
+
   const toggleChannel = (ch: string) => {
-    setForm(p => ({
+    setForm((p) => ({
       ...p,
-      channels: p.channels.includes(ch) ? p.channels.filter(c => c !== ch) : [...p.channels, ch],
+      channels: p.channels.includes(ch) ? p.channels.filter((c) => c !== ch) : [...p.channels, ch],
     }));
   };
 
+  const setTargetType = (value: string) => {
+    setForm((p) => ({
+      ...p,
+      targetType: value,
+      targetMode: 'all',
+      targetClassId: '',
+      targetStudentIds: [],
+      targetUserIds: [],
+    }));
+  };
+
+  const canSend = (() => {
+    if (!form.title || !form.body || form.channels.length === 0) return false;
+    if (form.targetType === 'class' && !form.targetClassId) return false;
+    if (form.targetType === 'student') {
+      if (form.targetMode === 'pick' && form.targetStudentIds.length === 0) return false;
+      if (form.targetMode === 'all' && students.length === 0) return false;
+    }
+    if (['all', 'teachers', 'parents', 'class'].includes(form.targetType) && form.targetMode === 'pick') {
+      if (form.targetUserIds.length === 0) return false;
+    }
+    return true;
+  })();
+
   const send = async () => {
-    if (!form.title || !form.body) return;
-    if (form.targetType === 'class'   && !form.targetClassId)   return;
-    if (form.targetType === 'student' && !form.targetStudentId) return;
-    if (form.channels.length === 0) return;
+    if (!canSend) return;
     setSending(true);
+    setSendNote('');
     try {
       let imageUrl: string | undefined;
       if (imageFile) {
@@ -130,19 +318,34 @@ export default function NotificationsPage() {
         }
       }
       const customEmails = form.customEmailsText
-        ? form.customEmailsText.split(/[\n,]+/).map(e => e.trim()).filter(Boolean)
+        ? form.customEmailsText.split(/[\n,]+/).map((e) => e.trim()).filter(Boolean)
         : undefined;
-      const result: any = await broadcastsApi.send(schoolId, {
+
+      const payload: Parameters<typeof broadcastsApi.send>[1] = {
         title: form.title,
         body: form.body,
         imageUrl,
         pdfFiles: pdfFiles.length ? pdfFiles.slice(0, 5) : undefined,
         targetType: form.targetType,
-        targetClassId: form.targetClassId || undefined,
-        targetStudentId: form.targetStudentId || undefined,
         channels: form.channels,
         customEmails,
-      });
+      };
+
+      if (form.targetType === 'class') {
+        payload.targetClassId = form.targetClassId;
+        if (form.targetMode === 'pick') payload.targetUserIds = form.targetUserIds;
+      } else if (form.targetType === 'student') {
+        if (form.targetMode === 'pick') {
+          payload.targetStudentIds = form.targetStudentIds;
+          if (form.targetStudentIds.length === 1) payload.targetStudentId = form.targetStudentIds[0];
+        } else {
+          payload.targetStudentIds = students.map((s: any) => s.id);
+        }
+      } else if (form.targetMode === 'pick') {
+        payload.targetUserIds = form.targetUserIds;
+      }
+
+      const result: any = await broadcastsApi.send(schoolId, payload);
       if (form.channels.includes('push')) {
         if (!result?.pushConfigured) {
           setSendNote('Η ειδοποίηση μπήκε στην εφαρμογή. Δεν χτυπάει με κλειστό app, γιατί δεν έχει συνδεθεί το Firebase της Ονειροχώρας.');
@@ -159,7 +362,10 @@ export default function NotificationsPage() {
       setSent(true);
       setForm(defaultForm());
       setImageFile(null);
-      setImagePreview('');
+      setImagePreview((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return '';
+      });
       setPdfFiles([]);
       setTimeout(() => setSent(false), 6000);
       load();
@@ -191,7 +397,7 @@ export default function NotificationsPage() {
     setSettings((p: any) => ({ ...p, eventRules: { ...(p?.eventRules ?? {}), [event]: channels } }));
   };
 
-  // ─── Settings view ───────────────────────────────────────────────────────
+  const showModeToggle = ['all', 'teachers', 'parents', 'class', 'student'].includes(form.targetType);
 
   if (view === 'settings' && isAdmin) {
     return (
@@ -210,12 +416,11 @@ export default function NotificationsPage() {
           <div className="text-center py-8 text-gray-400">Φόρτωση...</div>
         ) : (
           <div className="space-y-6">
-            {/* Default channels */}
             <div className="bg-white rounded-xl border border-gray-200 p-5">
               <h2 className="font-semibold text-gray-800 mb-3">Προεπιλεγμένα Κανάλια</h2>
               <p className="text-xs text-gray-500 mb-3">Ποια κανάλια προεπιλέγονται όταν στέλνετε νέα ειδοποίηση</p>
               <div className="flex gap-3">
-                {CHANNEL_OPTIONS.map(ch => {
+                {CHANNEL_OPTIONS.map((ch) => {
                   const selected = (settings.defaultChannels ?? []).includes(ch.value);
                   const Icon = ch.icon;
                   return (
@@ -239,24 +444,23 @@ export default function NotificationsPage() {
               </div>
             </div>
 
-            {/* Auto events */}
             <div className="bg-white rounded-xl border border-gray-200 p-5">
               <h2 className="font-semibold text-gray-800 mb-1">Αυτόματες Ειδοποιήσεις</h2>
               <p className="text-xs text-gray-500 mb-4">Ποια κανάλια χρησιμοποιούνται για κάθε αυτόματο γεγονός</p>
               <div className="space-y-3">
-                {AUTO_EVENTS.map(ev => {
+                {AUTO_EVENTS.map((ev) => {
                   const ruleChannels: string[] = settings.eventRules?.[ev.key] ?? ['push'];
                   return (
                     <div key={ev.key} className="flex items-center gap-3">
                       <span className="text-sm text-gray-700 flex-1">{ev.label}</span>
                       <div className="flex gap-1.5">
-                        {CHANNEL_OPTIONS.map(ch => {
+                        {CHANNEL_OPTIONS.map((ch) => {
                           const active = ruleChannels.includes(ch.value);
                           const Icon = ch.icon;
                           return (
                             <button
                               key={ch.value}
-                              onClick={() => setEventRule(ev.key, active ? ruleChannels.filter(c => c !== ch.value) : [...ruleChannels, ch.value])}
+                              onClick={() => setEventRule(ev.key, active ? ruleChannels.filter((c) => c !== ch.value) : [...ruleChannels, ch.value])}
                               title={ch.label}
                               className={`p-1.5 rounded-lg border transition-colors ${active ? 'border-indigo-400 bg-indigo-50 text-indigo-600' : 'border-gray-200 text-gray-400 hover:border-gray-300'}`}
                             >
@@ -271,27 +475,25 @@ export default function NotificationsPage() {
               </div>
             </div>
 
-            {/* SMS settings */}
             <div className="bg-white rounded-xl border border-gray-200 p-5">
               <h2 className="font-semibold text-gray-800 mb-3">Ρυθμίσεις SMS</h2>
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">SMS API Key (Twilio / Vonage / Yuboto)</label>
-                  <input type="password" className={inputCls} value={settings.smsApiKey ?? ''} onChange={e => setSettings((p: any) => ({ ...p, smsApiKey: e.target.value }))} placeholder="••••••••" />
+                  <input type="password" className={inputCls} value={settings.smsApiKey ?? ''} onChange={(e) => setSettings((p: any) => ({ ...p, smsApiKey: e.target.value }))} placeholder="••••••••" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Αποστολέας SMS</label>
-                  <input className={inputCls} value={settings.smsSenderId ?? ''} onChange={e => setSettings((p: any) => ({ ...p, smsSenderId: e.target.value }))} placeholder="π.χ. OmneduApp" maxLength={11} />
+                  <input className={inputCls} value={settings.smsSenderId ?? ''} onChange={(e) => setSettings((p: any) => ({ ...p, smsSenderId: e.target.value }))} placeholder="π.χ. OmneduApp" maxLength={11} />
                 </div>
               </div>
             </div>
 
-            {/* Email settings */}
             <div className="bg-white rounded-xl border border-gray-200 p-5">
               <h2 className="font-semibold text-gray-800 mb-3">Ρυθμίσεις Email</h2>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Email αποστολέα</label>
-                <input type="email" className={inputCls} value={settings.emailFrom ?? ''} onChange={e => setSettings((p: any) => ({ ...p, emailFrom: e.target.value }))} placeholder="noreply@myschool.gr" />
+                <input type="email" className={inputCls} value={settings.emailFrom ?? ''} onChange={(e) => setSettings((p: any) => ({ ...p, emailFrom: e.target.value }))} placeholder="noreply@myschool.gr" />
               </div>
             </div>
 
@@ -308,20 +510,28 @@ export default function NotificationsPage() {
     );
   }
 
-  // ─── Main compose view ───────────────────────────────────────────────────
-
   return (
     <div className="p-6 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Ειδοποιήσεις</h1>
           <p className="text-gray-500 text-sm mt-1">Αποστολή push, email & SMS σε γονείς και δάσκαλους</p>
         </div>
-        {isAdmin && (
-          <button onClick={() => setView('settings')} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">
-            <Settings className="w-4 h-4" /> Ρυθμίσεις
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowHistory((h) => !h)}
+            aria-expanded={showHistory}
+            className="px-3 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+          >
+            Ιστορικό αποστολών{broadcasts.length ? ` (${broadcasts.length})` : ''}
           </button>
-        )}
+          {isAdmin && (
+            <button onClick={() => setView('settings')} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">
+              <Settings className="w-4 h-4" /> Ρυθμίσεις
+            </button>
+          )}
+        </div>
       </div>
 
       {isAdmin && pushConfigured === false && (
@@ -336,9 +546,8 @@ export default function NotificationsPage() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        {/* Compose panel */}
         {isAdmin && (
-          <div className="lg:col-span-2">
+          <div className={showHistory ? 'lg:col-span-3' : 'lg:col-span-5'}>
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
               <div className="flex items-center gap-2 mb-5">
                 <Bell className="h-4 w-4 text-indigo-600" />
@@ -346,16 +555,17 @@ export default function NotificationsPage() {
               </div>
 
               <div className="space-y-4">
-                {/* Target */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Παραλήπτες</label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {TARGET_OPTIONS.map((opt) => {
                       const Icon = opt.icon;
                       return (
                         <button
                           key={opt.value}
-                          onClick={() => setForm(p => ({ ...p, targetType: opt.value, targetClassId: '', targetStudentId: '' }))}
+                          type="button"
+                          aria-pressed={form.targetType === opt.value}
+                          onClick={() => setTargetType(opt.value)}
                           className={`flex flex-col items-start p-2.5 rounded-lg border text-left transition-colors ${
                             form.targetType === opt.value
                               ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
@@ -371,12 +581,41 @@ export default function NotificationsPage() {
                   </div>
                 </div>
 
+                {showModeToggle && (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      aria-pressed={form.targetMode === 'all'}
+                      onClick={() => setForm((p) => ({ ...p, targetMode: 'all', targetUserIds: [], targetStudentIds: [] }))}
+                      className={`flex-1 py-2 rounded-lg border text-xs font-semibold transition-colors ${
+                        form.targetMode === 'all'
+                          ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                      }`}
+                    >
+                      Όλοι
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={form.targetMode === 'pick'}
+                      onClick={() => setForm((p) => ({ ...p, targetMode: 'pick' }))}
+                      className={`flex-1 py-2 rounded-lg border text-xs font-semibold transition-colors ${
+                        form.targetMode === 'pick'
+                          ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                      }`}
+                    >
+                      Επιλογή από λίστα
+                    </button>
+                  </div>
+                )}
+
                 {form.targetType === 'class' && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Τμήμα</label>
                     <select
                       value={form.targetClassId}
-                      onChange={e => setForm(p => ({ ...p, targetClassId: e.target.value }))}
+                      onChange={(e) => setForm((p) => ({ ...p, targetClassId: e.target.value, targetUserIds: [] }))}
                       className={inputCls}
                     >
                       <option value="">Επιλέξτε τμήμα...</option>
@@ -385,30 +624,50 @@ export default function NotificationsPage() {
                   </div>
                 )}
 
-                {form.targetType === 'student' && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Μαθητής</label>
-                    <select
-                      value={form.targetStudentId}
-                      onChange={e => setForm(p => ({ ...p, targetStudentId: e.target.value }))}
-                      className={inputCls}
-                    >
-                      <option value="">Επιλέξτε μαθητή...</option>
-                      {students.map((s: any) => <option key={s.id} value={s.id}>{s.fullName}</option>)}
-                    </select>
-                  </div>
+                {form.targetMode === 'pick' && form.targetType === 'student' && (
+                  <PersonPicker
+                    people={studentPeople}
+                    selectedIds={form.targetStudentIds}
+                    onChange={(ids) => setForm((p) => ({ ...p, targetStudentIds: ids }))}
+                    searchPlaceholder="Αναζήτηση μαθητή..."
+                  />
                 )}
 
-                {/* Channels */}
+                {form.targetMode === 'pick' && form.targetType === 'class' && !form.targetClassId && (
+                  <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    Επίλεξε πρώτα τμήμα για να δεις τους γονείς.
+                  </p>
+                )}
+
+                {form.targetMode === 'pick' && form.targetType !== 'student' && (form.targetType !== 'class' || form.targetClassId) && (
+                  <PersonPicker
+                    people={peopleForTarget}
+                    selectedIds={form.targetUserIds}
+                    onChange={(ids) => setForm((p) => ({ ...p, targetUserIds: ids }))}
+                    searchPlaceholder={
+                      form.targetType === 'teachers' ? 'Αναζήτηση δασκάλου...'
+                        : form.targetType === 'parents' || form.targetType === 'class' ? 'Αναζήτηση γονέα...'
+                          : 'Αναζήτηση...'
+                    }
+                  />
+                )}
+
+                {form.targetMode === 'all' && form.targetType === 'student' && (
+                  <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+                    Θα σταλεί στους γονείς όλων των μαθητών ({students.length}).
+                  </p>
+                )}
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Κανάλια αποστολής</label>
                   <div className="flex gap-2">
-                    {CHANNEL_OPTIONS.map(ch => {
+                    {CHANNEL_OPTIONS.map((ch) => {
                       const selected = form.channels.includes(ch.value);
                       const Icon = ch.icon;
                       return (
                         <button
                           key={ch.value}
+                          type="button"
                           onClick={() => toggleChannel(ch.value)}
                           className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium transition-colors ${
                             selected ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-500 hover:border-gray-300'
@@ -421,7 +680,6 @@ export default function NotificationsPage() {
                   </div>
                 </div>
 
-                {/* Custom emails — shown only when Email channel is selected */}
                 {form.channels.includes('email') && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -429,7 +687,7 @@ export default function NotificationsPage() {
                     </label>
                     <textarea
                       value={form.customEmailsText}
-                      onChange={e => setForm(p => ({ ...p, customEmailsText: e.target.value }))}
+                      onChange={(e) => setForm((p) => ({ ...p, customEmailsText: e.target.value }))}
                       placeholder={'email1@example.com\nemail2@example.com'}
                       rows={3}
                       className={inputCls + ' resize-none font-mono text-xs'}
@@ -438,24 +696,22 @@ export default function NotificationsPage() {
                   </div>
                 )}
 
-                {/* Title */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Τίτλος</label>
                   <input
                     value={form.title}
-                    onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
+                    onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
                     placeholder="π.χ. Σχολική γιορτή αύριο"
                     maxLength={100}
                     className={inputCls}
                   />
                 </div>
 
-                {/* Body */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Μήνυμα</label>
                   <textarea
                     value={form.body}
-                    onChange={e => setForm(p => ({ ...p, body: e.target.value }))}
+                    onChange={(e) => setForm((p) => ({ ...p, body: e.target.value }))}
                     placeholder="Γράψτε το μήνυμά σας..."
                     rows={4}
                     maxLength={1000}
@@ -472,10 +728,10 @@ export default function NotificationsPage() {
                     type="file"
                     accept="image/*"
                     className="block w-full text-sm text-gray-600"
-                    onChange={e => {
+                    onChange={(e) => {
                       const file = e.target.files?.[0] ?? null;
                       setImageFile(file);
-                      setImagePreview(current => {
+                      setImagePreview((current) => {
                         if (current) URL.revokeObjectURL(current);
                         return file ? URL.createObjectURL(file) : '';
                       });
@@ -495,7 +751,7 @@ export default function NotificationsPage() {
                     accept="application/pdf"
                     multiple
                     className="block w-full text-sm text-gray-600"
-                    onChange={e => {
+                    onChange={(e) => {
                       const picked = Array.from(e.target.files ?? []).filter((f) =>
                         f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'),
                       );
@@ -534,12 +790,9 @@ export default function NotificationsPage() {
                 </div>
 
                 <button
+                  type="button"
                   onClick={send}
-                  disabled={
-                    sending || !form.title || !form.body || form.channels.length === 0 ||
-                    (form.targetType === 'class' && !form.targetClassId) ||
-                    (form.targetType === 'student' && !form.targetStudentId)
-                  }
+                  disabled={sending || !canSend}
                   className={`w-full py-2.5 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50 ${
                     sent ? 'bg-green-600 text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white'
                   }`}
@@ -553,69 +806,57 @@ export default function NotificationsPage() {
           </div>
         )}
 
-        {/* History */}
-        <div className={isAdmin ? 'lg:col-span-3' : 'lg:col-span-5'}>
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="font-semibold text-gray-800">Ιστορικό αποστολών</h2>
-              <button
-                onClick={() => setShowHistory(h => !h)}
-                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
-              >
-                {showHistory ? 'Απόκρυψη' : `Εμφάνιση${broadcasts.length > 0 ? ` (${broadcasts.length})` : ''}`}
-              </button>
-            </div>
-            {!showHistory ? null : loading ? (
-              <div className="py-12 text-center text-gray-400 text-sm">Φόρτωση...</div>
-            ) : broadcasts.length === 0 ? (
-              <div className="py-12 text-center text-gray-400 text-sm">
-                <Bell className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                <p>Δεν έχουν σταλεί ειδοποιήσεις ακόμα.</p>
+        {showHistory && (
+          <div className={isAdmin ? 'lg:col-span-2' : 'lg:col-span-5'}>
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
+              <div className="px-5 py-4 border-b border-gray-100">
+                <h2 className="font-semibold text-gray-800">Ιστορικό αποστολών</h2>
               </div>
-            ) : (
-              <div className="divide-y divide-gray-50">
-                {broadcasts.map((b: any) => {
-                  const targetLabel =
-                    b.targetType === 'all'     ? 'Όλοι'
-                    : b.targetType === 'teachers' ? 'Δάσκαλοι'
-                    : b.targetType === 'parents'  ? 'Γονείς'
-                    : b.targetType === 'student'  ? `Μαθητής: ${b.targetStudent?.fullName ?? '—'}`
-                    : `Τμήμα: ${b.targetClass?.name ?? '—'}`;
-                  const channels: string[] = b.channels ?? ['push'];
-                  return (
-                    <div key={b.id} className="px-5 py-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <span className="text-sm font-semibold text-gray-900 truncate">{b.title}</span>
-                            <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full shrink-0">{targetLabel}</span>
-                            {channels.map((ch: string) => {
-                              const chOpt = CHANNEL_OPTIONS.find(c => c.value === ch);
-                              if (!chOpt) return null;
-                              const Icon = chOpt.icon;
-                              return <Icon key={ch} className="w-3 h-3 text-gray-400 shrink-0" aria-label={chOpt.label} />;
-                            })}
-                          </div>
-                          <p className="text-sm text-gray-600 line-clamp-2">{b.body}</p>
-                          {b.imageUrl && (
-                            <img src={b.imageUrl} alt="" className="mt-2 h-24 max-w-xs rounded-lg object-cover" />
-                          )}
-                          <div className="flex items-center gap-3 mt-2 text-xs text-gray-400 flex-wrap">
-                            <span>{format(new Date(b.sentAt), 'd MMM yyyy, HH:mm', { locale: el })}</span>
-                            <span>·</span>
-                            <span>{b.sentBy?.fullName ?? '—'}</span>
-                            <span>·</span>
-                            <span className="text-green-600 font-medium">{b.recipientCount} παραλήπτες</span>
-                          </div>
+              {loading ? (
+                <div className="py-12 text-center text-gray-400 text-sm">Φόρτωση...</div>
+              ) : broadcasts.length === 0 ? (
+                <div className="py-12 text-center text-gray-400 text-sm">
+                  <Bell className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                  <p>Δεν έχουν σταλεί ειδοποιήσεις ακόμα.</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-50 max-h-[70vh] overflow-y-auto">
+                  {broadcasts.map((b: any) => {
+                    const targetLabel =
+                      b.targetType === 'all' ? 'Όλοι'
+                        : b.targetType === 'teachers' ? 'Δάσκαλοι'
+                          : b.targetType === 'parents' ? 'Γονείς'
+                            : b.targetType === 'student' ? `Μαθητής: ${b.targetStudent?.fullName ?? '—'}`
+                              : `Τμήμα: ${b.targetClass?.name ?? '—'}`;
+                    const channels: string[] = b.channels ?? ['push'];
+                    return (
+                      <div key={b.id} className="px-5 py-4">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className="text-sm font-semibold text-gray-900 truncate">{b.title}</span>
+                          <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full shrink-0">{targetLabel}</span>
+                          {channels.map((ch: string) => {
+                            const chOpt = CHANNEL_OPTIONS.find((c) => c.value === ch);
+                            if (!chOpt) return null;
+                            const Icon = chOpt.icon;
+                            return <Icon key={ch} className="w-3 h-3 text-gray-400 shrink-0" aria-label={chOpt.label} />;
+                          })}
+                        </div>
+                        <p className="text-sm text-gray-600 line-clamp-2">{b.body}</p>
+                        <div className="flex items-center gap-3 mt-2 text-xs text-gray-400 flex-wrap">
+                          <span>{format(new Date(b.sentAt), 'd MMM yyyy, HH:mm', { locale: el })}</span>
+                          <span>·</span>
+                          <span>{b.sentBy?.fullName ?? '—'}</span>
+                          <span>·</span>
+                          <span className="text-green-600 font-medium">{b.recipientCount} παραλήπτες</span>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

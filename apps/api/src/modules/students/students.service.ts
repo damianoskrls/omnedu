@@ -222,8 +222,6 @@ export class StudentsService {
       throw new ForbiddenException('Μπορείτε να δείτε μόνο τα δικά σας παιδιά.');
     }
 
-    // Only explicit sibling links — parent-shared kids stay linked via parents
-    // but must not reappear after unlink in this section.
     const siblings = await this.getSiblings(id, schoolId);
     return { ...student, siblings };
   }
@@ -512,8 +510,8 @@ export class StudentsService {
       this.prisma.student.findFirst({ where: { id: siblingId, schoolId } }),
     ]);
     if (!s1 || !s2) throw new Error('Student not found');
-    await this.shareParents(studentId, siblingId);
-    // Create bidirectional link (both directions, ignore duplicates)
+    // StudentSibling only — parent app access expands via ensureParentChildren.
+    // Do not copy StudentParent rows (that made unlink leave kids on every parent).
     await this.prisma.$transaction([
       this.prisma.studentSibling.upsert({
         where: { studentId_siblingId: { studentId, siblingId } },
@@ -534,6 +532,8 @@ export class StudentsService {
       this.prisma.studentSibling.deleteMany({ where: { studentId, siblingId } }),
       this.prisma.studentSibling.deleteMany({ where: { studentId: siblingId, siblingId: studentId } }),
     ]);
+    // Drop non-primary parents that were shared across the pair (keeps each child's primary).
+    await this.unshareNonPrimaryParents(studentId, siblingId);
     return { ok: true };
   }
 
@@ -579,9 +579,11 @@ export class StudentsService {
     const notesMap = new Map(members.map((m) => [m.userId, m.notes ?? null]));
     const grouped = new Map<string, ParentCard>();
     for (const member of members) {
+      if (deletedIds.has(member.userId)) continue;
       grouped.set(member.userId, parentCard(member.user, member.notes));
     }
     for (const link of links) {
+      if (deletedIds.has(link.userId)) continue;
       if (!grouped.has(link.userId)) grouped.set(link.userId, parentCard(link.user, notesMap.get(link.userId)));
       grouped.get(link.userId)!.children.push(parentChild(link));
     }
@@ -663,15 +665,21 @@ export class StudentsService {
   async deleteStandaloneParent(schoolId: string, userId: string) {
     const member = await this.prisma.schoolMember.findFirst({ where: { schoolId, userId } });
     if (!member) throw new NotFoundException('Ο γονέας δεν βρέθηκε');
-    await this.prisma.schoolMember.updateMany({ where: { schoolId, userId }, data: { isActive: false } });
+    await this.prisma.$transaction([
+      this.prisma.schoolMember.updateMany({ where: { schoolId, userId }, data: { isActive: false } }),
+      // Soft-delete alone left StudentParent links, so the parent reappeared on refresh.
+      this.prisma.studentParent.deleteMany({ where: { userId, student: { schoolId } } }),
+    ]);
     return { ok: true };
   }
 
   async ensureParentChildren(parentUserId: string, schoolId: string) {
     const userIds = await this.accountUserIds(parentUserId);
-    const linkIds = await this.parentAccountIds(userIds, schoolId);
+    const activeParentIds = await this.parentAccountIds(userIds, schoolId);
+    if (!activeParentIds.includes(parentUserId)) return;
+
     const direct = await this.prisma.student.findMany({
-      where: { schoolId, isActive: true, parents: { some: { userId: { in: userIds } } } },
+      where: { schoolId, isActive: true, parents: { some: { userId: { in: activeParentIds } } } },
       select: { id: true },
     });
     const directIds = direct.map((row) => row.id);
@@ -693,41 +701,27 @@ export class StudentsService {
         })
       : [];
     const studentIds = [...new Set([...directIds, ...extras.map((row) => row.id)])];
+    // Only materialize links for the logged-in account — never re-create a second
+    // same-phone Damianos the admin just removed.
     const existing = await this.prisma.studentParent.findMany({
-      where: { studentId: { in: studentIds }, userId: { in: userIds } },
+      where: { studentId: { in: studentIds }, userId: parentUserId },
       select: { studentId: true, userId: true, relation: true },
     });
-    const have = new Set(existing.map((row) => `${row.studentId}:${row.userId}`));
-    const data: { studentId: string; userId: string; relation: string; isPrimary: boolean }[] = [];
-    for (const studentId of studentIds) {
-      const relation = existing.find((row) => row.studentId === studentId)?.relation
-        ?? existing[0]?.relation
-        ?? 'γονέας';
-      for (const userId of linkIds) {
-        if (have.has(`${studentId}:${userId}`)) continue;
-        data.push({ studentId, userId, relation, isPrimary: false });
-      }
-    }
+    const have = new Set(existing.map((row) => row.studentId));
+    const relation = existing[0]?.relation ?? 'γονέας';
+    const data = studentIds
+      .filter((studentId) => !have.has(studentId))
+      .map((studentId) => ({ studentId, userId: parentUserId, relation, isPrimary: false }));
     if (data.length) await this.prisma.studentParent.createMany({ data, skipDuplicates: true });
   }
 
   private async parentAccountIds(userIds: string[], schoolId: string) {
     if (!userIds.length) return userIds;
     const members = await this.prisma.schoolMember.findMany({
-      where: { schoolId, userId: { in: userIds }, isActive: true },
-      select: { userId: true, role: true },
+      where: { schoolId, userId: { in: userIds }, role: 'parent', isActive: true },
+      select: { userId: true },
     });
-    const roles = new Map<string, Set<string>>();
-    for (const row of members) {
-      const set = roles.get(row.userId) ?? new Set<string>();
-      set.add(row.role);
-      roles.set(row.userId, set);
-    }
-    return userIds.filter((id) => {
-      const set = roles.get(id);
-      if (!set || set.size === 0) return true;
-      return set.has('parent');
-    });
+    return members.map((row) => row.userId);
   }
 
   private async accountUserIds(userId: string) {
@@ -742,23 +736,34 @@ export class StudentsService {
     return ids.length ? ids : [userId];
   }
 
-  private async shareParents(studentId: string, siblingId: string) {
+  /**
+   * After sibling unlink, drop parents that clearly came from the other child:
+   * primary on one side, non-primary on the other. Leaves true secondary parents alone.
+   */
+  private async unshareNonPrimaryParents(studentId: string, siblingId: string) {
     const links = await this.prisma.studentParent.findMany({
       where: { studentId: { in: [studentId, siblingId] } },
+      select: { studentId: true, userId: true, isPrimary: true },
     });
-    const data: { studentId: string; userId: string; relation: string; isPrimary: boolean }[] = [];
-    for (const link of links) {
-      const otherId = link.studentId === studentId ? siblingId : studentId;
-      if (links.some((row) => row.studentId === otherId && row.userId === link.userId)) continue;
-      if (data.some((row) => row.studentId === otherId && row.userId === link.userId)) continue;
-      data.push({
-        studentId: otherId,
-        userId: link.userId,
-        relation: link.relation ?? 'γονέας',
-        isPrimary: false,
-      });
-    }
-    if (data.length) await this.prisma.studentParent.createMany({ data, skipDuplicates: true });
+    const primaryA = new Set(
+      links.filter((l) => l.studentId === studentId && l.isPrimary).map((l) => l.userId),
+    );
+    const primaryB = new Set(
+      links.filter((l) => l.studentId === siblingId && l.isPrimary).map((l) => l.userId),
+    );
+    const removals = links.filter((l) => {
+      if (l.isPrimary) return false;
+      if (l.studentId === studentId) return primaryB.has(l.userId);
+      return primaryA.has(l.userId);
+    });
+    if (!removals.length) return;
+    await this.prisma.$transaction(
+      removals.map((row) =>
+        this.prisma.studentParent.deleteMany({
+          where: { studentId: row.studentId, userId: row.userId },
+        }),
+      ),
+    );
   }
 
   private async findUserByContact(

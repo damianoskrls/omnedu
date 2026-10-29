@@ -439,6 +439,8 @@ export const broadcastsApi = {
     targetType: string;
     targetClassId?: string;
     targetStudentId?: string;
+    targetStudentIds?: string[];
+    targetUserIds?: string[];
     channels?: string[];
     customEmails?: string[];
     appType?: string;
@@ -455,6 +457,8 @@ export const broadcastsApi = {
     if (data.imageUrl) form.append('imageUrl', data.imageUrl);
     if (data.targetClassId) form.append('targetClassId', data.targetClassId);
     if (data.targetStudentId) form.append('targetStudentId', data.targetStudentId);
+    if (data.targetStudentIds?.length) form.append('targetStudentIds', JSON.stringify(data.targetStudentIds));
+    if (data.targetUserIds?.length) form.append('targetUserIds', JSON.stringify(data.targetUserIds));
     if (data.customEmails?.length) form.append('customEmails', JSON.stringify(data.customEmails));
     if (data.appType) form.append('appType', data.appType);
     if (data.appScreen) form.append('appScreen', data.appScreen);

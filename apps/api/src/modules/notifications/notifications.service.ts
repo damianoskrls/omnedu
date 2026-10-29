@@ -45,6 +45,10 @@ interface BroadcastData {
   targetType: 'all' | 'teachers' | 'parents' | 'class' | 'student';
   targetClassId?: string;
   targetStudentId?: string;
+  /** When set, send only to these school members (filtered by targetType). */
+  targetUserIds?: string[];
+  /** When targetType=student, parents of these students (multi-select). */
+  targetStudentIds?: string[];
   channels?: string[]; // push | email | sms
   customEmails?: string[]; // additional explicit email addresses
   appType?: string;
@@ -804,35 +808,67 @@ export class NotificationsService implements OnModuleInit {
   // ─── Helpers ─────────────────────────────────────────────────────────────
 
   private async getTargetUserIds(schoolId: string, data: BroadcastData): Promise<string[]> {
-    if (data.targetType === 'student' && data.targetStudentId) {
+    const explicit = Array.isArray(data.targetUserIds)
+      ? [...new Set(data.targetUserIds.filter((id): id is string => typeof id === 'string' && id.length > 0))]
+      : [];
+
+    if (data.targetType === 'student') {
+      const studentIds = [
+        ...new Set([
+          ...(Array.isArray(data.targetStudentIds) ? data.targetStudentIds : []),
+          ...(data.targetStudentId ? [data.targetStudentId] : []),
+        ].filter(Boolean)),
+      ];
+      if (!studentIds.length) return [];
       const parents = await this.prisma.studentParent.findMany({
-        where: { studentId: data.targetStudentId },
+        where: { studentId: { in: studentIds }, student: { schoolId } },
         select: { userId: true },
       });
-      return parents.map(p => p.userId);
+      const ids = [...new Set(parents.map((p) => p.userId))];
+      if (explicit.length) return ids.filter((id) => explicit.includes(id));
+      return ids;
     }
 
     if (data.targetType === 'class' && data.targetClassId) {
       const enrollments = await this.prisma.classEnrollment.findMany({
-        where: { classId: data.targetClassId },
+        where: { classId: data.targetClassId, class: { schoolId } },
         include: { student: { include: { parents: true } } },
       });
       const userIds = new Set<string>();
       for (const e of enrollments) {
         for (const sp of e.student.parents) userIds.add(sp.userId);
       }
-      return [...userIds];
+      const ids = [...userIds];
+      if (explicit.length) return ids.filter((id) => explicit.includes(id));
+      return ids;
     }
 
-    const roleFilter = data.targetType === 'teachers' ? { role: 'teacher' as const }
-      : data.targetType === 'parents' ? { role: 'parent' as const }
-      : {};
+    const roleFilter = data.targetType === 'teachers'
+      ? { role: { in: ['teacher', 'school_admin', 'owner'] } }
+      : data.targetType === 'parents'
+        ? { role: 'parent' as const }
+        : { role: { in: ['teacher', 'school_admin', 'owner', 'parent'] } };
 
     const members = await this.prisma.schoolMember.findMany({
       where: { schoolId, isActive: true, ...roleFilter },
       select: { userId: true },
     });
-    return members.map(m => m.userId);
+    const ids = new Set(members.map((m) => m.userId));
+
+    // Parents shown in the admin list may be linked only via StudentParent.
+    if (data.targetType === 'parents' || data.targetType === 'all') {
+      const parentLinks = await this.prisma.studentParent.findMany({
+        where: {
+          student: { schoolId },
+          ...(explicit.length ? { userId: { in: explicit } } : {}),
+        },
+        select: { userId: true },
+      });
+      for (const row of parentLinks) ids.add(row.userId);
+    }
+
+    if (explicit.length) return explicit.filter((id) => ids.has(id));
+    return [...ids];
   }
 
   private async getTargetTokens(userIds: string[]): Promise<string[]> {

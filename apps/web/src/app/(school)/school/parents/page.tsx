@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Baby, ChevronRight, Pencil, Plus, Search, Send, Trash2, X } from 'lucide-react';
-import { parentsApi, studentsApi, api } from '@/lib/api';
+import { Baby, ChevronRight, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { parentsApi, studentsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
 
 type Child = { id: string; fullName: string; className?: string; isActive?: boolean };
@@ -31,10 +31,6 @@ export default function ParentsPage() {
   const [parents, setParents] = useState<ParentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<string[]>([]);
-  const [draft, setDraft] = useState('');
-  const [sending, setSending] = useState(false);
-  const [note, setNote] = useState('');
 
   // Create
   const [showCreate, setShowCreate] = useState(false);
@@ -87,39 +83,6 @@ export default function ParentsPage() {
       return haystack.includes(query);
     });
   }, [parents, search]);
-
-  const allChecked = filtered.length > 0 && filtered.every((parent) => selected.includes(parent.id));
-
-  const toggleAll = () => {
-    const ids = filtered.map((parent) => parent.id);
-    setSelected((current) => (allChecked
-      ? current.filter((id) => !ids.includes(id))
-      : Array.from(new Set(current.concat(ids)))));
-  };
-
-  const toggle = (id: string) => {
-    setSelected((current) => (current.includes(id) ? current.filter((row) => row !== id) : [...current, id]));
-  };
-
-  const send = async () => {
-    const text = draft.trim();
-    if (!text || !selected.length || !schoolId) return;
-    setSending(true);
-    setNote('');
-    try {
-      const result: any = await api.post(`/schools/${schoolId}/conversations/broadcast`, {
-        userIds: selected,
-        body: text,
-      });
-      setDraft('');
-      setSelected([]);
-      setNote(`Στάλθηκε σε ${result?.sent ?? selected.length} γονείς`);
-    } catch (error: any) {
-      setNote(errText(error));
-    } finally {
-      setSending(false);
-    }
-  };
 
   const doCreate = async () => {
     if (!createForm.fullName.trim()) { setCreateError('Συμπληρώστε ονοματεπώνυμο'); return; }
@@ -247,8 +210,8 @@ export default function ParentsPage() {
         </button>
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <label className="relative min-w-[16rem] flex-1">
+      <div className="mb-4">
+        <label className="relative block w-full">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#a89890]" />
           <input
             value={search}
@@ -257,38 +220,6 @@ export default function ParentsPage() {
             className="w-full rounded-xl border border-[#77328d]/15 bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#77328D]"
           />
         </label>
-        <button
-          type="button"
-          onClick={toggleAll}
-          className="rounded-xl border border-[#77328d]/15 bg-white px-3 py-2.5 text-sm font-semibold text-[#642678]"
-        >
-          {allChecked ? 'Αποεπιλογή' : 'Επιλογή όλων'}
-        </button>
-      </div>
-
-      <div className="mb-5 rounded-2xl border border-[#77328d]/10 bg-white p-4 shadow-sm">
-        <p className="text-sm font-bold text-[#2f2a28]">
-          Μαζικό μήνυμα {selected.length ? `· ${selected.length} επιλεγμένοι` : ''}
-        </p>
-        <textarea
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          rows={3}
-          placeholder="Γράψε το μήνυμα που θα λάβουν οι επιλεγμένοι γονείς"
-          className="mt-2 w-full resize-none rounded-xl border border-[#77328d]/15 px-3 py-2 text-sm outline-none focus:border-[#77328D]"
-        />
-        <div className="mt-2 flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={send}
-            disabled={sending || !draft.trim() || !selected.length}
-            className="inline-flex items-center gap-2 rounded-xl bg-[#77328D] px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
-          >
-            <Send className="h-4 w-4" />
-            {sending ? 'Αποστολή...' : 'Αποστολή'}
-          </button>
-          {note && <p className="text-sm text-[#6b625c]">{note}</p>}
-        </div>
       </div>
 
       {loading ? (
@@ -300,58 +231,48 @@ export default function ParentsPage() {
       ) : (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {filtered.map((parent) => {
-            const checked = selected.includes(parent.id);
             const children = parent.children ?? [];
             return (
-              <div key={parent.id} className="flex gap-3 rounded-2xl border border-[#77328d]/10 bg-white p-4 shadow-sm">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() => toggle(parent.id)}
-                  aria-label={`Επιλογή ${parent.fullName}`}
-                  className="mt-1 h-4 w-4 accent-[#77328D]"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate font-bold text-[#2f2a28]">{parent.fullName}</p>
-                      <p className="truncate text-sm text-[#6b625c]">{parent.phone || 'Χωρίς τηλέφωνο'}</p>
-                      <p className="truncate text-xs text-[#a89890]">{parent.email}</p>
-                      {parent.notes && (
-                        <p className="mt-1 truncate text-xs text-[#8a756c] italic">{parent.notes}</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => openEdit(parent)}
-                        className="rounded-lg p-1.5 text-gray-400 hover:bg-[#faf5fc] hover:text-[#77328D]"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDeleteTarget(parent)}
-                        className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                      <Link href={`/school/parents/${parent.id}`} className="rounded-lg p-1 text-[#77328D] hover:bg-[#faf5fc]">
-                        <ChevronRight className="h-4 w-4" />
-                      </Link>
-                    </div>
+              <div key={parent.id} className="rounded-2xl border border-[#77328d]/10 bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-bold text-[#2f2a28]">{parent.fullName}</p>
+                    <p className="truncate text-sm text-[#6b625c]">{parent.phone || 'Χωρίς τηλέφωνο'}</p>
+                    <p className="truncate text-xs text-[#a89890]">{parent.email}</p>
+                    {parent.notes && (
+                      <p className="mt-1 truncate text-xs text-[#8a756c] italic">{parent.notes}</p>
+                    )}
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {children.length === 0 ? (
-                      <span className="text-xs text-[#a89890]">Χωρίς παιδί</span>
-                    ) : children.map((child) => (
-                      <span key={child.id} className="inline-flex items-center gap-1 rounded-full bg-[#f3e8f7] px-2 py-0.5 text-xs font-semibold text-[#642678]">
-                        <Baby className="h-3 w-3" />
-                        {child.fullName}{child.className ? ` · ${child.className}` : ''}
-                        {child.isActive === false ? ' · ανενεργό' : ''}
-                      </span>
-                    ))}
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => openEdit(parent)}
+                      className="rounded-lg p-1.5 text-gray-400 hover:bg-[#faf5fc] hover:text-[#77328D]"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteTarget(parent)}
+                      className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                    <Link href={`/school/parents/${parent.id}`} className="rounded-lg p-1 text-[#77328D] hover:bg-[#faf5fc]">
+                      <ChevronRight className="h-4 w-4" />
+                    </Link>
                   </div>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {children.length === 0 ? (
+                    <span className="text-xs text-[#a89890]">Χωρίς παιδί</span>
+                  ) : children.map((child) => (
+                    <span key={child.id} className="inline-flex items-center gap-1 rounded-full bg-[#f3e8f7] px-2 py-0.5 text-xs font-semibold text-[#642678]">
+                      <Baby className="h-3 w-3" />
+                      {child.fullName}{child.className ? ` · ${child.className}` : ''}
+                      {child.isActive === false ? ' · ανενεργό' : ''}
+                    </span>
+                  ))}
                 </div>
               </div>
             );

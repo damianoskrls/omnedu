@@ -3130,7 +3130,8 @@ export default function StudentProfilePage() {
                 <h3 id="unlink-sibling-title" className="text-lg font-bold text-gray-900">Αφαίρεση αδερφού</h3>
                 <p className="text-sm text-gray-600 mt-1">
                   Είσαι σίγουρος/η ότι θέλεις να αφαιρέσεις τη σύνδεση με τον/την{' '}
-                  <strong>{unlinkSiblingTarget.fullName}</strong>; Οι κοινοί γονείς δεν αλλάζουν.
+                  <strong>{unlinkSiblingTarget.fullName}</strong>; Ο κύριος κηδεμόνας κάθε παιδιού
+                  μένει· γονείς που είχαν αντιγραφεί από το άλλο παιδί θα αφαιρεθούν.
                 </p>
               </div>
             </div>
