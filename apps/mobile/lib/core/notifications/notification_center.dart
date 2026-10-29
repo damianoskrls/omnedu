@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../features/medications/medications_screen.dart';
 import '../../features/messages/conversation_ui.dart';
@@ -684,17 +685,73 @@ class _NoticeListState extends State<_NoticeList> {
   }
 }
 
-class NoticeDetailScreen extends StatelessWidget {
+class NoticeDetailScreen extends StatefulWidget {
   final Map<String, dynamic> notice;
   const NoticeDetailScreen({super.key, required this.notice});
 
   @override
+  State<NoticeDetailScreen> createState() => _NoticeDetailScreenState();
+}
+
+class _NoticeDetailScreenState extends State<NoticeDetailScreen> {
+  final Set<int> _opening = {};
+
+  List<Map<String, String>> _pdfs(Map<String, dynamic> data) {
+    final raw = data['pdfs'];
+    if (raw is! List) return const [];
+    final out = <Map<String, String>>[];
+    for (final item in raw) {
+      if (item is! Map) continue;
+      final url = item['url']?.toString().trim() ?? '';
+      if (url.isEmpty) continue;
+      final filename = item['filename']?.toString().trim().isNotEmpty == true
+          ? item['filename'].toString().trim()
+          : 'attachment.pdf';
+      out.add({'url': url, 'filename': filename});
+    }
+    return out;
+  }
+
+  Future<void> _openPdf(int index, String url) async {
+    if (_opening.contains(index)) return;
+    setState(() => _opening.add(index));
+    try {
+      final resolved = fixMediaUrl(url);
+      final uri = Uri.tryParse(resolved);
+      if (uri == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Το PDF δεν άνοιξε.')),
+          );
+        }
+        return;
+      }
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Το PDF δεν άνοιξε.')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Σφάλμα κατά το άνοιγμα του PDF.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _opening.remove(index));
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final notice = widget.notice;
     final raw = notice['data'];
     final data = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
     final title = notice['title']?.toString().trim() ?? '';
     final body = (notice['body']?.toString().trim().isNotEmpty == true ? notice['body']?.toString() : data['body']?.toString())?.trim() ?? '';
     final imageUrl = data['imageUrl']?.toString() ?? '';
+    final pdfs = _pdfs(data);
     final when = _noticeWhen(notice);
     return Scaffold(
       backgroundColor: const Color(0xFFF6F3FA),
@@ -731,6 +788,51 @@ class NoticeDetailScreen extends StatelessWidget {
                 if (body.isNotEmpty) ...[
                   const SizedBox(height: 16),
                   Text(body, style: const TextStyle(fontSize: 16, height: 1.45, color: Color(0xFF2C2422))),
+                ],
+                if (pdfs.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  const Text('Συνημμένα PDF', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF2C2422))),
+                  const SizedBox(height: 10),
+                  for (var i = 0; i < pdfs.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 8),
+                    Material(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: _opening.contains(i) ? null : () => _openPdf(i, pdfs[i]['url']!),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFE9D5FF)),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                _opening.contains(i) ? Icons.hourglass_top_rounded : Icons.picture_as_pdf_rounded,
+                                color: const Color(0xFF77328D),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  pdfs[i]['filename']!,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF2C2422)),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                _opening.contains(i) ? 'Άνοιγμα...' : 'Άνοιγμα',
+                                style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w700),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ],
             ),

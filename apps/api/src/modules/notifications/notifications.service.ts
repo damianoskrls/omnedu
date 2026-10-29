@@ -147,6 +147,25 @@ export class NotificationsService implements OnModuleInit {
         content: file.buffer,
       }));
 
+    // Upload PDFs so the in-app inbox can show/open them (email uses the same buffers).
+    const uploadedPdfs: { url: string; filename: string }[] = [];
+    for (const [index, file] of (pdfFiles ?? []).slice(0, 5).entries()) {
+      if (!file?.buffer?.length) continue;
+      try {
+        const url = await this.storage.upload(file, 'notifications', 'raw');
+        uploadedPdfs.push({
+          url,
+          filename: this.safePdfFilename(file.originalname, index),
+        });
+      } catch (error) {
+        this.logger.warn(`[NOTIFY] PDF upload failed for ${file.originalname}`, error);
+      }
+    }
+    const pdfsForApp = this.uniquePdfFilenames([
+      ...uploadedPdfs,
+      ...this.resolvePdfs(data).filter((pdf) => !uploadedPdfs.some((u) => u.url === pdf.url)),
+    ]).slice(0, 5);
+
     // ─── Push notifications ─────────────────────────────────
     if (channels.includes('push')) {
       const tokens = await this.getTargetTokens(userIds);
@@ -245,6 +264,7 @@ export class NotificationsService implements OnModuleInit {
             ...(data.academicYear ? { academicYear: data.academicYear } : {}),
             ...(data.kind ? { kind: data.kind } : {}),
             ...(data.imageUrl ? { imageUrl: data.imageUrl } : {}),
+            ...(pdfsForApp.length ? { pdfs: pdfsForApp } : {}),
           },
         })),
         skipDuplicates: true,
