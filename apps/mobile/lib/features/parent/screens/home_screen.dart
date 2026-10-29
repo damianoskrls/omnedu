@@ -543,6 +543,10 @@ class _UpcomingPartyInvitations extends StatelessWidget {
                             style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
                           ),
                         ],
+                        if (_invitationChildMentions(inv).isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          ChildMentions(people: _invitationChildMentions(inv)),
+                        ],
                       ],
                     ),
                   ),
@@ -554,6 +558,17 @@ class _UpcomingPartyInvitations extends StatelessWidget {
       ],
     );
   }
+}
+
+
+List<ChildMention> _invitationChildMentions(Map<String, dynamic> inv) {
+  final raw = inv['forMyChildren'];
+  if (raw is! List) return const [];
+  return raw
+      .whereType<Map>()
+      .map((row) => ChildMention.fromMap(row))
+      .whereType<ChildMention>()
+      .toList();
 }
 
 class _GroupedExtras extends StatelessWidget {

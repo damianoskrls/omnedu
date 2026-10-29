@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/utils/system_insets.dart';
 import '../../../core/widgets/app_image.dart';
+import '../../../core/widgets/person_face.dart';
 
 class PartyInvitationScreen extends ConsumerStatefulWidget {
   final String schoolId;
@@ -148,6 +149,9 @@ class _PartyInvitationScreenState extends ConsumerState<PartyInvitationScreen> {
         ? Map<String, dynamic>.from(row['birthdayStudent'] as Map)
         : <String, dynamic>{};
     final birthdayName = birthdayChild['fullName']?.toString() ?? '';
+    final forMyChildren = _mentionsFrom(row['forMyChildren']);
+    final guests = _guestRows(row['recipientStudents']);
+    final canSeeGuestList = row['canSeeGuestList'] == true;
 
     return ListView(
       padding: EdgeInsets.fromLTRB(16, 16, 16, 24 + systemBottomInset(context)),
@@ -236,6 +240,74 @@ class _PartyInvitationScreenState extends ConsumerState<PartyInvitationScreen> {
               border: Border.all(color: const Color(0xFFFCE7F3)),
             ),
             child: Text(body, style: const TextStyle(fontSize: 15, height: 1.55, color: Color(0xFF374151))),
+          ),
+          const SizedBox(height: 16),
+        ],
+        if (forMyChildren.isNotEmpty) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFFCE7F3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(forMyChildren.length > 1 ? 'Για τα παιδιά μου' : 'Για το παιδί μου', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF6B7280))),
+                const SizedBox(height: 8),
+                ChildMentions(people: forMyChildren),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+        if (canSeeGuestList) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFFCE7F3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Παιδιά που έλαβαν πρόσκληση (${guests.length})',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF6B7280)),
+                ),
+                const SizedBox(height: 10),
+                if (guests.isEmpty)
+                  const Text('Δεν υπάρχουν προσκεκλημένοι.', style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF)))
+                else
+                  ...guests.map((guest) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          children: [
+                            PersonFace(
+                              name: guest.name,
+                              photoUrl: guest.photoUrl,
+                              size: 32,
+                              radius: 16,
+                              fontSize: 13,
+                              background: const Color(0xFFFDF2F8),
+                              foreground: const Color(0xFFDB2777),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                guest.name,
+                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF111827)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )),
+              ],
+            ),
           ),
           const SizedBox(height: 16),
         ],
@@ -372,6 +444,10 @@ class _PartyInvitationsListScreenState extends ConsumerState<PartyInvitationsLis
                                       Text('📅 ${inv['eventDate']}',
                                           style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
                                     ],
+                                    if (_mentionsFrom(inv['forMyChildren']).isNotEmpty) ...[
+                                      const SizedBox(height: 6),
+                                      ChildMentions(people: _mentionsFrom(inv['forMyChildren'])),
+                                    ],
                                   ],
                                 ),
                               ),
@@ -388,4 +464,22 @@ class _PartyInvitationsListScreenState extends ConsumerState<PartyInvitationsLis
                 ),
     );
   }
+}
+
+List<ChildMention> _mentionsFrom(dynamic raw) {
+  if (raw is! List) return const [];
+  return raw
+      .whereType<Map>()
+      .map((row) => ChildMention.fromMap(row))
+      .whereType<ChildMention>()
+      .toList();
+}
+
+List<ChildMention> _guestRows(dynamic raw) {
+  if (raw is! List) return const [];
+  return raw
+      .whereType<Map>()
+      .map((row) => ChildMention.fromMap(row))
+      .whereType<ChildMention>()
+      .toList();
 }

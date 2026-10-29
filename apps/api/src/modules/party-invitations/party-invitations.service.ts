@@ -48,11 +48,30 @@ export class PartyInvitationsService {
     const recipientStudents = canSeeGuestList && recipientIds.length > 0
       ? await this.prisma.student.findMany({
           where: { id: { in: recipientIds }, schoolId },
-          select: { id: true, fullName: true },
+          select: { id: true, fullName: true, avatarUrl: true },
           orderBy: { fullName: 'asc' },
         })
       : [];
-    return { ...row, recipientStudents };
+    const forMyChildren = !canSeeGuestList && recipientIds.length > 0
+      ? await this.prisma.student.findMany({
+          where: {
+            schoolId,
+            id: { in: recipientIds },
+            isActive: true,
+            parents: { some: { userId: requestingUserId } },
+          },
+          select: { id: true, fullName: true, avatarUrl: true },
+          orderBy: { fullName: 'asc' },
+        })
+      : [];
+    const { recipientStudentIds: _hiddenIds, ...safeRow } = row as typeof row & { recipientStudentIds?: unknown };
+    return {
+      ...safeRow,
+      ...(canSeeGuestList ? { recipientStudentIds: row.recipientStudentIds } : {}),
+      recipientStudents,
+      forMyChildren,
+      canSeeGuestList,
+    };
   }
 
   async create(schoolId: string, data: {
@@ -164,12 +183,13 @@ export class PartyInvitationsService {
   }
 
   async listReceived(schoolId: string, parentUserId: string) {
-    const children = await this.prisma.studentParent.findMany({
-      where: { userId: parentUserId, student: { schoolId, isActive: true } },
-      select: { studentId: true },
+    const myChildren = await this.prisma.student.findMany({
+      where: { schoolId, isActive: true, parents: { some: { userId: parentUserId } } },
+      select: { id: true, fullName: true, avatarUrl: true },
     });
-    const childIds = children.map((c) => c.studentId);
+    const childIds = myChildren.map((c) => c.id);
     if (!childIds.length) return [];
+    const byId = new Map(myChildren.map((c) => [c.id, c]));
 
     const rows = await this.prisma.partyInvitation.findMany({
       where: { schoolId, sentAt: { not: null } },
@@ -177,9 +197,14 @@ export class PartyInvitationsService {
       orderBy: { sentAt: 'desc' },
     });
 
-    return rows.filter((r) => {
+    return rows.flatMap((r) => {
       const recipients = Array.isArray(r.recipientStudentIds) ? r.recipientStudentIds as string[] : [];
-      return childIds.some((cid) => recipients.includes(cid));
+      const forMyChildren = recipients
+        .map((id) => byId.get(id))
+        .filter((child): child is { id: string; fullName: string; avatarUrl: string | null } => Boolean(child));
+      if (!forMyChildren.length) return [];
+      const { recipientStudentIds: _hiddenIds, ...safeRow } = r as typeof r & { recipientStudentIds?: unknown };
+      return [{ ...safeRow, forMyChildren }];
     });
   }
 }
