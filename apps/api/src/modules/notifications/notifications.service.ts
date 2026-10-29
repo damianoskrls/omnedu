@@ -1,4 +1,5 @@
 import { BadGatewayException, HttpException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Role } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { StorageService } from '../../common/storage/storage.service';
@@ -843,14 +844,14 @@ export class NotificationsService implements OnModuleInit {
       return ids;
     }
 
-    const roleFilter = data.targetType === 'teachers'
-      ? { role: { in: ['teacher', 'school_admin', 'owner'] } }
+    const roles: Role[] = data.targetType === 'teachers'
+      ? [Role.teacher, Role.school_admin, Role.owner]
       : data.targetType === 'parents'
-        ? { role: 'parent' as const }
-        : { role: { in: ['teacher', 'school_admin', 'owner', 'parent'] } };
+        ? [Role.parent]
+        : [Role.teacher, Role.school_admin, Role.owner, Role.parent];
 
     const members = await this.prisma.schoolMember.findMany({
-      where: { schoolId, isActive: true, ...roleFilter },
+      where: { schoolId, isActive: true, role: { in: roles } },
       select: { userId: true },
     });
     const ids = new Set(members.map((m) => m.userId));
