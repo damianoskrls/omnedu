@@ -41,10 +41,10 @@ export default function RegulationsPage() {
       const list = Array.isArray(rows) ? rows : [];
       const labels = new Map<string, { label: string; isCurrent?: boolean }>();
       const current = calendarYear();
-      labels.set(current, { label: current, isCurrent: true });
+      labels.set(current, { label: current, isCurrent: false });
       for (const row of list) {
         if (!row?.label) continue;
-        labels.set(row.label, { label: row.label, isCurrent: !!row.isCurrent || labels.get(row.label)?.isCurrent });
+        labels.set(row.label, { label: row.label, isCurrent: !!row.isCurrent });
       }
       const sorted = Array.from(labels.values()).sort((a, b) => b.label.localeCompare(a.label));
       setYears(sorted);
