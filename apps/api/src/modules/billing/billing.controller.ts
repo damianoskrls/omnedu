@@ -1,14 +1,16 @@
-import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, ParseIntPipe, Optional, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, ParseIntPipe, Optional, NotFoundException, StreamableFile } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { BillingService } from './billing.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { StorageService } from '../../common/storage/storage.service';
+
 @ApiTags('billing')
 @ApiBearerAuth('access-token')
 @Controller('schools/:schoolId/billing')
 export class BillingController {
-  constructor(private billing: BillingService) {}
+  constructor(private billing: BillingService, private storage: StorageService) {}
 
   // ── Level fees ──────────────────────────────────────────
 
@@ -218,7 +220,14 @@ export class BillingController {
   async downloadReceipt(@Param('schoolId') schoolId: string, @Param('docId') docId: string, @CurrentUser() user: JwtPayload) {
     const doc = await this.billing.getReceiptForUser(docId, schoolId, user.sub);
     if (!doc?.fileUrl) throw new NotFoundException('Δεν βρέθηκε αρχείο για αυτή την απόδειξη.');
-    return { url: doc.fileUrl };
+    const bytes = await this.storage.fetchFile(doc.fileUrl);
+    const mime = doc.fileType?.startsWith('image/') ? doc.fileType : 'application/pdf';
+    const ext = mime === 'application/pdf' ? 'pdf' : mime.split('/')[1] || 'bin';
+    const safeId = docId.replace(/[^a-zA-Z0-9_-]/g, '');
+    return new StreamableFile(bytes, {
+      type: mime,
+      disposition: `attachment; filename="receipt-${safeId}.${ext}"`,
+    });
   }
 
   @Get('invoices/mine')

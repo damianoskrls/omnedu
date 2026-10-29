@@ -311,7 +311,7 @@ export class BillingService implements OnModuleInit {
     });
     return this.prisma.studentDocument.findFirst({
       where: { id: docId, schoolId, studentId: { in: children.map((c) => c.id) }, category: 'receipt' },
-      select: { id: true, fileUrl: true },
+      select: { id: true, fileUrl: true, fileType: true },
     });
   }
 

@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api/api_client.dart';
 
@@ -123,26 +122,29 @@ class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
     setState(() => _downloading = true);
     try {
       final dioClient = ref.read(dioProvider);
-      final resp = await dioClient.get('/schools/${widget.schoolId}/billing/receipts/$docId/download');
-      final url = resp.data['url']?.toString() ?? '';
-      if (url.isEmpty) {
-        if (mounted) _say(context, 'Η απόδειξη δεν έχει αρχείο.');
+      final dir = await getTemporaryDirectory();
+      final fileType = widget.receipt['fileType']?.toString() ?? '';
+      final ext = _receiptExt(fileType);
+      final filePath = '${dir.path}/receipt_${docId.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}.$ext';
+      // API streams the file bytes (fetches Cloudinary server-side) so the phone
+      // never hits a private/restricted Cloudinary URL directly.
+      await dioClient.download(
+        '/schools/${widget.schoolId}/billing/receipts/$docId/download',
+        filePath,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      if (!mounted) return;
+      final file = File(filePath);
+      if (!await file.exists() || await file.length() == 0) {
+        if (!mounted) return;
+        _say(context, 'Η απόδειξη δεν έχει αρχείο.');
         return;
       }
       if (!mounted) return;
-
-      final dir = await getTemporaryDirectory();
-      final filePath = '${dir.path}/receipt_${docId.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}.pdf';
-      final downloader = Dio();
-      await downloader.download(url, filePath);
-      if (!mounted) return;
-      final file = File(filePath);
-      if (await file.exists()) {
-        final result = await OpenFilex.open(filePath);
-        if (result.type == ResultType.done) return;
+      final result = await OpenFilex.open(filePath);
+      if (result.type != ResultType.done && mounted) {
+        _say(context, 'Το αρχείο αποθηκεύτηκε, αλλά δεν άνοιξε.');
       }
-      final uri = Uri.tryParse(url);
-      if (uri != null && mounted) await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {
       if (mounted) _say(context, 'Σφάλμα κατά το κατέβασμα.');
     } finally {
@@ -198,6 +200,23 @@ class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
   }
 }
 
+String _receiptExt(String fileType) {
+  if (!fileType.startsWith('image/')) return 'pdf';
+  final parts = fileType.split('/');
+  final raw = parts.length > 1 ? parts[1].split(';').first.split('+').first : '';
+  switch (raw) {
+    case 'jpeg':
+    case 'jpg':
+      return 'jpg';
+    case 'png':
+    case 'webp':
+    case 'gif':
+      return raw;
+    default:
+      return 'jpg';
+  }
+}
+
 String _receiptDate(String? iso) {
   final date = DateTime.tryParse(iso ?? '');
   if (date == null) return '';
@@ -205,33 +224,6 @@ String _receiptDate(String? iso) {
   final day = local.day.toString().padLeft(2, '0');
   final month = local.month.toString().padLeft(2, '0');
   return '$day/$month/${local.year}';
-}
-
-Future<void> downloadReceipt(BuildContext context, String url, String title) async {
-  final resolved = fixMediaUrl(url);
-  if (resolved.isEmpty) {
-    _say(context, 'Η απόδειξη δεν έχει αρχείο.');
-    return;
-  }
-  try {
-    final dir = await getTemporaryDirectory();
-    final safe = title.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
-    final filePath = '${dir.path}/receipt_$safe.pdf';
-    final downloader = Dio();
-    await downloader.download(resolved, filePath);
-    final file = File(filePath);
-    if (await file.exists()) {
-      final result = await OpenFilex.open(filePath);
-      if (result.type == ResultType.done) return;
-    }
-  } catch (_) {}
-  if (!context.mounted) return;
-  final uri = Uri.tryParse(resolved);
-  if (uri == null) { _say(context, 'Μη έγκυρο αρχείο.'); return; }
-  final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-  if (!ok && context.mounted) {
-    _say(context, 'Δεν ήταν δυνατό το άνοιγμα της απόδειξης.');
-  }
 }
 
 void _say(BuildContext context, String message) {
