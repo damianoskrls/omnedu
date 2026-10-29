@@ -498,41 +498,71 @@ export class NotificationsService implements OnModuleInit {
       const logoUrl = (school as any)?.logoUrl ?? null;
       // Prefer raw upload buffers from the request (reliable). Fall back to Cloudinary URLs.
       const attachments = await this.buildEmailAttachments(inlineAttachments, data);
-      // Attachments only — no in-body "Άνοιγμα PDF" button (Cloudinary links often fail in mail clients).
+      // Resend batch endpoint silently drops attachments — use emails.send when files exist.
+      const resendAttachments = attachments.map((file) => ({
+        filename: file.filename,
+        content: file.content.toString('base64'),
+        contentType: 'application/pdf',
+      }));
       const html = this.buildEmailHtml({
         schoolName,
         logoUrl,
         title: data.title,
         body: data.body,
         imageUrl: data.imageUrl,
-        attachmentCount: attachments.length,
+        attachmentCount: resendAttachments.length,
       });
 
-      // Smaller batches when carrying PDF bytes so Resend payloads stay manageable.
-      const BATCH_SIZE = attachments.length ? 20 : 100;
       let sent = 0;
-      for (let i = 0; i < uniqueEmails.length; i += BATCH_SIZE) {
-        const batch = uniqueEmails.slice(i, i + BATCH_SIZE);
-        try {
-          const messages = batch.map(to => ({
-            from: fromEmail,
-            to,
-            subject: data.title,
-            html,
-            ...(attachments.length ? { attachments } : {}),
+      if (resendAttachments.length > 0) {
+        const CONCURRENCY = 5;
+        for (let i = 0; i < uniqueEmails.length; i += CONCURRENCY) {
+          const chunk = uniqueEmails.slice(i, i + CONCURRENCY);
+          const results = await Promise.all(chunk.map(async (to) => {
+            try {
+              const result = await this.resendClient!.emails.send({
+                from: fromEmail,
+                to,
+                subject: data.title,
+                html,
+                attachments: resendAttachments,
+              });
+              if (result.error) {
+                this.logger.error(`[EMAIL] Resend send error to ${to}: ${JSON.stringify(result.error)}`);
+                return false;
+              }
+              return true;
+            } catch (e) {
+              this.logger.error(`[EMAIL] Resend send exception to ${to}`, e);
+              return false;
+            }
           }));
-          const result = await this.resendClient!.batch.send(messages);
-          if (result.error) {
-            this.logger.error(`[EMAIL] Resend API error (${i}–${i + batch.length}): ${JSON.stringify(result.error)}`);
-          } else {
-            sent += batch.length;
+          sent += results.filter(Boolean).length;
+        }
+      } else {
+        const BATCH_SIZE = 100;
+        for (let i = 0; i < uniqueEmails.length; i += BATCH_SIZE) {
+          const batch = uniqueEmails.slice(i, i + BATCH_SIZE);
+          try {
+            const messages = batch.map((to) => ({
+              from: fromEmail,
+              to,
+              subject: data.title,
+              html,
+            }));
+            const result = await this.resendClient!.batch.send(messages);
+            if (result.error) {
+              this.logger.error(`[EMAIL] Resend API error (${i}–${i + batch.length}): ${JSON.stringify(result.error)}`);
+            } else {
+              sent += batch.length;
+            }
+          } catch (e) {
+            this.logger.error(`[EMAIL] Resend batch exception (${i}–${i + batch.length})`, e);
           }
-        } catch (e) {
-          this.logger.error(`[EMAIL] Resend batch exception (${i}–${i + batch.length})`, e);
         }
       }
 
-      this.logger.log(`[EMAIL] Sent "${data.title}" to ${sent} recipients via Resend (${attachments.length} PDF attachment(s))`);
+      this.logger.log(`[EMAIL] Sent "${data.title}" to ${sent} recipients via Resend (${resendAttachments.length} PDF attachment(s))`);
       return sent;
     } catch (e) {
       if (e instanceof HttpException) throw e;
