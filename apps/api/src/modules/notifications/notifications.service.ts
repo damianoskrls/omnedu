@@ -4,6 +4,8 @@ import { ConfigService } from '@nestjs/config';
 import { StorageService } from '../../common/storage/storage.service';
 import * as admin from 'firebase-admin';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import { join } from 'path';
 import { Resend } from 'resend';
 
 const parentPushEvents = new Set([
@@ -495,74 +497,60 @@ export class NotificationsService implements OnModuleInit {
       }
 
       const schoolName = school?.name ?? 'Σχολείο';
-      const logoUrl = (school as any)?.logoUrl ?? null;
       // Prefer raw upload buffers from the request (reliable). Fall back to Cloudinary URLs.
       const attachments = await this.buildEmailAttachments(inlineAttachments, data);
-      // Resend batch endpoint silently drops attachments — use emails.send when files exist.
-      const resendAttachments = attachments.map((file) => ({
+      const pdfAttachments = attachments.map((file) => ({
         filename: file.filename,
         content: file.content.toString('base64'),
-        contentType: 'application/pdf',
       }));
+      // Embed brand logo inline via CID so Gmail always shows it on the white template.
+      const brandLogo = this.loadBrandLogo();
+      const logoCid = 'oneirochora-logo';
       const html = this.buildEmailHtml({
         schoolName,
-        logoUrl,
+        logoUrl: brandLogo ? `cid:${logoCid}` : this.brandLogoUrl(),
         title: data.title,
         body: data.body,
         imageUrl: data.imageUrl,
-        attachmentCount: resendAttachments.length,
+        attachmentCount: pdfAttachments.length,
       });
+      const logoAttachment = brandLogo
+        ? [{
+            filename: 'oneirochora-logo.png',
+            content: brandLogo.content.toString('base64'),
+            contentId: logoCid,
+          }]
+        : [];
 
+      // emails.send required for CID logo and/or PDF attachments (batch cannot carry them).
+      const mailAttachments = [...logoAttachment, ...pdfAttachments];
+      const CONCURRENCY = 5;
       let sent = 0;
-      if (resendAttachments.length > 0) {
-        const CONCURRENCY = 5;
-        for (let i = 0; i < uniqueEmails.length; i += CONCURRENCY) {
-          const chunk = uniqueEmails.slice(i, i + CONCURRENCY);
-          const results = await Promise.all(chunk.map(async (to) => {
-            try {
-              const result = await this.resendClient!.emails.send({
-                from: fromEmail,
-                to,
-                subject: data.title,
-                html,
-                attachments: resendAttachments,
-              });
-              if (result.error) {
-                this.logger.error(`[EMAIL] Resend send error to ${to}: ${JSON.stringify(result.error)}`);
-                return false;
-              }
-              return true;
-            } catch (e) {
-              this.logger.error(`[EMAIL] Resend send exception to ${to}`, e);
-              return false;
-            }
-          }));
-          sent += results.filter(Boolean).length;
-        }
-      } else {
-        const BATCH_SIZE = 100;
-        for (let i = 0; i < uniqueEmails.length; i += BATCH_SIZE) {
-          const batch = uniqueEmails.slice(i, i + BATCH_SIZE);
+      for (let i = 0; i < uniqueEmails.length; i += CONCURRENCY) {
+        const chunk = uniqueEmails.slice(i, i + CONCURRENCY);
+        const results = await Promise.all(chunk.map(async (to) => {
           try {
-            const messages = batch.map((to) => ({
+            const result = await this.resendClient!.emails.send({
               from: fromEmail,
               to,
               subject: data.title,
               html,
-            }));
-            const result = await this.resendClient!.batch.send(messages);
+              ...(mailAttachments.length ? { attachments: mailAttachments } : {}),
+            });
             if (result.error) {
-              this.logger.error(`[EMAIL] Resend API error (${i}–${i + batch.length}): ${JSON.stringify(result.error)}`);
-            } else {
-              sent += batch.length;
+              this.logger.error(`[EMAIL] Resend send error to ${to}: ${JSON.stringify(result.error)}`);
+              return false;
             }
+            return true;
           } catch (e) {
-            this.logger.error(`[EMAIL] Resend batch exception (${i}–${i + batch.length})`, e);
+            this.logger.error(`[EMAIL] Resend send exception to ${to}`, e);
+            return false;
           }
-        }
+        }));
+        sent += results.filter(Boolean).length;
       }
 
-      this.logger.log(`[EMAIL] Sent "${data.title}" to ${sent} recipients via Resend (${resendAttachments.length} PDF attachment(s))`);
+      this.logger.log(`[EMAIL] Sent "${data.title}" to ${sent} recipients via Resend (${pdfAttachments.length} PDF attachment(s))`);
       return sent;
     } catch (e) {
       if (e instanceof HttpException) throw e;
@@ -669,6 +657,36 @@ export class NotificationsService implements OnModuleInit {
     return `attachment-${index + 1}.pdf`;
   }
 
+  private brandLogoUrl(): string {
+    const frontend = (this.config.get<string>('app.frontendUrl') || 'https://omnedu.vercel.app').replace(/\/$/, '');
+    return `${frontend}/oneirochora-logo.png`;
+  }
+
+  private loadBrandLogo(): { content: Buffer } | null {
+    const candidates = [
+      join(__dirname, '..', '..', 'assets', 'oneirochora-logo.png'),
+      join(process.cwd(), 'dist', 'assets', 'oneirochora-logo.png'),
+      join(process.cwd(), 'src', 'assets', 'oneirochora-logo.png'),
+    ];
+    for (const path of candidates) {
+      try {
+        if (fs.existsSync(path)) return { content: fs.readFileSync(path) };
+      } catch {
+        // try next
+      }
+    }
+    this.logger.warn('[EMAIL] Brand logo missing on disk — using hosted URL fallback');
+    return null;
+  }
+
+  private escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
   private buildEmailHtml(opts: {
     schoolName: string;
     logoUrl: string | null;
@@ -677,43 +695,68 @@ export class NotificationsService implements OnModuleInit {
     imageUrl?: string;
     attachmentCount?: number;
   }): string {
-    const headerContent = opts.logoUrl
-      ? `<img src="${opts.logoUrl}" alt="${opts.schoolName}" style="height:56px;max-width:200px;object-fit:contain;display:block;margin:0 auto;" />`
-      : `<h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.3px;">${opts.schoolName}</h1>`;
-    const bodyHtml = opts.body
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/\n/g, '<br>');
+    const safeTitle = this.escapeHtml(opts.title);
+    const safeSchool = this.escapeHtml(opts.schoolName);
+    const logoSrc = opts.logoUrl || this.brandLogoUrl();
+    const headerContent = `<img src="${logoSrc}" alt="${safeSchool}" width="220" style="height:auto;width:220px;max-width:80%;border:0;display:block;margin:0 auto;" />`;
+    const bodyHtml = this.escapeHtml(opts.body).replace(/\n/g, '<br>');
     const imageBlock = opts.imageUrl
-      ? `<div style="margin-bottom:20px;"><img src="${opts.imageUrl}" alt="" style="width:100%;max-width:100%;border-radius:8px;display:block;" /></div>`
+      ? `<div style="margin:0 0 24px;"><img src="${opts.imageUrl}" alt="" width="536" style="width:100%;max-width:100%;height:auto;border:0;border-radius:12px;display:block;" /></div>`
       : '';
     const count = opts.attachmentCount ?? 0;
     const attachNote = count > 0
-      ? `<p style="margin:20px 0 0;color:#6b7280;font-size:13px;line-height:1.5;">📎 ${count === 1 ? 'Το PDF επισυνάπτεται σε αυτό το email.' : `Επισυνάπτονται ${count} PDF σε αυτό το email.`}</p>`
+      ? `<div style="margin-top:28px;padding:14px 16px;background:#faf7fc;border:1px solid #edd8f5;border-radius:10px;">
+          <p style="margin:0;color:#5b21b6;font-size:13px;line-height:1.5;">
+            📎 ${count === 1
+              ? 'Το PDF βρίσκεται συνημμένο κάτω από αυτό το μήνυμα.'
+              : `Τα ${count} PDF βρίσκονται συνημμένα κάτω από αυτό το μήνυμα.`}
+          </p>
+        </div>`
       : '';
     return `<!DOCTYPE html>
 <html lang="el">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${opts.title}</title>
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <title>${safeTitle}</title>
 </head>
-<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-  <div style="max-width:600px;margin:32px auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
-    <div style="background:#642678;padding:28px 32px;text-align:center;">
-      ${headerContent}
-    </div>
-    <div style="padding:28px 32px;">
-      ${imageBlock}
-      <h2 style="margin:0 0 16px;font-size:18px;font-weight:600;color:#111827;">${opts.title}</h2>
-      <p style="margin:0;color:#374151;font-size:15px;line-height:1.65;">${bodyHtml}</p>
-      ${attachNote}
-    </div>
-    <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 32px;text-align:center;">
-      <p style="margin:0;color:#9ca3af;font-size:12px;">${opts.schoolName}</p>
-    </div>
-  </div>
+<body style="margin:0;padding:0;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#ffffff;">
+    <tr>
+      <td align="center" style="padding:28px 16px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:100%;max-width:600px;background:#ffffff;">
+          <tr>
+            <td align="center" style="padding:8px 24px 28px;">
+              ${headerContent}
+            </td>
+          </tr>
+          <tr>
+            <td style="height:1px;background:#f0e6f5;font-size:0;line-height:0;">&nbsp;</td>
+          </tr>
+          <tr>
+            <td style="padding:28px 24px 8px;">
+              ${imageBlock}
+              <h1 style="margin:0 0 12px;font-size:22px;line-height:1.35;font-weight:700;color:#1f1235;">${safeTitle}</h1>
+              <p style="margin:0;color:#3f3a47;font-size:16px;line-height:1.7;">${bodyHtml}</p>
+              ${attachNote}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px 24px 8px;">
+              <div style="height:1px;background:#f0e6f5;font-size:0;line-height:0;">&nbsp;</div>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:16px 24px 8px;">
+              <p style="margin:0;color:#9b8aa8;font-size:12px;line-height:1.5;">${safeSchool}</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>`;
   }
