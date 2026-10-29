@@ -1,8 +1,11 @@
 'use client';
 
+import { useRef, useState } from 'react';
+import { FileText } from 'lucide-react';
 import { PaymentDetailsLink } from '@/components/PaymentDetailsLink';
 
 const MONTHS = ['', 'Ιανουάριος', 'Φεβρουάριος', 'Μάρτιος', 'Απρίλιος', 'Μάιος', 'Ιούνιος', 'Ιούλιος', 'Αύγουστος', 'Σεπτέμβριος', 'Οκτώβριος', 'Νοέμβριος', 'Δεκέμβριος'];
+const MONTHS_GEN = ['', 'Ιανουαρίου', 'Φεβρουαρίου', 'Μαρτίου', 'Απριλίου', 'Μαΐου', 'Ιουνίου', 'Ιουλίου', 'Αυγούστου', 'Σεπτεμβρίου', 'Οκτωβρίου', 'Νοεμβρίου', 'Δεκεμβρίου'];
 
 const money = (value: number) => `€${Math.abs(value).toFixed(2)}`;
 
@@ -21,6 +24,8 @@ export function StudentStatement({
   onPayMonth,
   onUndoMonth,
   onPayExtra,
+  receipts = [],
+  onUploadReceipt,
 }: {
   statement: any;
   isAdmin: boolean;
@@ -28,12 +33,49 @@ export function StudentStatement({
   onPayMonth: (chargeId: string, amount: number) => void;
   onUndoMonth: (chargeId: string) => void;
   onPayExtra: (extra: any) => void;
+  receipts?: any[];
+  onUploadReceipt?: (file: File, month: number, year: number, title: string) => Promise<void>;
 }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [pendingUpload, setPendingUpload] = useState<{ month: number; year: number } | null>(null);
+  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+
+  function monthKey(month: number, year: number) {
+    return `${year}-${String(month).padStart(2, '0')}`;
+  }
+
+  function receiptFor(month: number, year: number) {
+    const key = monthKey(month, year);
+    return receipts.filter(r => r.academicYear === key && r.category === 'receipt').sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())[0];
+  }
+
+  function triggerUpload(month: number, year: number) {
+    setPendingUpload({ month, year });
+    fileRef.current?.click();
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !pendingUpload || !onUploadReceipt) return;
+    const { month, year } = pendingUpload;
+    const key = monthKey(month, year);
+    const title = `Απόδειξη ${MONTHS_GEN[month]} ${year}`;
+    setUploadingKey(key);
+    try {
+      await onUploadReceipt(file, month, year, title);
+    } finally {
+      setUploadingKey(null);
+      setPendingUpload(null);
+    }
+  }
+
   const current = statement.current;
   const owed = Number(statement.pendingNow ?? 0);
 
   return (
     <div className="space-y-4">
+      <input ref={fileRef} type="file" accept="application/pdf,image/*" className="hidden" onChange={handleFileChange} />
       <div className={`rounded-2xl px-5 py-4 text-white ${owed > 0 ? 'bg-[#77328D]' : 'bg-emerald-600'}`}>
         <p className="text-sm text-white/80">Σύνολο που εκκρεμεί τώρα</p>
         <p className="text-3xl font-extrabold tracking-tight">{owed > 0 ? money(owed) : 'Τίποτα'}</p>
@@ -57,6 +99,12 @@ export function StudentStatement({
                   <PaymentDetailsLink notes={current.notes} paidAt={current.paidAt} />
                 </div>
               )}
+              <ReceiptBadge
+                receipt={receiptFor(current.month, current.year)}
+                uploading={uploadingKey === monthKey(current.month, current.year)}
+                showUpload={isAdmin && (current.status === 'paid' || current.status === 'partial')}
+                onUpload={() => triggerUpload(current.month, current.year)}
+              />
             </div>
           </div>
           <LineList lines={current.lines} />
@@ -137,6 +185,12 @@ export function StudentStatement({
                     {isAdmin && month.chargeId && month.status === 'paid' && Number(month.totalDue) > 0 && (
                       <button onClick={() => onUndoMonth(month.chargeId)} className="block ml-auto mt-2 text-xs text-gray-400">Αναίρεση</button>
                     )}
+                    <ReceiptBadge
+                      receipt={receiptFor(month.month, month.year)}
+                      uploading={uploadingKey === monthKey(month.month, month.year)}
+                      showUpload={isAdmin && (month.status === 'paid' || month.status === 'partial') && !quiet}
+                      onUpload={() => triggerUpload(month.month, month.year)}
+                    />
                   </div>
                 </div>
               </div>
@@ -161,6 +215,41 @@ function LineList({ lines, compact }: { lines?: { label: string; amount: number 
         </li>
       ))}
     </ul>
+  );
+}
+
+function ReceiptBadge({ receipt, uploading, showUpload, onUpload }: {
+  receipt?: any;
+  uploading: boolean;
+  showUpload: boolean;
+  onUpload: () => void;
+}) {
+  if (uploading) {
+    return <p className="mt-1 text-xs text-gray-400 text-right">Ανέβασμα...</p>;
+  }
+  if (receipt) {
+    return (
+      <a
+        href={receipt.fileUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-1 flex items-center justify-end gap-1 text-xs text-emerald-700 font-medium hover:underline"
+      >
+        <FileText className="h-3 w-3" />
+        Απόδειξη ✓
+      </a>
+    );
+  }
+  if (!showUpload) return null;
+  return (
+    <button
+      type="button"
+      onClick={onUpload}
+      className="mt-1 flex items-center justify-end gap-1 text-xs text-gray-400 hover:text-[#77328D] ml-auto"
+    >
+      <FileText className="h-3 w-3" />
+      Ανέβασε απόδειξη
+    </button>
   );
 }
 

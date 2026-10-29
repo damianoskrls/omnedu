@@ -126,6 +126,7 @@ export default function StudentProfilePage() {
   const [savingQuestionnaire, setSavingQuestionnaire] = useState(false);
   const [charges, setCharges] = useState<any[]>([]);
   const [statement, setStatement] = useState<any>(null);
+  const [studentReceipts, setStudentReceipts] = useState<any[]>([]);
   const [oneTimeCharges, setOneTimeCharges] = useState<any[]>([]);
   const [chargesLoading, setChargesLoading] = useState(false);
   const [subsidies, setSubsidies] = useState<any[]>([]);
@@ -227,7 +228,7 @@ export default function StudentProfilePage() {
     const job = (async () => {
     setChargesLoading(true);
     try {
-      const [ch, subs, otc, lf, fee, card, freshStudent, cls]: any = await Promise.all([
+      const [ch, subs, otc, lf, fee, card, freshStudent, cls, docs]: any = await Promise.all([
         billingApi.getStudentCharges(schoolId, id).catch(() => []),
         billingApi.getSubsidies(schoolId, id).catch(() => []),
         billingApi.getOneTimeCharges(schoolId, { studentId: id }).catch(() => []),
@@ -236,6 +237,7 @@ export default function StudentProfilePage() {
         billingApi.getStudentStatement(schoolId, id).catch(() => null),
         studentsApi.get(schoolId, id).catch(() => null),
         classesApi.list(schoolId).catch(() => []),
+        studentsApi.getDocuments(schoolId, id).catch(() => []),
       ]);
       const monthly = Array.isArray(ch) ? ch : [];
       const subsidyRows = Array.isArray(subs) ? subs : [];
@@ -254,6 +256,7 @@ export default function StudentProfilePage() {
       setLevelFees(feeRows);
       setFeeOverride(override);
       setStatement(card && Array.isArray(card.months) ? card : null);
+      setStudentReceipts(Array.isArray(docs) ? (docs as any[]).filter((d: any) => d.category === 'receipt') : []);
     } finally {
       setChargesLoading(false);
     }
@@ -1953,6 +1956,17 @@ export default function StudentProfilePage() {
                 statement={statement}
                 isAdmin={isAdmin}
                 saving={markingEventPayment !== null}
+                receipts={studentReceipts}
+                onUploadReceipt={async (file, month, year, title) => {
+                  const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+                  await studentsApi.uploadDocument(schoolId, id, file, {
+                    title,
+                    category: 'receipt',
+                    academicYear: monthKey,
+                  });
+                  const docs: any = await studentsApi.getDocuments(schoolId, id).catch(() => []);
+                  setStudentReceipts(Array.isArray(docs) ? (docs as any[]).filter((d: any) => d.category === 'receipt') : []);
+                }}
                 onPayMonth={(chargeId, amount) => {
                   const charge = charges.find((row: any) => row.id === chargeId) ?? { id: chargeId, paidAmount: 0, notes: '' };
                   recordMonthPayment(charge, amount, 'Μηνιαία χρέωση');
