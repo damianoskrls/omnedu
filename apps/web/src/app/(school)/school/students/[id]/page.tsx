@@ -3151,10 +3151,8 @@ export default function StudentProfilePage() {
                   setUnlinkingSibling(true);
                   try {
                     await studentsApi.unlinkSibling(schoolId, id, unlinkSiblingTarget.id);
-                    setStudent((prev: any) => prev ? {
-                      ...prev,
-                      siblings: (prev.siblings || []).filter((sib: any) => sib.id !== unlinkSiblingTarget.id),
-                    } : prev);
+                    const fresh: any = await studentsApi.get(schoolId, id);
+                    setStudent(fresh);
                     setUnlinkSiblingTarget(null);
                   } catch {
                     alert('Αποτυχία αφαίρεσης σύνδεσης. Δοκιμάστε ξανά.');
