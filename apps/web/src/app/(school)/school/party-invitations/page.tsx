@@ -45,19 +45,27 @@ export default function PartyInvitationsPage() {
 
   useEffect(() => {
     if (!schoolId) return;
-    Promise.allSettled([
-      partyInvitationsApi.list(schoolId),
-      studentsApi.list(schoolId),
-      classesApi.list(schoolId),
-    ]).then(([invRes, stuRes, clsRes]) => {
+    let cancelled = false;
+    async function load() {
+      const [invRes, stuRes, yearsRes] = await Promise.allSettled([
+        partyInvitationsApi.list(schoolId),
+        studentsApi.list(schoolId),
+        classesApi.academicYears(schoolId),
+      ]);
       const inv = invRes.status === 'fulfilled' ? invRes.value : [];
       const stu = stuRes.status === 'fulfilled' ? stuRes.value : [];
-      const cls = clsRes.status === 'fulfilled' ? clsRes.value : [];
-      setInvitations(Array.isArray(inv) ? inv : []);
-      setAllStudents(Array.isArray(stu) ? (stu as any[]).filter((s: any) => s.isActive !== false) : []);
-      setClasses(Array.isArray(cls) ? cls : []);
-      setLoading(false);
-    });
+      const years = yearsRes.status === 'fulfilled' ? (yearsRes.value as any[]) : [];
+      const currentYear = Array.isArray(years) ? years.find((y: any) => y.isCurrent) : null;
+      const cls = await classesApi.list(schoolId, currentYear?.id).catch(() => []);
+      if (!cancelled) {
+        setInvitations(Array.isArray(inv) ? inv : []);
+        setAllStudents(Array.isArray(stu) ? (stu as any[]).filter((s: any) => s.isActive !== false) : []);
+        setClasses(Array.isArray(cls) ? cls : []);
+        setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
   }, [schoolId]);
 
   const studentsInClass = selectedClassId
