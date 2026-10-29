@@ -28,6 +28,7 @@ export function StudentStatement({
   onUploadReceipt,
   onDownloadReceipt,
   onDeleteReceipt,
+  onRequestSystemReceipt,
 }: {
   statement: any;
   isAdmin: boolean;
@@ -39,6 +40,7 @@ export function StudentStatement({
   onUploadReceipt?: (file: File, month: number, year: number, title: string) => Promise<void>;
   onDownloadReceipt?: (docId: string) => void;
   onDeleteReceipt?: (docId: string) => Promise<void>;
+  onRequestSystemReceipt?: (month: number, year: number, notes?: string | null) => Promise<void>;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [pendingUpload, setPendingUpload] = useState<{ month: number; year: number } | null>(null);
@@ -100,7 +102,14 @@ export function StudentStatement({
               </span>
               {(current.status === 'paid' || current.status === 'partial') && Number(current.totalDue) > 0 && (
                 <div className="mt-1 flex justify-end">
-                  <PaymentDetailsLink notes={current.notes} paidAt={current.paidAt} />
+                  <PaymentDetailsLink
+                    notes={current.notes}
+                    paidAt={current.paidAt}
+                    receipt={receiptFor(current.month, current.year)}
+                    onDownloadReceipt={onDownloadReceipt}
+                    onUploadReceipt={isAdmin ? () => triggerUpload(current.month, current.year) : undefined}
+                    onRequestSystemReceipt={isAdmin && onRequestSystemReceipt ? () => onRequestSystemReceipt(current.month, current.year, current.notes) : undefined}
+                  />
                 </div>
               )}
               <ReceiptBadge
@@ -182,7 +191,14 @@ export function StudentStatement({
                     <span className={`inline-block mt-1 text-xs font-semibold px-2 py-0.5 rounded-full ${badge.className}`}>{badge.text}</span>
                     {(month.status === 'paid' || month.status === 'partial') && Number(month.totalDue) > 0 && (
                       <div className="mt-1 flex justify-end">
-                        <PaymentDetailsLink notes={month.notes} paidAt={month.paidAt} />
+                        <PaymentDetailsLink
+                          notes={month.notes}
+                          paidAt={month.paidAt}
+                          receipt={receiptFor(month.month, month.year)}
+                          onDownloadReceipt={onDownloadReceipt}
+                          onUploadReceipt={isAdmin && !quiet ? () => triggerUpload(month.month, month.year) : undefined}
+                          onRequestSystemReceipt={isAdmin && !quiet && onRequestSystemReceipt ? () => onRequestSystemReceipt(month.month, month.year, month.notes) : undefined}
+                        />
                       </div>
                     )}
                     {isAdmin && month.chargeId && month.status !== 'paid' && month.status !== 'upcoming' && (

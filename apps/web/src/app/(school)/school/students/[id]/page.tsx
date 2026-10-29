@@ -6,7 +6,8 @@ import dynamic from 'next/dynamic';
 import { studentsApi, billingApi, classesApi, activitiesApi, extraServicesApi, medicationRequestsApi, studentFormsApi, broadcastsApi, schoolEventsApi, questionnairesApi, parentsApi } from '@/lib/api';
 import { StudentStatement } from './student-statement';
 import { buildStudentQuoteInput, chargeMatchesQuote, currentMonthKey, findStationeryCharge, isOpenMonth, quoteStudentMonth, schoolYearMonths, schoolYearOf } from '@/lib/month-quote';
-import { noteWithoutPayment, payerOptions, paymentNote, PaymentInfo } from '@/lib/payment-note';
+import { noteWithoutPayment, payerOptions, paymentNote, PaymentInfo, readPaymentRecord } from '@/lib/payment-note';
+import { createReceiptFile } from '@/lib/receipt-pdf';
 import { PaymentConfirmModal, PaymentPrompt } from '@/components/PaymentConfirmModal';
 import { PaymentDetailsLink } from '@/components/PaymentDetailsLink';
 import { useStoredUser } from '@/lib/auth';
@@ -1977,6 +1978,36 @@ export default function StudentProfilePage() {
                 }}
                 onDeleteReceipt={async (docId) => {
                   await studentsApi.deleteDocument(schoolId, id, docId);
+                  const docs: any = await studentsApi.getDocuments(schoolId, id).catch(() => []);
+                  setStudentReceipts(Array.isArray(docs) ? (docs as any[]).filter((d: any) => d.category === 'receipt') : []);
+                }}
+                onRequestSystemReceipt={async (month, year, notes) => {
+                  const MONTHS_GEN = ['', 'Ιανουαρίου', 'Φεβρουαρίου', 'Μαρτίου', 'Απριλίου', 'Μαΐου', 'Ιουνίου', 'Ιουλίου', 'Αυγούστου', 'Σεπτεμβρίου', 'Οκτωβρίου', 'Νοεμβρίου', 'Δεκεμβρίου'];
+                  const record = readPaymentRecord(notes);
+                  let isoDate = new Date().toISOString().slice(0, 10);
+                  if (record?.date) {
+                    const parts = record.date.split('/');
+                    if (parts.length === 3) isoDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                  }
+                  const rawAmt = (record?.amount ?? '').replace('€', '').replace(',', '.').trim();
+                  const receiptAmount = parseFloat(rawAmt) || 0;
+                  const file = await createReceiptFile({
+                    schoolName: window.localStorage.getItem('school_name') || 'Σχολείο',
+                    logoUrl: window.localStorage.getItem('school_logo_url') || undefined,
+                    studentName: student.fullName,
+                    addresseeName: record?.payerName || student.fullName,
+                    payerName: record?.payerName || '',
+                    title: `Μηνιαία χρέωση ${MONTHS_GEN[month]} ${year}`,
+                    paidAt: isoDate,
+                    method: record?.method || 'cash',
+                    receiptAmount,
+                  });
+                  const academicYear = `${year}-${String(month).padStart(2, '0')}`;
+                  await studentsApi.uploadDocument(schoolId, id, file, {
+                    title: `Απόδειξη ${MONTHS_GEN[month]} ${year}`,
+                    category: 'receipt',
+                    academicYear,
+                  });
                   const docs: any = await studentsApi.getDocuments(schoolId, id).catch(() => []);
                   setStudentReceipts(Array.isArray(docs) ? (docs as any[]).filter((d: any) => d.category === 'receipt') : []);
                 }}

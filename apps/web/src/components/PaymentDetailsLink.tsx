@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { FileText } from 'lucide-react';
 import { readPaymentRecord } from '@/lib/payment-note';
 
 function formatPaidAt(value?: string | null) {
@@ -13,11 +14,20 @@ function formatPaidAt(value?: string | null) {
 export function PaymentDetailsLink({
   notes,
   paidAt,
+  receipt,
+  onDownloadReceipt,
+  onUploadReceipt,
+  onRequestSystemReceipt,
 }: {
   notes?: string | null;
   paidAt?: string | null;
+  receipt?: any;
+  onDownloadReceipt?: (docId: string) => void;
+  onUploadReceipt?: () => void;
+  onRequestSystemReceipt?: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
+  const [generatingReceipt, setGeneratingReceipt] = useState(false);
   const record = readPaymentRecord(notes);
   const date = record?.date || formatPaidAt(paidAt);
 
@@ -54,6 +64,52 @@ export function PaymentDetailsLink({
             </dl>
             {!record && !date && (
               <p className="mt-4 text-sm text-gray-500">Η πληρωμή σημειώθηκε χωρίς επιπλέον στοιχεία.</p>
+            )}
+            {(receipt || onUploadReceipt || onRequestSystemReceipt) && (
+              <div className="mt-4 border-t border-gray-100 pt-4">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Απόδειξη</p>
+                {receipt ? (
+                  <button
+                    type="button"
+                    onClick={() => { onDownloadReceipt?.(receipt.id); setOpen(false); }}
+                    className="flex items-center gap-2 text-sm font-semibold text-emerald-700 hover:underline"
+                  >
+                    <FileText className="h-4 w-4" />
+                    Κατέβασε απόδειξη
+                  </button>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-sm text-gray-500">Δεν έχει ανεβεί απόδειξη για αυτή την πληρωμή.</p>
+                    {onUploadReceipt && (
+                      <button
+                        type="button"
+                        onClick={() => { setOpen(false); onUploadReceipt(); }}
+                        className="w-full rounded-lg border border-gray-200 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      >
+                        Ανέβασε από εξωτερικό σύστημα
+                      </button>
+                    )}
+                    {onRequestSystemReceipt && (
+                      <button
+                        type="button"
+                        disabled={generatingReceipt}
+                        onClick={async () => {
+                          setGeneratingReceipt(true);
+                          try {
+                            await onRequestSystemReceipt();
+                            setOpen(false);
+                          } finally {
+                            setGeneratingReceipt(false);
+                          }
+                        }}
+                        className="w-full rounded-lg bg-[#77328D] py-2 text-sm font-semibold text-white disabled:opacity-50"
+                      >
+                        {generatingReceipt ? 'Δημιουργία απόδειξης...' : 'Κόψε από το σύστημα'}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
             <button
               type="button"
