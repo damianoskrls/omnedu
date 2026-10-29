@@ -5,6 +5,7 @@ import { staffApi, classesApi, levelsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
 import { Plus, ChevronRight, GraduationCap } from 'lucide-react';
 import Link from 'next/link';
+import { TeacherAbsencesSection } from '@/components/TeacherAbsencesSection';
 
 const ROLE_LABELS: Record<string, string> = {
   school_admin: 'Διαχειριστής',
@@ -29,6 +30,7 @@ const CONTRACT_LABELS: Record<string, string> = {
 export default function StaffPage() {
   const user = useStoredUser();
   const schoolId = user?.schoolId ?? '';
+  const isAdmin = user?.role === 'school_admin' || user?.role === 'super_admin';
   const [members, setMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -222,6 +224,12 @@ export default function StaffPage() {
           );
         })}
       </div>
+
+      {schoolId && (
+        <div className="mt-10">
+          <TeacherAbsencesSection schoolId={schoolId} isAdmin={isAdmin} />
+        </div>
+      )}
     </div>
   );
 }
