@@ -16,6 +16,10 @@ export default function SchoolSettingsPage() {
   const [savingName, setSavingName] = useState(false);
   const [nameSaved, setNameSaved] = useState(false);
   const [nameError, setNameError] = useState('');
+  const [email, setEmail] = useState('');
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [emailSaved, setEmailSaved] = useState(false);
+  const [emailError, setEmailError] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [repeatPassword, setRepeatPassword] = useState('');
@@ -25,7 +29,8 @@ export default function SchoolSettingsPage() {
 
   useEffect(() => {
     if (user?.fullName) setName(user.fullName);
-  }, [user?.fullName]);
+    if (user?.email) setEmail(user.email);
+  }, [user?.fullName, user?.email]);
 
   const saveName = async () => {
     const fullName = name.trim();
@@ -44,6 +49,30 @@ export default function SchoolSettingsPage() {
       setNameError(messageOf(error) || 'Το όνομα δεν αποθηκεύτηκε.');
     } finally {
       setSavingName(false);
+    }
+  };
+
+  const saveEmail = async () => {
+    const trimmed = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setEmailError('Γράψε ένα έγκυρο email.');
+      return;
+    }
+    if (trimmed === user?.email) {
+      setEmailError('Το email είναι ήδη αυτό.');
+      return;
+    }
+    setSavingEmail(true);
+    setEmailError('');
+    try {
+      const saved = await usersApi.updateMe({ email: trimmed }) as { accessToken?: string; refreshToken?: string };
+      if (saved?.accessToken && saved?.refreshToken) storeTokens(saved.accessToken, saved.refreshToken);
+      setEmailSaved(true);
+      setTimeout(() => setEmailSaved(false), 2000);
+    } catch (error) {
+      setEmailError(messageOf(error) || 'Το email δεν αποθηκεύτηκε.');
+    } finally {
+      setSavingEmail(false);
     }
   };
 
@@ -95,10 +124,6 @@ export default function SchoolSettingsPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Email</label>
-              <div className="px-3 py-2 bg-gray-50 rounded-lg text-sm text-gray-700">{user?.email}</div>
-            </div>
-            <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">Ρόλος</label>
               <div className="px-3 py-2 bg-gray-50 rounded-lg text-sm text-gray-700 capitalize">
                 {user?.role?.replace('_', ' ')}
@@ -113,6 +138,31 @@ export default function SchoolSettingsPage() {
           >
             {nameSaved ? <Check size={15} /> : null}
             {nameSaved ? 'Αποθηκεύτηκε' : savingName ? 'Αποθήκευση...' : 'Αποθήκευση ονόματος'}
+          </button>
+        </section>
+
+        <section className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <User className="h-4 w-4 text-indigo-600" />
+            <h2 className="font-semibold text-gray-800">Email</h2>
+          </div>
+          <div className="max-w-sm">
+            <label className="block text-xs font-medium text-gray-500 mb-1">Διεύθυνση email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          {emailError && <p className="mt-3 text-sm text-red-600">{emailError}</p>}
+          <button
+            onClick={saveEmail}
+            disabled={savingEmail}
+            className="mt-4 flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {emailSaved ? <Check size={15} /> : null}
+            {emailSaved ? 'Αποθηκεύτηκε' : savingEmail ? 'Αποθήκευση...' : 'Αποθήκευση email'}
           </button>
         </section>
 

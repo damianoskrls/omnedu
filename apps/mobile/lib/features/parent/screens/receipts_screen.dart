@@ -1,5 +1,10 @@
+import 'dart:io';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api/api_client.dart';
@@ -120,13 +125,24 @@ class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
       final dioClient = ref.read(dioProvider);
       final resp = await dioClient.get('/schools/${widget.schoolId}/billing/receipts/$docId/download');
       final url = resp.data['url']?.toString() ?? '';
-      if (url.isEmpty) { _say(context, 'Η απόδειξη δεν έχει αρχείο.'); return; }
+      if (url.isEmpty) {
+        if (mounted) _say(context, 'Η απόδειξη δεν έχει αρχείο.');
+        return;
+      }
       if (!mounted) return;
 
+      final dir = await getTemporaryDirectory();
+      final filePath = '${dir.path}/receipt_${docId.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}.pdf';
+      final downloader = Dio();
+      await downloader.download(url, filePath);
+      if (!mounted) return;
+      final file = File(filePath);
+      if (await file.exists()) {
+        final result = await OpenFilex.open(filePath);
+        if (result.type == ResultType.done) return;
+      }
       final uri = Uri.tryParse(url);
-      if (uri == null || !mounted) return;
-      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!opened && mounted) _say(context, 'Δεν ήταν δυνατό το άνοιγμα του αρχείου.');
+      if (uri != null && mounted) await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {
       if (mounted) _say(context, 'Σφάλμα κατά το κατέβασμα.');
     } finally {
@@ -197,11 +213,21 @@ Future<void> downloadReceipt(BuildContext context, String url, String title) asy
     _say(context, 'Η απόδειξη δεν έχει αρχείο.');
     return;
   }
+  try {
+    final dir = await getTemporaryDirectory();
+    final safe = title.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
+    final filePath = '${dir.path}/receipt_$safe.pdf';
+    final downloader = Dio();
+    await downloader.download(resolved, filePath);
+    final file = File(filePath);
+    if (await file.exists()) {
+      final result = await OpenFilex.open(filePath);
+      if (result.type == ResultType.done) return;
+    }
+  } catch (_) {}
+  if (!context.mounted) return;
   final uri = Uri.tryParse(resolved);
-  if (uri == null) {
-    _say(context, 'Μη έγκυρο αρχείο.');
-    return;
-  }
+  if (uri == null) { _say(context, 'Μη έγκυρο αρχείο.'); return; }
   final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
   if (!ok && context.mounted) {
     _say(context, 'Δεν ήταν δυνατό το άνοιγμα της απόδειξης.');

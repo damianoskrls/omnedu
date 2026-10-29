@@ -4,13 +4,11 @@ import { BillingService } from './billing.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { StorageService } from '../../common/storage/storage.service';
-
 @ApiTags('billing')
 @ApiBearerAuth('access-token')
 @Controller('schools/:schoolId/billing')
 export class BillingController {
-  constructor(private billing: BillingService, private storage: StorageService) {}
+  constructor(private billing: BillingService) {}
 
   // ── Level fees ──────────────────────────────────────────
 
@@ -220,8 +218,7 @@ export class BillingController {
   async downloadReceipt(@Param('schoolId') schoolId: string, @Param('docId') docId: string, @CurrentUser() user: JwtPayload) {
     const doc = await this.billing.getReceiptForUser(docId, schoolId, user.sub);
     if (!doc?.fileUrl) throw new NotFoundException('Δεν βρέθηκε αρχείο για αυτή την απόδειξη.');
-    const url = this.storage.generateSignedDownloadUrl(doc.fileUrl);
-    return { url };
+    return { url: doc.fileUrl };
   }
 
   @Get('invoices/mine')
