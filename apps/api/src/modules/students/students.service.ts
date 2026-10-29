@@ -222,27 +222,10 @@ export class StudentsService {
       throw new ForbiddenException('Μπορείτε να δείτε μόνο τα δικά σας παιδιά.');
     }
 
-    // Find siblings: shared parents + explicit links
-    const parentUserIds = student.parents.map((p) => p.userId);
-    const [parentSiblings, explicitSiblings] = await Promise.all([
-      parentUserIds.length
-        ? this.prisma.student.findMany({
-            where: {
-              schoolId,
-              id: { not: id },
-              isActive: true,
-              parents: { some: { userId: { in: parentUserIds } } },
-            },
-            select: { id: true, fullName: true, dob: true, avatarUrl: true },
-          })
-        : Promise.resolve([]),
-      this.getSiblings(id, schoolId),
-    ]);
-    // Merge and deduplicate by id
-    const siblingMap = new Map<string, any>();
-    [...parentSiblings, ...explicitSiblings].forEach(s => siblingMap.set(s.id, s));
-
-    return { ...student, siblings: Array.from(siblingMap.values()) };
+    // Only explicit sibling links — parent-shared kids stay linked via parents
+    // but must not reappear after unlink in this section.
+    const siblings = await this.getSiblings(id, schoolId);
+    return { ...student, siblings };
   }
 
   async findByParent(parentUserId: string, schoolId: string) {

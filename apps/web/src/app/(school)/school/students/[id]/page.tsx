@@ -186,6 +186,8 @@ export default function StudentProfilePage() {
   const [siblingResults, setSiblingResults] = useState<any[]>([]);
   const [linkingSibling, setLinkingSibling] = useState(false);
   const [allStudents, setAllStudents] = useState<any[]>([]);
+  const [unlinkSiblingTarget, setUnlinkSiblingTarget] = useState<any>(null);
+  const [unlinkingSibling, setUnlinkingSibling] = useState(false);
 
   // Parent management
   const [parentForm, setParentForm] = useState<any>(null);
@@ -1321,12 +1323,15 @@ export default function StudentProfilePage() {
                     </a>
                     {isAdmin && (
                       <button
-                        onClick={async () => {
-                          await studentsApi.unlinkSibling(schoolId, id, s.id);
-                          const fresh: any = await studentsApi.get(schoolId, id);
-                          setStudent(fresh);
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setUnlinkSiblingTarget(s);
                         }}
                         className="ml-1 text-indigo-300 hover:text-red-500"
+                        title="Αφαίρεση σύνδεσης"
+                        aria-label="Αφαίρεση σύνδεσης"
                       >
                         <X className="h-3.5 w-3.5" />
                       </button>
@@ -3104,6 +3109,66 @@ export default function StudentProfilePage() {
           </div>
         );
       })()}
+
+      {/* Unlink sibling confirmation */}
+      {unlinkSiblingTarget && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="unlink-sibling-title"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' && !unlinkingSibling) setUnlinkSiblingTarget(null);
+          }}
+        >
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="h-10 w-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+                <Users className="h-5 w-5 text-red-500" />
+              </div>
+              <div>
+                <h3 id="unlink-sibling-title" className="text-lg font-bold text-gray-900">Αφαίρεση αδερφού</h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  Είσαι σίγουρος/η ότι θέλεις να αφαιρέσεις τη σύνδεση με τον/την{' '}
+                  <strong>{unlinkSiblingTarget.fullName}</strong>; Οι κοινοί γονείς δεν αλλάζουν.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setUnlinkSiblingTarget(null)}
+                disabled={unlinkingSibling}
+                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 rounded-xl hover:bg-gray-50"
+              >
+                Ακύρωση
+              </button>
+              <button
+                type="button"
+                disabled={unlinkingSibling}
+                onClick={async () => {
+                  setUnlinkingSibling(true);
+                  try {
+                    await studentsApi.unlinkSibling(schoolId, id, unlinkSiblingTarget.id);
+                    setStudent((prev: any) => prev ? {
+                      ...prev,
+                      siblings: (prev.siblings || []).filter((sib: any) => sib.id !== unlinkSiblingTarget.id),
+                    } : prev);
+                    setUnlinkSiblingTarget(null);
+                  } catch {
+                    alert('Αποτυχία αφαίρεσης σύνδεσης. Δοκιμάστε ξανά.');
+                  } finally {
+                    setUnlinkingSibling(false);
+                  }
+                }}
+                className="px-4 py-2 bg-red-500 text-white text-sm font-bold rounded-xl hover:bg-red-600 disabled:opacity-50"
+              >
+                {unlinkingSibling ? 'Αφαίρεση...' : 'Αφαίρεση'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Link sibling modal */}
       {showLinkSibling && (
