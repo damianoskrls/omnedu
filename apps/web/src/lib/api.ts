@@ -428,6 +428,7 @@ export const broadcastsApi = {
     pdfUrl?: string;
     pdfUrls?: string[];
     pdfs?: { url: string; filename?: string }[];
+    pdfFiles?: File[];
     targetType: string;
     targetClassId?: string;
     targetStudentId?: string;
@@ -437,7 +438,29 @@ export const broadcastsApi = {
     appScreen?: string;
     academicYear?: string;
     kind?: string;
-  }) => api.post(`/schools/${schoolId}/notifications/send`, data),
+  }) => {
+    // Always multipart so Nest FilesInterceptor can read optional PDF buffers.
+    const form = new FormData();
+    form.append('title', data.title);
+    form.append('body', data.body);
+    form.append('targetType', data.targetType);
+    form.append('channels', JSON.stringify(data.channels ?? ['push']));
+    if (data.imageUrl) form.append('imageUrl', data.imageUrl);
+    if (data.targetClassId) form.append('targetClassId', data.targetClassId);
+    if (data.targetStudentId) form.append('targetStudentId', data.targetStudentId);
+    if (data.customEmails?.length) form.append('customEmails', JSON.stringify(data.customEmails));
+    if (data.appType) form.append('appType', data.appType);
+    if (data.appScreen) form.append('appScreen', data.appScreen);
+    if (data.academicYear) form.append('academicYear', data.academicYear);
+    if (data.kind) form.append('kind', data.kind);
+    if (data.pdfUrl) form.append('pdfUrl', data.pdfUrl);
+    if (data.pdfUrls?.length) form.append('pdfUrls', JSON.stringify(data.pdfUrls));
+    if (data.pdfs?.length) form.append('pdfsMeta', JSON.stringify(data.pdfs));
+    for (const file of (data.pdfFiles ?? []).slice(0, 5)) form.append('pdfs', file);
+    return api.post(`/schools/${schoolId}/notifications/send`, form, {
+      timeout: data.pdfFiles?.length ? 120000 : 60000,
+    });
+  },
   uploadImage: (schoolId: string, file: File) => {
     const form = new FormData();
     form.append('file', file);

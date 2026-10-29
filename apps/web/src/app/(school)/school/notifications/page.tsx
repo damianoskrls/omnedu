@@ -129,16 +129,6 @@ export default function NotificationsPage() {
           return;
         }
       }
-      const pdfs: { url: string; filename: string }[] = [];
-      for (const file of pdfFiles.slice(0, 5)) {
-        const uploadedPdf: any = await broadcastsApi.uploadPdf(schoolId, file);
-        const pdfUrl = uploadedPdf?.pdfUrl as string | undefined;
-        if (!pdfUrl) {
-          setSendNote(`Το PDF «${file.name}» δεν ανέβηκε.`);
-          return;
-        }
-        pdfs.push({ url: pdfUrl, filename: uploadedPdf?.filename || file.name });
-      }
       const customEmails = form.customEmailsText
         ? form.customEmailsText.split(/[\n,]+/).map(e => e.trim()).filter(Boolean)
         : undefined;
@@ -146,7 +136,7 @@ export default function NotificationsPage() {
         title: form.title,
         body: form.body,
         imageUrl,
-        pdfs: pdfs.length ? pdfs : undefined,
+        pdfFiles: pdfFiles.length ? pdfFiles.slice(0, 5) : undefined,
         targetType: form.targetType,
         targetClassId: form.targetClassId || undefined,
         targetStudentId: form.targetStudentId || undefined,
@@ -173,8 +163,9 @@ export default function NotificationsPage() {
       setPdfFiles([]);
       setTimeout(() => setSent(false), 6000);
       load();
-    } catch {
-      setSendNote('Η αποστολή δεν ολοκληρώθηκε.');
+    } catch (error: any) {
+      const message = error?.message || error?.error || error?.data?.message;
+      setSendNote(typeof message === 'string' && message.trim() ? message : 'Η αποστολή δεν ολοκληρώθηκε.');
     } finally {
       setSending(false);
     }

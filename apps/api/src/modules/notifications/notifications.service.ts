@@ -125,8 +125,8 @@ export class NotificationsService implements OnModuleInit {
     });
   }
 
-  async send(schoolId: string, sentByUserId: string, data: BroadcastData) {
-    const channels = data.channels ?? ['push'];
+  async send(schoolId: string, sentByUserId: string, data: BroadcastData, pdfFiles: Express.Multer.File[] = []) {
+    const channels = Array.isArray(data.channels) ? data.channels : ['push'];
     const userIds = await this.getTargetUserIds(schoolId, data);
     let recipientCount = 0;
     let pushDevices = 0;
@@ -137,6 +137,13 @@ export class NotificationsService implements OnModuleInit {
       ? this.regulationNotice(data.body, data.academicYear)
       : data.body;
     const preview = this.pushPreview(noticeBody);
+    const inlinePdfAttachments = (pdfFiles ?? [])
+      .filter((file) => file?.buffer?.length)
+      .slice(0, 5)
+      .map((file, index) => ({
+        filename: this.safePdfFilename(file.originalname, index),
+        content: file.buffer,
+      }));
 
     // ─── Push notifications ─────────────────────────────────
     if (channels.includes('push')) {
@@ -182,7 +189,12 @@ export class NotificationsService implements OnModuleInit {
 
     // ─── Email notifications ────────────────────────────────
     if (channels.includes('email')) {
-      const emailCount = await this.sendEmails(schoolId, userIds, { ...data, body: noticeBody, customEmails: data.customEmails });
+      const emailCount = await this.sendEmails(
+        schoolId,
+        userIds,
+        { ...data, body: noticeBody, customEmails: data.customEmails },
+        inlinePdfAttachments,
+      );
       if (!channels.includes('push')) recipientCount = emailCount;
     }
 
@@ -435,7 +447,12 @@ export class NotificationsService implements OnModuleInit {
 
   // ─── Email (Resend) ──────────────────────────────────────────────────────
 
-  private async sendEmails(schoolId: string, userIds: string[], data: BroadcastData): Promise<number> {
+  private async sendEmails(
+    schoolId: string,
+    userIds: string[],
+    data: BroadcastData,
+    inlineAttachments: { filename: string; content: Buffer }[] = [],
+  ): Promise<number> {
     if (!this.resendClient) {
       this.logger.warn('[EMAIL] RESEND_API_KEY not configured — skipping email send');
       return 0;
@@ -479,26 +496,8 @@ export class NotificationsService implements OnModuleInit {
 
       const schoolName = school?.name ?? 'Σχολείο';
       const logoUrl = (school as any)?.logoUrl ?? null;
-      const pdfs = this.resolvePdfs(data);
-      const attachments: { filename: string; content: Buffer }[] = [];
-      let attachmentBytes = 0;
-      const MAX_TOTAL_ATTACHMENT_BYTES = 15 * 1024 * 1024;
-      for (const pdf of pdfs) {
-        try {
-          const content = await this.storage.fetchFile(pdf.url);
-          if (attachmentBytes + content.byteLength > MAX_TOTAL_ATTACHMENT_BYTES) {
-            this.logger.warn(`[EMAIL] Skipping ${pdf.filename}: total attachment size would exceed 15MB`);
-            continue;
-          }
-          attachmentBytes += content.byteLength;
-          attachments.push({ filename: pdf.filename, content });
-        } catch (e) {
-          this.logger.warn(`[EMAIL] Could not fetch PDF for attachment: ${pdf.url}`, e);
-        }
-      }
-      if (pdfs.length > 0 && attachments.length === 0) {
-        throw new BadGatewayException('Τα PDF δεν μπόρεσαν να επισυναφθούν στο email. Δοκίμασε ξανά.');
-      }
+      // Prefer raw upload buffers from the request (reliable). Fall back to Cloudinary URLs.
+      const attachments = await this.buildEmailAttachments(inlineAttachments, data);
       // Attachments only — no in-body "Άνοιγμα PDF" button (Cloudinary links often fail in mail clients).
       const html = this.buildEmailHtml({
         schoolName,
@@ -540,6 +539,55 @@ export class NotificationsService implements OnModuleInit {
       this.logger.error('[EMAIL] sendEmails failed', e);
       return 0;
     }
+  }
+
+  private async buildEmailAttachments(
+    inlineAttachments: { filename: string; content: Buffer }[],
+    data: BroadcastData,
+  ): Promise<{ filename: string; content: Buffer }[]> {
+    const MAX_TOTAL_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+    const attachments: { filename: string; content: Buffer }[] = [];
+    let attachmentBytes = 0;
+
+    const namedInline = this.uniquePdfFilenames(
+      inlineAttachments.map((item, index) => ({
+        url: `inline://${index}`,
+        filename: item.filename,
+      })),
+    ).map((item, index) => ({
+      filename: item.filename,
+      content: inlineAttachments[index].content,
+    }));
+
+    for (const item of namedInline) {
+      if (attachmentBytes + item.content.byteLength > MAX_TOTAL_ATTACHMENT_BYTES) {
+        this.logger.warn(`[EMAIL] Skipping ${item.filename}: total attachment size would exceed 15MB`);
+        continue;
+      }
+      attachmentBytes += item.content.byteLength;
+      attachments.push(item);
+    }
+
+    if (attachments.length) return attachments;
+
+    const pdfs = this.resolvePdfs(data);
+    for (const pdf of pdfs) {
+      try {
+        const content = await this.storage.fetchFile(pdf.url);
+        if (attachmentBytes + content.byteLength > MAX_TOTAL_ATTACHMENT_BYTES) {
+          this.logger.warn(`[EMAIL] Skipping ${pdf.filename}: total attachment size would exceed 15MB`);
+          continue;
+        }
+        attachmentBytes += content.byteLength;
+        attachments.push({ filename: pdf.filename, content });
+      } catch (e) {
+        this.logger.warn(`[EMAIL] Could not fetch PDF for attachment: ${pdf.url}`, e);
+      }
+    }
+    if (pdfs.length > 0 && attachments.length === 0) {
+      throw new BadGatewayException('Τα PDF δεν μπόρεσαν να επισυναφθούν στο email. Δοκίμασε ξανά.');
+    }
+    return attachments;
   }
 
   private resolvePdfs(data: BroadcastData): { url: string; filename: string }[] {

@@ -1,6 +1,6 @@
-import { BadRequestException, Body, Controller, Get, HttpException, Param, Patch, Post, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpException, Param, Patch, Post, Req, UploadedFile, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
 import { IsOptional, IsString } from 'class-validator';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { StorageService } from '../../common/storage/storage.service';
 import { NotificationsService } from './notifications.service';
@@ -109,8 +109,37 @@ export class NotificationsController {
 
   @Post('send')
   @Roles('school_admin')
-  send(@Param('schoolId') schoolId: string, @Req() req: any, @Body() body: any) {
-    return this.svc.send(schoolId, req.user.sub ?? req.user.userId, body);
+  @UseInterceptors(FilesInterceptor('pdfs', 5, {
+    storage: memoryStorage(),
+    fileFilter: (_req, file, cb) => {
+      const ok = file.mimetype === 'application/pdf' || file.originalname?.toLowerCase().endsWith('.pdf');
+      if (!ok) return cb(new BadRequestException('Μόνο PDF επιτρέπεται.'), false);
+      cb(null, true);
+    },
+    limits: { fileSize: 20 * 1024 * 1024 },
+  }))
+  send(
+    @Param('schoolId') schoolId: string,
+    @Req() req: any,
+    @Body() body: any,
+    @UploadedFiles() pdfFiles?: Express.Multer.File[],
+  ) {
+    return this.svc.send(schoolId, req.user.sub ?? req.user.userId, this.normalizeSendBody(body), pdfFiles ?? []);
+  }
+
+  private normalizeSendBody(body: any) {
+    const parseJson = (value: unknown) => {
+      if (typeof value !== 'string') return value;
+      try { return JSON.parse(value); } catch { return value; }
+    };
+    return {
+      ...body,
+      channels: parseJson(body?.channels) ?? ['push'],
+      customEmails: parseJson(body?.customEmails),
+      // File field is named "pdfs"; URL metadata (if any) arrives as pdfsMeta.
+      pdfs: parseJson(body?.pdfsMeta) ?? parseJson(body?.pdfs),
+      pdfUrls: parseJson(body?.pdfUrls),
+    };
   }
 
   @Get('settings')
