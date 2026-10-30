@@ -56,14 +56,23 @@ class _StudentFace extends StatelessWidget {
   }
 }
 
+/// Called by: teacher_home_screen student tap; teacher_attendance_screen queue after present marks.
+/// Extends existing daily-report screen (no duplicate). Schema: POST daily-reports; queueMode pops true for next.
+/// User: «οταν τσεκαρει τους μαθητες που ηταν σημερα να μπορει μετα σε εναν εναν που ηταν παρον να περναει ημερησια ενημερωση»
 class TeacherStudentScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic> student;
   final String schoolId;
+  final bool queueMode;
+  final int? queueIndex;
+  final int? queueTotal;
 
   const TeacherStudentScreen({
     super.key,
     required this.student,
     required this.schoolId,
+    this.queueMode = false,
+    this.queueIndex,
+    this.queueTotal,
   });
 
   @override
@@ -164,6 +173,10 @@ class _TeacherStudentScreenState extends ConsumerState<TeacherStudentScreen> {
             backgroundColor: Color(0xFF10B981),
           ),
         );
+        if (widget.queueMode) {
+          await Future<void>.delayed(const Duration(milliseconds: 350));
+          if (mounted) Navigator.of(context).pop(true);
+        }
       }
     } catch (e) {
       setState(() => _submitting = false);
@@ -205,8 +218,31 @@ class _TeacherStudentScreenState extends ConsumerState<TeacherStudentScreen> {
               backgroundColor: colors[0],
               leading: IconButton(
                 icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: () => Navigator.of(context).pop(widget.queueMode ? false : null),
               ),
+              actions: [
+                if (widget.queueMode && widget.queueIndex != null && widget.queueTotal != null)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.25),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Text(
+                          '${widget.queueIndex}/${widget.queueTotal}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
               flexibleSpace: FlexibleSpaceBar(
                 centerTitle: true,
                 title: Text(firstName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16)),
@@ -340,39 +376,80 @@ class _TeacherStudentScreenState extends ConsumerState<TeacherStudentScreen> {
   }
 
   Widget _buildDoneCard(List<Color> colors) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF10B981).withOpacity(0.3)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: const Color(0xFF10B981).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 28),
+    final hasQueue = widget.queueMode &&
+        widget.queueIndex != null &&
+        widget.queueTotal != null &&
+        widget.queueIndex! < widget.queueTotal!;
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFF10B981).withOpacity(0.3)),
           ),
-          const SizedBox(width: 16),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Η ενημέρωση έγινε!',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Color(0xFF1E1B4B))),
-                SizedBox(height: 4),
-                Text('Ο γονέας θα δει την ενημέρωση στην εφαρμογή του',
-                    style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 13)),
-              ],
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 28),
+              ),
+              const SizedBox(width: 16),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Η ενημέρωση έγινε!',
+                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Color(0xFF1E1B4B))),
+                    SizedBox(height: 4),
+                    Text('Ο γονέας θα δει την ενημέρωση στην εφαρμογή του',
+                        style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 13)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (hasQueue) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: FilledButton.icon(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: colors[0],
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              icon: const Icon(Icons.arrow_forward_rounded),
+              label: Text(
+                'Επόμενος (${widget.queueIndex! + 1}/${widget.queueTotal})',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        ] else if (widget.queueMode) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: colors[0],
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              child: const Text('Ολοκλήρωση', style: TextStyle(fontWeight: FontWeight.w700)),
             ),
           ),
         ],
-      ),
+      ],
     );
   }
 

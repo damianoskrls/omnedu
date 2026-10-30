@@ -43,6 +43,7 @@ model School {
   studentForms       StudentForm[]
   medicationRequests MedicationRequest[]
   dailyReports    DailyReport[]
+  attendanceRecords AttendanceRecord[]
   reportMedia     ReportMedia[]
   activities      Activity[]
   consentForms    ConsentForm[]
@@ -134,6 +135,7 @@ model User {
   studentParents           StudentParent[]
   uploadedMedia            ReportMedia[]
   teacherReports           DailyReport[]
+  attendanceMarked         AttendanceRecord[]
   conversationParticipants ConversationParticipant[]
   createdConversations     Conversation[]            @relation("ConversationCreator")
   sentMessages             Message[]
@@ -329,6 +331,7 @@ model Class {
   instructions   ClassInstruction[]
   thematicPlans  ThematicPlan[]
   assignments    ClassAssignment[]
+  attendanceRecords AttendanceRecord[]
 
   @@map("classes")
 }
@@ -397,6 +400,7 @@ model Student {
   parents               StudentParent[]
   enrollments           ClassEnrollment[]
   dailyReports          DailyReport[]
+  attendanceRecords     AttendanceRecord[]
   reportMedia           ReportMedia[]
   activityRegistrations ActivityRegistration[]
   invoices              Invoice[]
@@ -495,6 +499,28 @@ model DailyReport {
   @@index([schoolId, reportDate(sort: Desc)])
   @@index([studentId, reportDate(sort: Desc)])
   @@map("daily_reports")
+}
+
+/// Teacher marks present/absent for a class day; present kids get daily reports next.
+model AttendanceRecord {
+  id         String   @id @default(uuid())
+  schoolId   String   @map("school_id")
+  classId    String   @map("class_id")
+  studentId  String   @map("student_id")
+  date       DateTime @db.Date
+  status     String   // present | absent
+  markedById String   @map("marked_by_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  school  School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  markedBy User   @relation(fields: [markedById], references: [id])
+
+  @@unique([studentId, date])
+  @@index([schoolId, classId, date])
+  @@map("attendance_records")
 }
 
 model ReportMedia {

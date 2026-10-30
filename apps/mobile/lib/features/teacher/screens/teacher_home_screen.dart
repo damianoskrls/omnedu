@@ -4,6 +4,7 @@ import '../../../core/api/api_client.dart';
 import '../../../core/widgets/app_image.dart';
 import '../../../core/providers/auth_provider.dart';
 import 'teacher_student_screen.dart';
+import 'teacher_attendance_screen.dart';
 import 'teacher_thematic_screen.dart';
 import 'teacher_meetings_screen.dart';
 import 'teacher_notify_screen.dart';
@@ -12,6 +13,8 @@ import 'teacher_leaves_screen.dart';
 import 'class_moment_screen.dart';
 import 'found_item_screen.dart';
 import 'assignments_screen.dart';
+// Attendance button opens TeacherAttendanceScreen; schema via /attendance API.
+// User: «να εχει ενα κουμπι παρουσιολογιο για σημερα με την ημερα και ημερομηνια»
 final _myClassesProvider = FutureProvider.family<List<dynamic>, String>(
   (ref, schoolId) async {
     final dio = ref.read(dioProvider);
@@ -257,6 +260,33 @@ class _TeacherHomeScreenState extends ConsumerState<TeacherHomeScreen> {
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF059669),
+                        minimumSize: const Size.fromHeight(48),
+                      ),
+                      onPressed: () {
+                        final cls = classes.cast<Map>().firstWhere((c) => c['id'] == _selectedClassId);
+                        Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => TeacherAttendanceScreen(
+                            schoolId: widget.schoolId,
+                            classId: _selectedClassId!,
+                            className: cls['name'] as String? ?? '',
+                          ),
+                        ));
+                      },
+                      icon: const Icon(Icons.fact_check_rounded),
+                      label: Text(
+                        'Παρουσιολόγιο · ${_weekdayShort()} ${_dayMonth()}',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+                ),
+              if (_selectedClassId != null)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
                     child: Row(
                       children: [
                         Expanded(
@@ -395,6 +425,21 @@ class _TeacherHomeScreenState extends ConsumerState<TeacherHomeScreen> {
     ));
   }
 
+  static const _wdShort = ['Δευ', 'Τρι', 'Τετ', 'Πεμ', 'Παρ', 'Σαβ', 'Κυρ'];
+  static const _moShort = [
+    'Ιαν', 'Φεβ', 'Μαρ', 'Απρ', 'Μαϊ', 'Ιουν',
+    'Ιουλ', 'Αυγ', 'Σεπ', 'Οκτ', 'Νοε', 'Δεκ',
+  ];
+
+  String _weekdayShort() {
+    final n = DateTime.now();
+    return _wdShort[n.weekday - 1];
+  }
+
+  String _dayMonth() {
+    final n = DateTime.now();
+    return '${n.day} ${_moShort[n.month - 1]}';
+  }
 }
 
 Map<String, dynamic>? _coveringOf(List<dynamic> classes, String? classId) {

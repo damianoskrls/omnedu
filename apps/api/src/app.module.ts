@@ -8,6 +8,7 @@ import { SchoolsModule } from './modules/schools/schools.module';
 import { StudentsModule } from './modules/students/students.module';
 import { ClassesModule } from './modules/classes/classes.module';
 import { DailyReportsModule } from './modules/daily-reports/daily-reports.module';
+import { AttendanceModule } from './modules/attendance/attendance.module';
 import { ActivitiesModule } from './modules/activities/activities.module';
 import { MessagesModule } from './modules/messages/messages.module';
 import { BillingModule } from './modules/billing/billing.module';
@@ -43,6 +44,7 @@ import { HealthController } from './modules/health/health.controller';
     StudentsModule,
     ClassesModule,
     DailyReportsModule,
+    AttendanceModule,
     ActivitiesModule,
     MessagesModule,
     BillingModule,
