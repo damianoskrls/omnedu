@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { schoolEventsApi, classesApi, levelsApi, schoolsApi, schoolPostsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
+import { useAcademicYear } from '@/contexts/AcademicYearContext';
 import {
   Plus, X, CalendarDays, Users, Euro, BookOpen, Check, Clock,
   Pencil, Trash2, ChevronDown, ChevronUp, Image, Upload,
@@ -40,6 +41,7 @@ const inputCls = 'w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm b
 export default function EventsPage() {
   const user = useStoredUser();
   const schoolId = user?.schoolId ?? '';
+  const { selectedYear } = useAcademicYear();
 
   const [events, setEvents] = useState<any[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
@@ -74,11 +76,11 @@ export default function EventsPage() {
     if (!schoolId) return;
     Promise.all([
       schoolEventsApi.list(schoolId).then(r => setEvents(r ?? [])),
-      classesApi.list(schoolId).then(r => setClasses(r ?? [])),
+      classesApi.list(schoolId, selectedYear?.id).then(r => setClasses(r ?? [])),
       (levelsApi.list(schoolId) as Promise<any>).then(r => setLevels(Array.isArray(r) ? r : [])),
       schoolsApi.getMembers(schoolId, 'teacher').then(r => setStaff(r ?? [])),
     ]).finally(() => setLoading(false));
-  }, [schoolId]);
+  }, [schoolId, selectedYear?.id]);
 
   const resetForm = () => setForm({
     title: '', description: '', dayInstructions: '', arriveBy: '', busOperates: true, eventType: 'excursion', eventDate: '',

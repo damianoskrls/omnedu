@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/api/api_client.dart';
+import '../../../core/widgets/app_image.dart';
 
 const _monthNames = [
   'Ιανουάριος',
@@ -168,12 +170,67 @@ class _ParentThematicScreenState extends ConsumerState<ParentThematicScreen> {
                       padding: const EdgeInsets.only(top: 12),
                       child: Text(plan['signature'] as String, style: const TextStyle(fontWeight: FontWeight.w700, height: 1.4)),
                     ),
+                  _media((plan['imageUrls'] as List?)?.map((e) => e.toString()).toList() ?? const []),
                 ],
               ),
             ),
         ],
       ),
     );
+  }
+
+  Widget _media(List<String> urls) {
+    final items = urls.map((u) => u.trim()).where((u) => u.isNotEmpty).toList();
+    if (items.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: items.map((url) {
+          if (_isPdfUrl(url)) {
+            return InkWell(
+              onTap: () async {
+                final uri = Uri.tryParse(url);
+                if (uri == null) return;
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              },
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                width: 140,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF3E8F7),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFE9D5FF)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.picture_as_pdf_rounded, color: Color(0xFF77328D)),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Άνοιγμα PDF',
+                        style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF642678)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: AppImage(url, width: 120, height: 90, fit: BoxFit.cover),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  bool _isPdfUrl(String url) {
+    final lower = url.toLowerCase();
+    return lower.contains('.pdf') || lower.contains('/raw/upload/');
   }
 
   Widget _paragraphs(String value) {

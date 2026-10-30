@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { classesApi, levelsApi, thematicPlansApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
 import { APRIL_MAY_2026 } from '@/lib/thematic-april-may-2026';
-import { Save, Sparkles, Trash2, Upload, X } from 'lucide-react';
+import { FileText, Save, Sparkles, Trash2, Upload, X } from 'lucide-react';
 
 type ClassRow = { id: string; name: string; level?: { id: string; name: string } };
 type LevelRow = { id: string; name: string };
@@ -50,6 +50,21 @@ function errorText(err: any) {
   const message = err?.message || err?.error;
   if (Array.isArray(message)) return message.join(' ');
   return typeof message === 'string' ? message : 'Κάτι πήγε στραβά. Δοκίμασε ξανά.';
+}
+
+function isPdfUrl(url: string) {
+  const lower = url.toLowerCase();
+  return lower.includes('.pdf') || lower.includes('/raw/upload/');
+}
+
+function mediaFileName(url: string) {
+  try {
+    const path = decodeURIComponent(new URL(url).pathname);
+    const base = path.split('/').pop() || 'αρχείο.pdf';
+    return base.replace(/^[a-z0-9]+_/i, '') || base;
+  } catch {
+    return 'αρχείο.pdf';
+  }
 }
 
 export default function ThematicPage() {
@@ -202,13 +217,24 @@ export default function ThematicPage() {
     ? classes.filter((c) => c.level?.id === levelFilter)
     : classes;
 
-  const uploadImage = async (file: File) => {
+  const uploadMedia = async (file: File) => {
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    const isImage = file.type.startsWith('image/');
+    if (!isPdf && !isImage) {
+      setError('Επιτρέπονται εικόνες (JPG/PNG/WebP) και PDF.');
+      return;
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      setError('Το αρχείο ξεπερνά τα 25MB.');
+      return;
+    }
     try {
       const result = await thematicPlansApi.uploadMedia(schoolId, file) as any;
       const url = result?.url || result?.data?.url;
       if (url) setImageUrls((prev) => [...prev, url]);
+      else setError('Το αρχείο δεν ανέβηκε.');
     } catch {
-      setError('Η εικόνα δεν ανέβηκε. Δοκίμασε ξανά.');
+      setError(isPdf ? 'Το PDF δεν ανέβηκε. Δοκίμασε ξανά.' : 'Η εικόνα δεν ανέβηκε. Δοκίμασε ξανά.');
     }
   };
 
@@ -300,24 +326,45 @@ export default function ThematicPage() {
 
           {canEdit && (
             <div>
-              <p className="text-xs font-medium text-gray-600 mb-2">Εικόνες</p>
+              <p className="text-xs font-medium text-gray-600 mb-2">Εικόνες & PDF</p>
               <div className="flex flex-wrap gap-2 mb-2">
                 {imageUrls.map((url, i) => (
                   <div key={url} className="relative">
-                    <img src={url} alt="" className="w-16 h-16 rounded-lg object-cover border border-gray-200" />
-                    <button type="button" onClick={() => setImageUrls((prev) => prev.filter((_, j) => j !== i))}
+                    {isPdfUrl(url) ? (
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="w-28 h-16 rounded-lg border border-indigo-100 bg-indigo-50 flex flex-col items-center justify-center gap-1 px-2 text-indigo-700 hover:bg-indigo-100"
+                        title={mediaFileName(url)}
+                      >
+                        <FileText size={16} />
+                        <span className="text-[10px] font-semibold truncate max-w-full">PDF</span>
+                      </a>
+                    ) : (
+                      <img src={url} alt="" className="w-16 h-16 rounded-lg object-cover border border-gray-200" />
+                    )}
+                    <button type="button" aria-label="Αφαίρεση αρχείου" onClick={() => setImageUrls((prev) => prev.filter((_, j) => j !== i))}
                       className="absolute -top-1 -right-1 bg-white rounded-full border border-gray-200 p-0.5 text-gray-500 hover:text-red-500">
                       <X size={10} />
                     </button>
                   </div>
                 ))}
                 <button type="button" onClick={() => imgRef.current?.click()}
-                  className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-400 hover:border-indigo-300 hover:text-indigo-500">
+                  className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-400 hover:border-indigo-300 hover:text-indigo-500"
+                  title="Ανέβασμα εικόνας ή PDF"
+                  aria-label="Ανέβασμα εικόνας ή PDF">
                   <Upload size={16} />
                 </button>
-                <input ref={imgRef} type="file" accept="image/*" hidden
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImage(f); e.target.value = ''; }} />
+                <input
+                  ref={imgRef}
+                  type="file"
+                  accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf,.pdf"
+                  hidden
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadMedia(f); e.target.value = ''; }}
+                />
               </div>
+              <p className="text-[11px] text-gray-400">JPG, PNG, WebP ή PDF (έως 25MB)</p>
             </div>
           )}
 
@@ -364,7 +411,20 @@ export default function ThematicPage() {
           {imageUrls.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-4">
               {imageUrls.map((url) => (
-                <img key={url} src={url} alt="" className="h-24 rounded-lg object-cover" />
+                isPdfUrl(url) ? (
+                  <a
+                    key={url}
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-2 h-12 px-3 rounded-lg border border-indigo-100 bg-indigo-50 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
+                  >
+                    <FileText size={16} />
+                    <span className="truncate max-w-[10rem]">{mediaFileName(url)}</span>
+                  </a>
+                ) : (
+                  <img key={url} src={url} alt="" className="h-24 rounded-lg object-cover" />
+                )
               ))}
             </div>
           )}

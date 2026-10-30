@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { schoolPostsApi, classesApi, levelsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
+import { useAcademicYear } from '@/contexts/AcademicYearContext';
 import {
   Plus, X, Pencil, Trash2, Image as ImageIcon, CalendarDays,
   Newspaper, Upload, Users,
@@ -41,6 +42,7 @@ const TYPE_META: Record<PostType, { label: string; bg: string; text: string; bor
 export default function PostsPage() {
   const user = useStoredUser();
   const schoolId = user?.schoolId ?? '';
+  const { selectedYear } = useAcademicYear();
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,13 +68,13 @@ export default function PostsPage() {
     if (!schoolId) return;
     load();
     Promise.all([
-      classesApi.list(schoolId) as Promise<any>,
+      classesApi.list(schoolId, selectedYear?.id) as Promise<any>,
       levelsApi.list(schoolId) as Promise<any>,
     ]).then(([c, l]) => {
       setClasses(Array.isArray(c) ? c : []);
       setLevels(Array.isArray(l) ? l : []);
     });
-  }, [schoolId]);
+  }, [schoolId, selectedYear?.id]);
 
   const openNew = () => { setFormError(''); setModal({
     postType: 'general',

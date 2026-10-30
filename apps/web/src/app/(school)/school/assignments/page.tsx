@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { assignmentsApi, classesApi, levelsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
+import { useAcademicYear } from '@/contexts/AcademicYearContext';
 import { Plus, Trash2, X } from 'lucide-react';
 
 type Assignment = {
@@ -22,6 +23,7 @@ type LevelItem = { id: string; name: string };
 export default function AssignmentsPage() {
   const user = useStoredUser();
   const schoolId = user?.schoolId ?? '';
+  const { selectedYear } = useAcademicYear();
   const [levels, setLevels] = useState<LevelItem[]>([]);
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [levelFilter, setLevelFilter] = useState('');
@@ -46,16 +48,19 @@ export default function AssignmentsPage() {
     if (!schoolId) return;
     Promise.all([
       levelsApi.list(schoolId).catch(() => ({ data: [] })),
-      classesApi.list(schoolId).catch(() => ({ data: [] })),
+      classesApi.list(schoolId, selectedYear?.id).catch(() => ({ data: [] })),
     ]).then(([lvlData, clsData]: any[]) => {
       const lvls = (lvlData.data ?? lvlData) as LevelItem[];
       const clss = (clsData.data ?? clsData) as ClassItem[];
       setLevels(Array.isArray(lvls) ? lvls : []);
       const items = Array.isArray(clss) ? clss : [];
       setClasses(items);
-      if (items[0] && !classId) setClassId(items[0].id);
+      setClassId((current) => {
+        const stillValid = items.some((c) => c.id === current);
+        return stillValid ? current : (items[0]?.id || '');
+      });
     });
-  }, [schoolId]);
+  }, [schoolId, selectedYear?.id]);
 
   const filteredClasses = levelFilter
     ? classes.filter(c => c.level?.id === levelFilter)

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { broadcastsApi, classesApi, studentsApi, parentsApi, staffApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
+import { useAcademicYear } from '@/contexts/AcademicYearContext';
 import {
   Bell, Send, Users, GraduationCap, Baby, User, Image, Smartphone, Mail, MessageSquare as SmsIcon,
   Settings, ChevronLeft, Search,
@@ -147,6 +148,7 @@ function PersonPicker({
 export default function NotificationsPage() {
   const user = useStoredUser();
   const schoolId = user?.schoolId ?? '';
+  const { selectedYear } = useAcademicYear();
   const isAdmin = user?.role === 'school_admin';
 
   const [view, setView] = useState<'compose' | 'settings'>('compose');
@@ -175,7 +177,7 @@ export default function NotificationsPage() {
     try {
       const [bData, cData, sData, pData, staffData, settingsData] = await Promise.all([
         broadcastsApi.list(schoolId),
-        classesApi.list(schoolId),
+        classesApi.list(schoolId, selectedYear?.id),
         studentsApi.list(schoolId),
         isAdmin ? parentsApi.list(schoolId) : Promise.resolve([]),
         isAdmin ? staffApi.list(schoolId) : Promise.resolve([]),
@@ -211,7 +213,7 @@ export default function NotificationsPage() {
     } finally {
       setLoading(false);
     }
-  }, [schoolId, isAdmin]);
+  }, [schoolId, isAdmin, selectedYear?.id]);
 
   const loadSettings = useCallback(async () => {
     if (!schoolId || !isAdmin) return;

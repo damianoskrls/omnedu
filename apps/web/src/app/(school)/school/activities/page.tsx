@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { activitiesApi, studentsApi, classesApi, levelsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
+import { useAcademicYear } from '@/contexts/AcademicYearContext';
 import {
   Plus, X, ChevronDown, ChevronUp, CheckCircle, XCircle, Clock, Users, Euro,
   Calendar, Trash2, BookOpen, UserCheck, CalendarDays, Zap, Upload,
@@ -111,6 +112,7 @@ const emptyInstructor = () => ({ name: '', title: '', bio: '', photoUrl: '' });
 export default function ActivitiesPage() {
   const user = useStoredUser();
   const schoolId = user?.schoolId ?? '';
+  const { selectedYear } = useAcademicYear();
   const isAdmin = user?.role === 'school_admin';
 
   const [activeTab, setActiveTab] = useState<'activities' | 'schedule' | 'instructors'>('activities');
@@ -188,9 +190,9 @@ export default function ActivitiesPage() {
   useEffect(() => { if (!schoolId || !isAdmin) return; studentsApi.list(schoolId).then((r: any) => setStudents(r || [])); }, [schoolId, isAdmin]);
   useEffect(() => {
     if (!schoolId) return;
-    Promise.all([classesApi.list(schoolId) as Promise<any>, levelsApi.list(schoolId) as Promise<any>])
+    Promise.all([classesApi.list(schoolId, selectedYear?.id) as Promise<any>, levelsApi.list(schoolId) as Promise<any>])
       .then(([c, l]) => { setClasses(Array.isArray(c) ? c : []); setLevels(Array.isArray(l) ? l : []); });
-  }, [schoolId]);
+  }, [schoolId, selectedYear?.id]);
 
   useEffect(() => {
     if (activeTab === 'schedule' && schedule.length === 0) loadSchedule();
@@ -697,7 +699,7 @@ export default function ActivitiesPage() {
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Τίτλος *</label>
                 <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  value={editActivity.title ?? ''} onChange={e => setEditActivity(p => ({ ...p, title: e.target.value }))} placeholder="π.χ. Εκδρομή Αθήνα" />
+                  value={editActivity.title ?? ''} onChange={e => setEditActivity(p => ({ ...p, title: e.target.value }))} placeholder="π.χ. Χορός, Κεραμική" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Τύπος</label>

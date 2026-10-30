@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { questionnairesApi, schoolsApi, studentsApi, classesApi, levelsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
+import { useAcademicYear } from '@/contexts/AcademicYearContext';
 import { LinkKind, Question, QuestionType, registrationQuestionnaire } from '@/lib/registration-questionnaire';
 import {
   ClipboardList, Plus, ChevronDown, ChevronUp, Pencil, Trash2, X, Save,
@@ -88,6 +89,7 @@ type EditState = {
 export default function QuestionnairesPage() {
   const user = useStoredUser();
   const schoolId = user?.schoolId ?? '';
+  const { selectedYear } = useAcademicYear();
   const isAdmin = user?.role === 'school_admin' || user?.role === 'teacher';
 
   const [questionnaires, setQuestionnaires] = useState<Questionnaire[]>([]);
@@ -114,7 +116,7 @@ export default function QuestionnairesPage() {
       const [q, s, c, l] = await Promise.all([
         questionnairesApi.list(schoolId, CURRENT_YEAR) as Promise<any>,
         studentsApi.list(schoolId) as Promise<any>,
-        classesApi.list(schoolId) as Promise<any>,
+        classesApi.list(schoolId, selectedYear?.id) as Promise<any>,
         levelsApi.list(schoolId) as Promise<any>,
       ]);
       setQuestionnaires(Array.isArray(q) ? q : []);
@@ -126,7 +128,7 @@ export default function QuestionnairesPage() {
     }
   };
 
-  useEffect(() => { load(); }, [schoolId]);
+  useEffect(() => { load(); }, [schoolId, selectedYear?.id]);
 
   const getTargetStudents = (q: Questionnaire): Student[] => {
     const ids = parseJson<string[]>(q.scopeIds, []);

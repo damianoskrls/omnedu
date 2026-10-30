@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { classesApi, dailyMenusApi, levelsApi, menuTemplatesApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
+import { useAcademicYear } from '@/contexts/AcademicYearContext';
 import { ChevronLeft, ChevronRight, Save, X, LayoutTemplate, Plus, Trash2, CheckCircle, Upload, Copy } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, isToday, getDay } from 'date-fns';
 import { el } from 'date-fns/locale';
@@ -52,6 +53,7 @@ function errorText(err: any) {
 export default function MenuPage() {
   const user = useStoredUser();
   const schoolId = user?.schoolId ?? '';
+  const { selectedYear } = useAcademicYear();
   const isAdmin = user?.role === 'school_admin';
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -115,13 +117,13 @@ export default function MenuPage() {
   useEffect(() => { if (showTemplates) loadTemplates(); }, [showTemplates, loadTemplates]);
   useEffect(() => {
     if (!schoolId) return;
-    Promise.all([classesApi.list(schoolId) as Promise<any>, levelsApi.list(schoolId) as Promise<any>])
+    Promise.all([classesApi.list(schoolId, selectedYear?.id) as Promise<any>, levelsApi.list(schoolId) as Promise<any>])
       .then(([classRows, levelRows]) => {
         setClasses(Array.isArray(classRows) ? classRows : []);
         setLevels(Array.isArray(levelRows) ? levelRows : []);
       })
       .catch(() => undefined);
-  }, [schoolId]);
+  }, [schoolId, selectedYear?.id]);
 
   const openEdit = (dateStr: string) => {
     const existing = menus[dateStr] ?? {};

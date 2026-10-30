@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { celebrationsApi, classesApi, levelsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
+import { useAcademicYear } from '@/contexts/AcademicYearContext';
 import { AudienceSelector, AudienceValue, audienceLabel } from '@/components/AudienceSelector';
 import { PartyPopper, Plus, Pencil, Trash2, X } from 'lucide-react';
 
@@ -85,6 +86,7 @@ const emptyForm = (year: string) => ({
 export default function CelebrationsPage() {
   const user = useStoredUser();
   const schoolId = user?.schoolId ?? '';
+  const { selectedYear } = useAcademicYear();
   const isAdmin = user?.role === 'school_admin' || user?.role === 'super_admin';
   const [years, setYears] = useState<string[]>([calendarYear()]);
   const [year, setYear] = useState(calendarYear());
@@ -107,11 +109,11 @@ export default function CelebrationsPage() {
       const current = sorted.find(label => label === calendarYear()) ?? sorted[0];
       setYear(current);
     }).catch(() => undefined);
-    Promise.all([classesApi.list(schoolId), levelsApi.list(schoolId)]).then(([classRows, levelRows]) => {
+    Promise.all([classesApi.list(schoolId, selectedYear?.id), levelsApi.list(schoolId)]).then(([classRows, levelRows]) => {
       setClasses(Array.isArray(classRows) ? classRows.map((row: any) => ({ id: row.id, name: row.name })) : []);
       setLevels(Array.isArray(levelRows) ? levelRows.map((row: any) => ({ id: row.id, name: row.name })) : []);
     }).catch(() => undefined);
-  }, [schoolId]);
+  }, [schoolId, selectedYear?.id]);
 
   const load = async (selected = year) => {
     if (!schoolId || !selected) return;
