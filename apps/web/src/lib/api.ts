@@ -254,6 +254,23 @@ export const reportsApi = {
   upsert: (schoolId: string, data: any) => api.post(`/schools/${schoolId}/daily-reports`, data),
 };
 
+export const attendanceApi = {
+  overview: (schoolId: string, date?: string) =>
+    api.get(`/schools/${schoolId}/attendance/overview`, { params: { date } }),
+  getClass: (schoolId: string, classId: string, date?: string) =>
+    api.get(`/schools/${schoolId}/attendance`, { params: { classId, date } }),
+  save: (
+    schoolId: string,
+    data: {
+      classId: string;
+      date: string;
+      records: { studentId: string; status: 'present' | 'absent' }[];
+    },
+  ) => api.put(`/schools/${schoolId}/attendance`, data),
+  forStudent: (schoolId: string, studentId: string, params?: { from?: string; to?: string }) =>
+    api.get(`/schools/${schoolId}/attendance/student/${studentId}`, { params }),
+};
+
 export const billingApi = {
   myInvoices: (schoolId: string) => api.get(`/schools/${schoolId}/billing/invoices/mine`),
   allInvoices: (schoolId: string) => api.get(`/schools/${schoolId}/billing/invoices`),

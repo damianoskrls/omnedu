@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { studentsApi, billingApi, classesApi, activitiesApi, extraServicesApi, medicationRequestsApi, studentFormsApi, broadcastsApi, schoolEventsApi, questionnairesApi, parentsApi } from '@/lib/api';
+import { studentsApi, billingApi, classesApi, activitiesApi, extraServicesApi, medicationRequestsApi, studentFormsApi, broadcastsApi, schoolEventsApi, questionnairesApi, parentsApi, attendanceApi } from '@/lib/api';
 import { StudentStatement } from './student-statement';
 import { buildStudentQuoteInput, chargeMatchesQuote, currentMonthKey, findStationeryCharge, isOpenMonth, quoteStudentMonth, schoolYearMonths, schoolYearOf } from '@/lib/month-quote';
 import { noteWithoutPayment, payerOptions, paymentNote, PaymentInfo, readPaymentRecord } from '@/lib/payment-note';
@@ -17,7 +17,7 @@ import {
   ArrowLeft, Phone, Mail, MapPin, Droplets,
   BookOpen, ClipboardList, Users, AlertCircle,
   Zap, Bus, Clock, Camera, Plus, Pencil, Trash2, X, Check,
-  Bell, Pill, FileText, Activity, ChevronDown, ChevronUp, Send, Home, CalendarDays,
+  Bell, Pill, FileText, Activity, ChevronDown, ChevronUp, Send, Home, CalendarDays, ClipboardCheck,
 } from 'lucide-react';
 
 const MapPicker = dynamic(() => import('@/components/MapPickerInner'), { ssr: false, loading: () => <div className="h-[260px] rounded-xl bg-gray-100 animate-pulse" /> });
@@ -31,6 +31,7 @@ const TABS = [
   { key: 'events', label: 'Εκδηλώσεις' },
   { key: 'classes', label: 'Ιστορικό Τάξεων' },
   { key: 'diary', label: 'Ημερολόγιο' },
+  { key: 'attendance', label: 'Παρουσίες' },
   { key: 'billing', label: 'Οικονομικά' },
   { key: 'records', label: 'Αρχεία' },
 ];
@@ -104,6 +105,8 @@ export default function StudentProfilePage() {
   const [student, setStudent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('general');
+  const [attendanceData, setAttendanceData] = useState<any>(null);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [healthFocus, setHealthFocus] = useState<'all' | 'meds' | 'forms'>('all');
   const healthAnchor = useRef<HTMLDivElement>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -356,6 +359,16 @@ export default function StudentProfilePage() {
     if (tab !== 'records') return;
     loadDocuments(docYear);
   }, [tab, schoolId, id, docYear]);
+
+  useEffect(() => {
+    if (tab !== 'attendance' || !schoolId || !id) return;
+    setAttendanceLoading(true);
+    attendanceApi
+      .forStudent(schoolId, id)
+      .then((data: any) => setAttendanceData(data))
+      .catch(() => setAttendanceData(null))
+      .finally(() => setAttendanceLoading(false));
+  }, [tab, schoolId, id]);
 
   useEffect(() => {
     if ((tab !== 'bus' && tab !== 'activities') || !schoolId) return;
@@ -1834,6 +1847,92 @@ export default function StudentProfilePage() {
               {r.notes && <p className="text-sm text-gray-600 mt-2 italic">"{r.notes}"</p>}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Tab: Παρουσίες — User: βλεπω και αν εχει κανει απουσιες */}
+      {tab === 'attendance' && (
+        <div className="space-y-4">
+          {attendanceLoading ? (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-10 text-center text-gray-400">
+              Φόρτωση παρουσιών…
+            </div>
+          ) : !attendanceData ? (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-10 text-center text-gray-400">
+              <ClipboardCheck className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+              Δεν ήταν δυνατή η φόρτωση παρουσιών.
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+                  <p className="text-xs font-bold uppercase tracking-wide text-gray-400">Παρουσίες</p>
+                  <p className="mt-1 text-2xl font-extrabold text-emerald-700">{attendanceData.summary?.present ?? 0}</p>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+                  <p className="text-xs font-bold uppercase tracking-wide text-gray-400">Απουσίες</p>
+                  <p className="mt-1 text-2xl font-extrabold text-rose-700">{attendanceData.summary?.absent ?? 0}</p>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+                  <p className="text-xs font-bold uppercase tracking-wide text-gray-400">Καταχωρήσεις</p>
+                  <p className="mt-1 text-2xl font-extrabold text-gray-900">{attendanceData.summary?.total ?? 0}</p>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+                  <p className="text-xs font-bold uppercase tracking-wide text-gray-400">Ποσοστό απουσίας</p>
+                  <p className="mt-1 text-2xl font-extrabold text-amber-700">{attendanceData.summary?.absenceRate ?? 0}%</p>
+                </div>
+              </div>
+              {(attendanceData.records?.length ?? 0) === 0 ? (
+                <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-10 text-center text-gray-400">
+                  <ClipboardCheck className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                  Δεν υπάρχουν καταχωρήσεις παρουσιολογίου ακόμη.
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-400">
+                        <th className="px-4 py-3">Ημερομηνία</th>
+                        <th className="px-4 py-3">Κατάσταση</th>
+                        <th className="px-4 py-3">Τάξη</th>
+                        <th className="px-4 py-3">Καταχώρηση από</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {attendanceData.records.map((r: any) => {
+                        const present = r.status === 'present';
+                        return (
+                          <tr key={r.id} className="border-b border-gray-50">
+                            <td className="px-4 py-3 font-semibold text-gray-900">
+                              {new Date(r.date).toLocaleDateString('el-GR', {
+                                weekday: 'short',
+                                day: 'numeric',
+                                month: 'short',
+                                year: 'numeric',
+                              })}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                                  present
+                                    ? 'bg-emerald-50 text-emerald-700'
+                                    : 'bg-rose-50 text-rose-700'
+                                }`}
+                              >
+                                {present ? 'Παρόν' : 'Απών'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-gray-600">{r.class?.name ?? '—'}</td>
+                            <td className="px-4 py-3 text-gray-500">{r.markedBy?.fullName ?? '—'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 

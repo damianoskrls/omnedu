@@ -2,6 +2,7 @@
 // Schema R/W: attendance_records; R: students, class_enrollments, daily_reports, teacher_absences.
 // User: «θελω ο εκπαιδευτικός οταν μπαινει στην εφαρμογη του να εχει και παρουσιολογιο»
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -97,9 +98,171 @@ export class AttendanceService implements OnModuleInit {
     };
   }
 
+  /** School-wide snapshot for a date: every current class with attendance counts. */
+  async overview(schoolId: string, date: string, userId: string) {
+    await this.assertSchoolStaff(schoolId, userId);
+    const day = new Date(`${date}T00:00:00.000Z`);
+
+    const classes = await this.prisma.class.findMany({
+      where: { schoolId, academicYear: { isCurrent: true } },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+
+    const enrollments = await this.prisma.classEnrollment.findMany({
+      where: {
+        classId: { in: classes.map((c) => c.id) },
+        academicYear: { isCurrent: true },
+        student: { schoolId, isActive: true },
+      },
+      select: { classId: true, studentId: true },
+    });
+    const byClass = new Map<string, string[]>();
+    for (const e of enrollments) {
+      const list = byClass.get(e.classId) ?? [];
+      list.push(e.studentId);
+      byClass.set(e.classId, list);
+    }
+
+    const records = await this.prisma.attendanceRecord.findMany({
+      where: { schoolId, date: day, classId: { in: classes.map((c) => c.id) } },
+      select: { classId: true, studentId: true, status: true },
+    });
+
+    const reports = await this.prisma.dailyReport.findMany({
+      where: {
+        schoolId,
+        reportDate: day,
+        studentId: { in: enrollments.map((e) => e.studentId) },
+      },
+      select: { studentId: true },
+    });
+    const reported = new Set(reports.map((r) => r.studentId));
+
+    let schoolPresent = 0;
+    let schoolAbsent = 0;
+    let schoolTotal = 0;
+    let schoolReported = 0;
+    let classesMarked = 0;
+
+    const classRows = classes.map((klass) => {
+      const studentIds = byClass.get(klass.id) ?? [];
+      const classRecords = records.filter((r) => r.classId === klass.id);
+      const present = classRecords.filter((r) => r.status === 'present').length;
+      const absent = classRecords.filter((r) => r.status === 'absent').length;
+      const total = studentIds.length;
+      const unmarked = Math.max(0, total - classRecords.length);
+      const classReported = studentIds.filter((id) => reported.has(id)).length;
+      if (classRecords.length > 0) classesMarked += 1;
+      schoolPresent += present;
+      schoolAbsent += absent;
+      schoolTotal += total;
+      schoolReported += classReported;
+      return {
+        id: klass.id,
+        name: klass.name,
+        summary: {
+          total,
+          present,
+          absent,
+          unmarked,
+          reported: classReported,
+        },
+        marked: classRecords.length > 0,
+        complete: total > 0 && unmarked === 0,
+      };
+    });
+
+    return {
+      date,
+      classes: classRows,
+      schoolSummary: {
+        totalStudents: schoolTotal,
+        present: schoolPresent,
+        absent: schoolAbsent,
+        unmarked: Math.max(0, schoolTotal - schoolPresent - schoolAbsent),
+        reported: schoolReported,
+        classesMarked,
+        classesTotal: classes.length,
+      },
+    };
+  }
+
+  async forStudent(
+    schoolId: string,
+    studentId: string,
+    userId: string,
+    from?: string,
+    to?: string,
+  ) {
+    await this.assertSchoolStaff(schoolId, userId);
+    const student = await this.prisma.student.findFirst({
+      where: { id: studentId, schoolId },
+      select: { id: true, fullName: true },
+    });
+    if (!student) throw new NotFoundException('Ο μαθητής δεν βρέθηκε.');
+
+    const where: {
+      schoolId: string;
+      studentId: string;
+      date?: { gte?: Date; lte?: Date };
+    } = { schoolId, studentId };
+    if (from || to) {
+      where.date = {
+        ...(from && /^\d{4}-\d{2}-\d{2}$/.test(from)
+          ? { gte: new Date(`${from}T00:00:00.000Z`) }
+          : {}),
+        ...(to && /^\d{4}-\d{2}-\d{2}$/.test(to)
+          ? { lte: new Date(`${to}T00:00:00.000Z`) }
+          : {}),
+      };
+    }
+
+    const [present, absent, records] = await Promise.all([
+      this.prisma.attendanceRecord.count({
+        where: { ...where, status: 'present' },
+      }),
+      this.prisma.attendanceRecord.count({
+        where: { ...where, status: 'absent' },
+      }),
+      this.prisma.attendanceRecord.findMany({
+        where,
+        include: {
+          class: { select: { id: true, name: true } },
+          markedBy: { select: { id: true, fullName: true } },
+        },
+        orderBy: { date: 'desc' },
+        take: 400,
+      }),
+    ]);
+    const total = present + absent;
+
+    return {
+      student,
+      summary: {
+        present,
+        absent,
+        total,
+        absenceRate: total ? Math.round((absent / total) * 100) : 0,
+      },
+      records: records.map((r) => ({
+        id: r.id,
+        date: r.date,
+        status: r.status,
+        class: r.class,
+        markedBy: r.markedBy,
+        updatedAt: r.updatedAt,
+      })),
+    };
+  }
+
   async save(schoolId: string, userId: string, dto: SaveAttendanceDto) {
     await this.assertCanMark(schoolId, dto.classId, userId, dto.date);
     const day = new Date(`${dto.date}T00:00:00.000Z`);
+
+    if (!dto.records?.length) {
+      throw new BadRequestException('Πρέπει να σημάνεις τουλάχιστον έναν μαθητή.');
+    }
 
     const enrolled = await this.prisma.classEnrollment.findMany({
       where: {
@@ -151,6 +314,21 @@ export class AttendanceService implements OnModuleInit {
     });
 
     return this.getForClass(schoolId, dto.classId, dto.date, userId);
+  }
+
+  private async assertSchoolStaff(schoolId: string, userId: string) {
+    const member = await this.prisma.schoolMember.findFirst({
+      where: {
+        schoolId,
+        userId,
+        isActive: true,
+        role: { in: ['owner', 'school_admin', 'teacher'] },
+      },
+      select: { id: true },
+    });
+    if (!member) {
+      throw new ForbiddenException('Δεν έχετε πρόσβαση στο παρουσιολόγιο.');
+    }
   }
 
   private async assertCanMark(

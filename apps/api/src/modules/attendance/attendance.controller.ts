@@ -15,6 +15,43 @@ import { Roles } from '../../common/decorators/roles.decorator';
 export class AttendanceController {
   constructor(private attendance: AttendanceService) {}
 
+  private todayAthens() {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Athens',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+  }
+
+  private dayOrToday(date?: string) {
+    return date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : this.todayAthens();
+  }
+
+  @Get('overview')
+  @Roles('teacher', 'school_admin', 'owner')
+  @ApiOperation({ summary: 'School-wide attendance overview by class for a date' })
+  overview(
+    @Param('schoolId') schoolId: string,
+    @CurrentUser() user: JwtPayload,
+    @Query('date') date?: string,
+  ) {
+    return this.attendance.overview(schoolId, this.dayOrToday(date), user.sub);
+  }
+
+  @Get('student/:studentId')
+  @Roles('teacher', 'school_admin', 'owner')
+  @ApiOperation({ summary: 'Attendance history for one student' })
+  forStudent(
+    @Param('schoolId') schoolId: string,
+    @Param('studentId') studentId: string,
+    @CurrentUser() user: JwtPayload,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.attendance.forStudent(schoolId, studentId, user.sub, from, to);
+  }
+
   @Get()
   @Roles('teacher', 'school_admin', 'owner')
   @ApiOperation({ summary: 'Get class attendance for a date (default today)' })
@@ -24,17 +61,12 @@ export class AttendanceController {
     @Query('classId') classId: string,
     @Query('date') date?: string,
   ) {
-    // Prefer client date; fallback uses Europe/Athens local calendar day.
-    const day =
-      date && /^\d{4}-\d{2}-\d{2}$/.test(date)
-        ? date
-        : new Intl.DateTimeFormat('en-CA', {
-            timeZone: 'Europe/Athens',
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-          }).format(new Date());
-    return this.attendance.getForClass(schoolId, classId, day, user.sub);
+    return this.attendance.getForClass(
+      schoolId,
+      classId,
+      this.dayOrToday(date),
+      user.sub,
+    );
   }
 
   @Put()
