@@ -13,7 +13,23 @@ export class SchoolsService implements OnModuleInit {
 
   async onModuleInit() {
     await this.ensureRegulationSchema();
+    await this.ensureMessagingFlags();
     await this.ensureAbsenceTable();
+  }
+
+  private async ensureMessagingFlags() {
+    // Production may deploy before migrate; contacts/school get 500 without these columns.
+    for (const sql of [
+      `ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "parent_to_teacher_messaging_enabled" BOOLEAN NOT NULL DEFAULT true`,
+      `ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "teacher_to_parent_messaging_enabled" BOOLEAN NOT NULL DEFAULT true`,
+    ]) {
+      try {
+        await this.prisma.$executeRawUnsafe(sql);
+      } catch (error) {
+        const message = String((error as { message?: string })?.message ?? error);
+        if (!/already exists|duplicate/i.test(message)) this.logger.warn(`Messaging flags: ${message}`);
+      }
+    }
   }
 
   private async ensureRegulationSchema() {

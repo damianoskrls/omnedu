@@ -367,17 +367,22 @@ export class MessagesService {
   }
 
   private async messagingPolicy(schoolId: string) {
-    const school = await this.prisma.school.findUnique({
-      where: { id: schoolId },
-      select: {
-        parentToTeacherMessagingEnabled: true,
-        teacherToParentMessagingEnabled: true,
-      },
-    });
-    return {
-      parentToTeacher: school?.parentToTeacherMessagingEnabled !== false,
-      teacherToParent: school?.teacherToParentMessagingEnabled !== false,
-    };
+    try {
+      const school = await this.prisma.school.findUnique({
+        where: { id: schoolId },
+        select: {
+          parentToTeacherMessagingEnabled: true,
+          teacherToParentMessagingEnabled: true,
+        },
+      });
+      return {
+        parentToTeacher: school?.parentToTeacherMessagingEnabled !== false,
+        teacherToParent: school?.teacherToParentMessagingEnabled !== false,
+      };
+    } catch {
+      // Columns missing until migrate/onModuleInit — keep messaging open.
+      return { parentToTeacher: true, teacherToParent: true };
+    }
   }
 
   private async assertTeacherParentDirection(schoolId: string, role: string) {
