@@ -294,6 +294,8 @@ export const billingApi = {
     api.post(`/schools/${schoolId}/billing/students/${studentId}/charges/generate`, { month, year }),
   updateCharge: (schoolId: string, chargeId: string, data: any) =>
     api.patch(`/schools/${schoolId}/billing/charges/${chargeId}`, data),
+  applyChargePayment: (schoolId: string, chargeId: string, data: { paidAmount: number; paidAt?: string; notes?: string }) =>
+    api.post(`/schools/${schoolId}/billing/charges/${chargeId}/apply-payment`, data),
   deleteCharge: (schoolId: string, chargeId: string) =>
     api.delete(`/schools/${schoolId}/billing/charges/${chargeId}`),
   // One-time charges

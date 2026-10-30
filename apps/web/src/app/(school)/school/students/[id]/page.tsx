@@ -535,6 +535,7 @@ export default function StudentProfilePage() {
     detail?: string;
     chargeAmount: number;
     lockPaidAmount?: boolean;
+    allowAdvance?: boolean;
     chargeMonth?: number;
     chargeYear?: number;
     run: (info: PaymentInfo) => Promise<void>;
@@ -1884,6 +1885,7 @@ export default function StudentProfilePage() {
         }
         const quoteFor = (m: number, y: number) => quoteStudentMonth({ ...quoteInput, month: m, year: y });
 
+        // allowAdvance → applyChargePayment waterfill. User: πληρωσω και αλλο ποσο για επομενο μηνα
         const recordMonthPayment = (charge: any, due: number, title: string) => {
           const already = Number(charge?.paidAmount ?? 0);
           const remaining = Math.max(0, due - already);
@@ -1893,11 +1895,10 @@ export default function StudentProfilePage() {
             chargeAmount: remaining || due,
             chargeMonth: charge?.month,
             chargeYear: charge?.year,
+            allowAdvance: true,
             run: async (info) => {
-              const next = Math.min(due, already + info.paidAmount);
-              await billingApi.updateCharge(schoolId, charge.id, {
-                paidAmount: next,
-                status: next + 0.009 >= due ? 'paid' : 'partial',
+              await billingApi.applyChargePayment(schoolId, charge.id, {
+                paidAmount: info.paidAmount,
                 paidAt: info.paidAt,
                 notes: paymentNote(info, charge.notes),
               });

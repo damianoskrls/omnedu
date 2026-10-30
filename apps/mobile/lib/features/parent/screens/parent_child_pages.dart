@@ -13,6 +13,7 @@ import 'receipts_screen.dart';
 import 'event_instructions.dart';
 import 'events_screen.dart';
 import 'bus_map_screen.dart';
+import 'bus_skip_actions.dart';
 
 String _iso(DateTime d) =>
     '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -742,6 +743,12 @@ class _ServiceCard extends StatelessWidget {
                 icon: const Icon(Icons.map_rounded),
                 label: const Text('Πού είναι το σχολικό'),
               ),
+            ),
+            BusSkipActions(
+              schoolId: schoolId,
+              studentId: studentId,
+              serviceId: (catalog['id'] ?? service['serviceId'] ?? '').toString(),
+              serviceMode: mode,
             ),
           ],
           const SizedBox(height: 10),

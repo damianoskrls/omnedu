@@ -16,6 +16,8 @@ export type PaymentPrompt = {
   logoUrl?: string;
   chargeAmount: number;
   lockPaidAmount?: boolean;
+  /** When true, amount may exceed due; surplus applies to later months. */
+  allowAdvance?: boolean;
   chargeMonth?: number;
   chargeYear?: number;
   run: (info: PaymentInfo) => Promise<void>;
@@ -189,6 +191,11 @@ export function PaymentConfirmModal({
               }}
               className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm disabled:bg-gray-50"
             />
+            {prompt.allowAdvance && !prompt.lockPaidAmount && (
+              <p className="mt-1.5 text-xs text-gray-500">
+                Οφειλή τώρα: {prompt.chargeAmount.toFixed(2)}€. Αν γράψεις μεγαλύτερο ποσό, το υπόλοιπο πάει στους επόμενους μήνες (προκαταβολή).
+              </p>
+            )}
           </label>
           <label className="block">
             <span className="block text-sm font-medium text-gray-700 mb-1">Πότε έγινε</span>

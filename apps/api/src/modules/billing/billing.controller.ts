@@ -158,6 +158,20 @@ export class BillingController {
     return this.billing.updateCharge(schoolId, chargeId, body);
   }
 
+  @Post('charges/:chargeId/apply-payment')
+  @Roles('school_admin')
+  applyChargePayment(
+    @Param('schoolId') schoolId: string,
+    @Param('chargeId') chargeId: string,
+    @Body() body: { paidAmount?: number; paidAt?: string; notes?: string },
+  ) {
+    return this.billing.applyChargePayment(schoolId, chargeId, {
+      paidAmount: Number(body.paidAmount),
+      paidAt: body.paidAt,
+      notes: body.notes,
+    });
+  }
+
   // ── One-time charges ─────────────────────────────────────
 
   @Get('one-time')

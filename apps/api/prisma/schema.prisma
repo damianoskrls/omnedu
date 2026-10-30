@@ -1208,6 +1208,23 @@ model BusPickup {
   @@map("bus_pickups")
 }
 
+model BusSkip {
+  id          String   @id @default(uuid())
+  schoolId    String   @map("school_id")
+  serviceId   String   @map("service_id")
+  studentId   String   @map("student_id")
+  day         DateTime @db.Date
+  direction   String // pickup | dropoff | both
+  reason      String?
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([serviceId, studentId, day])
+  @@index([schoolId, day])
+  @@index([serviceId, day])
+  @@map("bus_skips")
+}
+
 model ServiceRoute {
   id          String  @id @default(uuid())
   serviceId   String  @map("service_id")

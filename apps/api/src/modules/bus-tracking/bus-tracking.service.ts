@@ -10,6 +10,28 @@ export class BusTrackingService implements OnModuleInit {
     await this.prisma.$executeRawUnsafe(
       `ALTER TABLE bus_pickups ADD COLUMN IF NOT EXISTS is_absent BOOLEAN NOT NULL DEFAULT false`,
     );
+    // Ensure BusSkip table exists even before migrate deploy (parent cancel tomorrow).
+    await this.prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS bus_skips (
+        id TEXT PRIMARY KEY,
+        school_id TEXT NOT NULL,
+        service_id TEXT NOT NULL,
+        student_id TEXT NOT NULL,
+        day DATE NOT NULL,
+        direction TEXT NOT NULL,
+        reason TEXT,
+        created_by_id TEXT NOT NULL,
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`);
+    await this.prisma.$executeRawUnsafe(
+      `CREATE UNIQUE INDEX IF NOT EXISTS bus_skips_service_id_student_id_day_key ON bus_skips(service_id, student_id, day)`,
+    );
+    await this.prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS bus_skips_school_id_day_idx ON bus_skips(school_id, day)`,
+    );
+    await this.prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS bus_skips_service_id_day_idx ON bus_skips(service_id, day)`,
+    );
   }
 
   async drivers(schoolId: string) {
@@ -77,7 +99,7 @@ export class BusTrackingService implements OnModuleInit {
     const day = schoolDay();
     const dayKey = schoolDayKey();
     const dayStr = day.toISOString().slice(0, 10);
-    const [rows, pickups, absentRows] = await Promise.all([
+    const [rows, pickups, absentRows, skips] = await Promise.all([
       this.prisma.studentService.findMany({
         where: {
           serviceId: id, isActive: true, student: { schoolId, isActive: true },
@@ -104,13 +126,21 @@ export class BusTrackingService implements OnModuleInit {
         `SELECT student_id FROM bus_pickups WHERE service_id = $1 AND day = $2::date AND is_absent = true`,
         id, dayStr,
       ),
+      this.prisma.busSkip.findMany({ where: { serviceId: id, day } }).catch(() => []),
     ]);
     const picked = new Map(pickups.map((row) => [row.studentId, row.pickedUpAt]));
     const absentSet = new Set(absentRows.map((r) => r.student_id));
+    const skipDir = direction === 'dropoff' ? 'dropoff' : 'pickup';
+    const skippedSet = new Set(
+      skips
+        .filter((row) => row.direction === 'both' || row.direction === skipDir)
+        .map((row) => row.studentId),
+    );
     const riders = rows.map((row) => {
       const point = riderPoint(row);
       const mode = row.serviceMode || 'both';
       const parent = row.student.parents[0]?.user;
+      const skippedByParent = skippedSet.has(row.student.id);
       return {
         studentId: row.student.id,
         name: row.student.fullName,
@@ -130,7 +160,8 @@ export class BusTrackingService implements OnModuleInit {
         canPickup: direction === 'dropoff' ? mode !== 'pickup' : mode !== 'dropoff',
         pickedUp: picked.has(row.student.id),
         pickedUpAt: picked.get(row.student.id) ?? null,
-        isAbsent: absentSet.has(row.student.id),
+        isAbsent: absentSet.has(row.student.id) || skippedByParent,
+        skippedByParent,
       };
     }).sort((a, b) => {
       const left = minutesOf(a.pickupTime) ?? 24 * 60;
@@ -371,19 +402,34 @@ export class BusTrackingService implements OnModuleInit {
       return (a.startTime ?? '').localeCompare(b.startTime ?? '');
     });
 
-    // Check completions for today
-    const todayKey = schoolDay().toISOString().slice(0, 10);
+    // Check completions + parent skips for today
+    const today = schoolDay();
+    const todayKey = today.toISOString().slice(0, 10);
     if (buses.length > 0) {
       const serviceIds = buses.map((b) => b.id);
-      const completions = await this.prisma.$queryRawUnsafe<{ service_id: string; route_id: string | null; direction: string }[]>(
-        `SELECT service_id, route_id, direction FROM route_completions WHERE service_id = ANY($1::text[]) AND day_key = $2`,
-        serviceIds, todayKey,
-      ).catch(() => [] as { service_id: string; route_id: string | null; direction: string }[]);
+      const [completions, skips] = await Promise.all([
+        this.prisma.$queryRawUnsafe<{ service_id: string; route_id: string | null; direction: string }[]>(
+          `SELECT service_id, route_id, direction FROM route_completions WHERE service_id = ANY($1::text[]) AND day_key = $2`,
+          serviceIds, todayKey,
+        ).catch(() => [] as { service_id: string; route_id: string | null; direction: string }[]),
+        this.prisma.busSkip.findMany({
+          where: { serviceId: { in: serviceIds }, day: today },
+          select: { serviceId: true, studentId: true, direction: true },
+        }).catch(() => [] as { serviceId: string; studentId: string; direction: string }[]),
+      ]);
       for (const entry of routes) {
         const done = entry.routeId
           ? completions.some((c) => c.service_id === entry.serviceId && c.route_id === entry.routeId)
           : completions.some((c) => c.service_id === entry.serviceId && c.direction === entry.direction && !c.route_id);
         if (done) entry.status = 'completed';
+        const skippedIds = new Set(
+          skips
+            .filter((s) => s.serviceId === entry.serviceId && (s.direction === 'both' || s.direction === entry.direction))
+            .map((s) => s.studentId),
+        );
+        if (skippedIds.size > 0) {
+          entry.studentsCount = Math.max(0, entry.studentsCount - skippedIds.size);
+        }
       }
     }
 
@@ -496,11 +542,189 @@ export class BusTrackingService implements OnModuleInit {
       data: { screen: 'bus', day: label },
     });
   }
+
+  async listSkips(schoolId: string, userId: string, role: string | null | undefined, studentId?: string) {
+    if (role !== 'parent') throw new ForbiddenException('Η ακύρωση σχολικού είναι για γονείς.');
+    const id = (studentId ?? '').trim();
+    if (!id) throw new BadRequestException('Διάλεξε παιδί.');
+    await this.assertParentOf(schoolId, userId, id);
+    const today = schoolDay();
+    const rows = await this.prisma.busSkip.findMany({
+      where: { schoolId, studentId: id, day: { gte: today } },
+      orderBy: { day: 'asc' },
+    });
+    const tomorrow = schoolTomorrow();
+    return {
+      today: dayIso(today),
+      tomorrow: dayIso(tomorrow),
+      skips: rows.map(skipJson),
+    };
+  }
+
+  async createSkip(
+    schoolId: string,
+    userId: string,
+    role: string | null | undefined,
+    body: { studentId?: string; serviceId?: string; day?: string; direction?: string; reason?: string },
+  ) {
+    if (role !== 'parent') throw new ForbiddenException('Η ακύρωση σχολικού είναι για γονείς.');
+    const studentId = (body.studentId ?? '').trim();
+    if (!studentId) throw new BadRequestException('Διάλεξε παιδί.');
+    await this.assertParentOf(schoolId, userId, studentId);
+
+    const direction = normalizeSkipDirection(body.direction);
+    const today = schoolDay();
+    const tomorrow = schoolTomorrow();
+    const day = body.day ? parseDay(body.day) : tomorrow;
+    if (day.getTime() !== today.getTime() && day.getTime() !== tomorrow.getTime()) {
+      throw new BadRequestException('Μπορείς να ακυρώσεις μόνο για σήμερα ή αύριο.');
+    }
+
+    const serviceId = (body.serviceId ?? '').trim() || undefined;
+    const enrollment = await this.prisma.studentService.findFirst({
+      where: {
+        studentId,
+        isActive: true,
+        ...(serviceId ? { serviceId } : {}),
+        service: { schoolId, serviceType: 'bus', isActive: true },
+      },
+      include: {
+        student: { select: { fullName: true } },
+        service: { select: { id: true, name: true, driverUserId: true } },
+      },
+    });
+    if (!enrollment) throw new BadRequestException('Το παιδί δεν έχει ενεργό σχολικό.');
+
+    const mode = enrollment.serviceMode || 'both';
+    if (direction === 'pickup' && mode === 'dropoff') {
+      throw new BadRequestException('Το παιδί έχει μόνο παράδοση.');
+    }
+    if (direction === 'dropoff' && mode === 'pickup') {
+      throw new BadRequestException('Το παιδί έχει μόνο παραλαβή.');
+    }
+    if (direction === 'both' && mode !== 'both') {
+      throw new BadRequestException(
+        mode === 'pickup' ? 'Το παιδί έχει μόνο παραλαβή.' : 'Το παιδί έχει μόνο παράδοση.',
+      );
+    }
+
+    const reason = (body.reason ?? '').trim().slice(0, 300) || null;
+    const saved = await this.prisma.busSkip.upsert({
+      where: {
+        serviceId_studentId_day: {
+          serviceId: enrollment.serviceId,
+          studentId,
+          day,
+        },
+      },
+      create: {
+        schoolId,
+        serviceId: enrollment.serviceId,
+        studentId,
+        day,
+        direction,
+        reason,
+        createdById: userId,
+      },
+      update: { direction, reason, createdById: userId },
+    });
+
+    await this.notifyDriverSkip({
+      schoolId,
+      driverUserId: enrollment.service.driverUserId,
+      studentName: enrollment.student.fullName,
+      day,
+      direction,
+      revoked: false,
+    });
+
+    return skipJson(saved);
+  }
+
+  async removeSkip(schoolId: string, skipId: string, userId: string, role: string | null | undefined) {
+    if (role !== 'parent') throw new ForbiddenException('Η ακύρωση σχολικού είναι για γονείς.');
+    const existing = await this.prisma.busSkip.findFirst({
+      where: { id: skipId, schoolId },
+    });
+    if (!existing) throw new NotFoundException('Η ακύρωση δεν βρέθηκε.');
+    if (existing.day.getTime() < schoolDay().getTime()) {
+      throw new BadRequestException('Δεν γίνεται να αναιρέσεις παλιά ακύρωση.');
+    }
+    await this.assertParentOf(schoolId, userId, existing.studentId);
+
+    const [student, service] = await Promise.all([
+      this.prisma.student.findFirst({ where: { id: existing.studentId, schoolId }, select: { fullName: true } }),
+      this.prisma.extraService.findFirst({ where: { id: existing.serviceId, schoolId }, select: { driverUserId: true } }),
+    ]);
+    await this.prisma.busSkip.delete({ where: { id: existing.id } });
+
+    await this.notifyDriverSkip({
+      schoolId,
+      driverUserId: service?.driverUserId ?? null,
+      studentName: student?.fullName ?? 'Παιδί',
+      day: existing.day,
+      direction: existing.direction,
+      revoked: true,
+    });
+
+    return { success: true };
+  }
+
+  private async assertParentOf(schoolId: string, parentId: string, studentId: string) {
+    const link = await this.prisma.studentParent.findFirst({
+      where: { userId: parentId, studentId, student: { schoolId } },
+    });
+    if (!link) throw new ForbiddenException('Αυτό το παιδί δεν είναι στο προφίλ σου.');
+  }
+
+  private async notifyDriverSkip(input: {
+    schoolId: string;
+    driverUserId: string | null | undefined;
+    studentName: string;
+    day: Date;
+    direction: string;
+    revoked: boolean;
+  }) {
+    if (!input.driverUserId) return;
+    const label = dayLabel(input.day);
+    const when = input.day.getTime() === schoolDay().getTime() ? 'σήμερα' : `αύριο (${label})`;
+    const leg =
+      input.direction === 'dropoff' ? 'το απόγευμα' :
+      input.direction === 'pickup' ? 'το πρωί' : 'πρωί και απόγευμα';
+    try {
+      await this.notifications.notifyUsers(input.schoolId, [input.driverUserId], {
+        event: 'bus_skip',
+        type: 'bus_skip',
+        title: input.revoked ? 'Ανάκληση ακύρωσης σχολικού' : 'Ακύρωση σχολικού',
+        body: input.revoked
+          ? `${input.studentName} θα έρθει ${when} ${leg}.`
+          : `${input.studentName} δεν θα έρθει ${when} ${leg}.`,
+        data: { screen: 'bus', day: dayIso(input.day), direction: input.direction },
+      });
+    } catch (_) {}
+  }
 }
 
 function closureJson(row: { id: string; day: Date; reason: string }) {
   const day = row.day.toISOString().slice(0, 10);
   return { id: row.id, day, reason: row.reason };
+}
+
+function skipJson(row: { id: string; serviceId: string; studentId: string; day: Date; direction: string; reason: string | null }) {
+  return {
+    id: row.id,
+    serviceId: row.serviceId,
+    studentId: row.studentId,
+    day: dayIso(row.day),
+    direction: row.direction,
+    reason: row.reason,
+  };
+}
+
+function normalizeSkipDirection(value?: string) {
+  const direction = (value ?? 'both').trim().toLowerCase();
+  if (direction === 'pickup' || direction === 'dropoff' || direction === 'both') return direction;
+  throw new BadRequestException('Διάλεξε πρωί, απόγευμα ή και τα δύο.');
 }
 
 function parseDay(value?: string) {
@@ -509,9 +733,22 @@ function parseDay(value?: string) {
   return new Date(`${day}T00:00:00.000Z`);
 }
 
+function dayIso(day: Date) {
+  return day.toISOString().slice(0, 10);
+}
+
+function dayLabel(day: Date) {
+  return `${String(day.getUTCDate()).padStart(2, '0')}/${String(day.getUTCMonth() + 1).padStart(2, '0')}/${day.getUTCFullYear()}`;
+}
+
 function schoolDay(now = new Date()) {
   const label = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Athens', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
   return new Date(`${label}T00:00:00.000Z`);
+}
+
+function schoolTomorrow(now = new Date()) {
+  const today = schoolDay(now);
+  return new Date(today.getTime() + 24 * 60 * 60 * 1000);
 }
 
 function schoolDayKey(now = new Date()) {

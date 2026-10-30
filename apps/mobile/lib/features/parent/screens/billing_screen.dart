@@ -543,12 +543,14 @@ class _MonthlyRow extends StatelessWidget {
     final subsidy = double.tryParse(charge['subsidyTotal']?.toString() ?? '0') ?? 0;
     final status = charge['status'] as String? ?? 'unpaid';
 
+    // prepaid label when paidAmount > due from advance waterfill. User: αλλο ποσο επομενο μηνα
+    final prepaid = paid > due + 0.009;
     Color statusColor;
     String statusLabel;
     switch (status) {
       case 'paid':
         statusColor = const Color(0xFF16A34A);
-        statusLabel = 'Εξοφλήθη';
+        statusLabel = prepaid ? 'Προκαταβολή' : 'Εξοφλήθη';
         break;
       case 'partial':
         statusColor = const Color(0xFF2563EB);

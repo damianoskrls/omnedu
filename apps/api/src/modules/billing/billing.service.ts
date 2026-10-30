@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { feeRuleForMonth, isOpenMonth, quoteStudentMonth, schoolYearBounds, subsidyRevision } from './billing-quote';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -475,6 +475,87 @@ export class BillingService implements OnModuleInit {
         paidAt: data.paidAt ? new Date(data.paidAt) : (status === 'paid' ? new Date() : undefined),
       },
     });
+  }
+
+  /** Apply a payment starting at chargeId; surplus fills later months in the school year. */
+  async applyChargePayment(
+    schoolId: string,
+    chargeId: string,
+    data: { paidAmount: number; paidAt?: string; notes?: string },
+  ) {
+    const paidIn = Number(data.paidAmount);
+    if (!Number.isFinite(paidIn) || paidIn <= 0) {
+      throw new BadRequestException('Το ποσό πρέπει να είναι μεγαλύτερο από το μηδέν.');
+    }
+    const start = await this.prisma.monthlyCharge.findFirst({ where: { id: chargeId, schoolId } });
+    if (!start) throw new NotFoundException('Charge not found');
+
+    const paidAt = data.paidAt ? new Date(data.paidAt) : new Date();
+    const note = (data.notes ?? '').trim();
+    const year = schoolYearBounds(new Date(Date.UTC(start.year, start.month - 1, 1)));
+    const slots = year.months.filter(
+      (slot) => slot.year > start.year || (slot.year === start.year && slot.month >= start.month),
+    );
+
+    let remaining = paidIn;
+    const applied: { id: string; month: number; year: number; added: number; paidAmount: number; totalDue: number; status: string }[] = [];
+
+    for (let i = 0; i < slots.length && remaining > 0.009; i++) {
+      const slot = slots[i];
+      const isLast = i === slots.length - 1;
+      let charge =
+        slot.month === start.month && slot.year === start.year
+          ? start
+          : await this.generateStudentCharge(schoolId, start.studentId, slot.month, slot.year);
+      if (!charge) continue;
+
+      // Refresh after generate (may have updated totals)
+      if (charge.id !== start.id) {
+        charge = (await this.prisma.monthlyCharge.findFirst({ where: { id: charge.id, schoolId } })) ?? charge;
+      }
+
+      const due = Number(charge.totalDue);
+      const already = Number(charge.paidAmount);
+      const need = Math.max(0, due - already);
+      if (need <= 0.009 && !isLast) continue;
+      const add = isLast ? remaining : Math.min(need, remaining);
+      if (add <= 0.009) continue;
+
+      const nextPaid = already + add;
+      const status = nextPaid <= 0 ? (due <= 0 ? 'paid' : 'unpaid') : nextPaid + 0.009 >= due ? 'paid' : 'partial';
+      const advanceNote = add > need + 0.009
+        ? `Προκαταβολή επόμενων μηνών · +${add.toFixed(2)}€`
+        : null;
+      const mergedNotes = [charge.notes, note, advanceNote].filter(Boolean).join('\n').slice(0, 2000) || null;
+
+      const updated = await this.prisma.monthlyCharge.update({
+        where: { id: charge.id },
+        data: {
+          paidAmount: nextPaid,
+          status,
+          paidAt: status === 'paid' || status === 'partial' ? paidAt : charge.paidAt,
+          notes: mergedNotes,
+        },
+      });
+
+      remaining -= add;
+      applied.push({
+        id: updated.id,
+        month: updated.month,
+        year: updated.year,
+        added: add,
+        paidAmount: Number(updated.paidAmount),
+        totalDue: Number(updated.totalDue),
+        status: updated.status,
+      });
+    }
+
+    return {
+      ok: true,
+      paidAmount: paidIn,
+      applied,
+      leftover: Math.max(0, remaining),
+    };
   }
 
   async deleteCharge(schoolId: string, chargeId: string) {

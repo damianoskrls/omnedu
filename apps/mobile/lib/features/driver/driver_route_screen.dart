@@ -1006,10 +1006,14 @@ class _StopRow extends StatelessWidget {
     } else if (isAbsent) {
       rowBg = const Color(0xFFFFF1F2);
       textColor = const Color(0xFF9CA3AF);
+      final skippedByParent = rider['skippedByParent'] == true;
       statusWidget = Container(
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
         decoration: BoxDecoration(color: const Color(0xFFFFE4E6), borderRadius: BorderRadius.circular(6)),
-        child: const Text('ΑΠΩΝ', style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.w700, fontSize: 10)),
+        child: Text(
+          skippedByParent ? 'ΑΚΥΡ. ΓΟΝΕΑ' : 'ΑΠΩΝ',
+          style: const TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.w700, fontSize: 10),
+        ),
       );
     } else {
       rowBg = Colors.transparent;

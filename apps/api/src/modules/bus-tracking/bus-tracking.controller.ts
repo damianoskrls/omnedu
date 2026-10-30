@@ -123,4 +123,31 @@ export class BusTrackingController {
   ) {
     return this.service.forStudent(schoolId, user.sub, user.role, studentId);
   }
+
+  @Get('skips')
+  listSkips(
+    @Param('schoolId') schoolId: string,
+    @CurrentUser() user: JwtPayload,
+    @Query('studentId') studentId?: string,
+  ) {
+    return this.service.listSkips(schoolId, user.sub, user.role, studentId);
+  }
+
+  @Post('skips')
+  createSkip(
+    @Param('schoolId') schoolId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { studentId?: string; serviceId?: string; day?: string; direction?: string; reason?: string },
+  ) {
+    return this.service.createSkip(schoolId, user.sub, user.role, body);
+  }
+
+  @Delete('skips/:skipId')
+  removeSkip(
+    @Param('schoolId') schoolId: string,
+    @Param('skipId') skipId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.removeSkip(schoolId, skipId, user.sub, user.role);
+  }
 }

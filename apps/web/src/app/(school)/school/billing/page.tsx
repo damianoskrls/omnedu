@@ -261,12 +261,12 @@ export default function BillingPage() {
       schoolId,
       schoolName: window.localStorage.getItem('school_name') || 'Σχολείο',
       logoUrl: window.localStorage.getItem('school_logo_url') || '',
+      // allowAdvance: surplus → next months via applyChargePayment. User: πληρωσω και αλλο ποσο
       chargeAmount: Math.max(0, due - already) || due,
+      allowAdvance: true,
       run: async (info) => {
-        const next = Math.min(due, already + info.paidAmount);
-        await billingApi.updateCharge(schoolId, charge.id, {
-          paidAmount: next,
-          status: next + 0.009 >= due ? 'paid' : 'partial',
+        await billingApi.applyChargePayment(schoolId, charge.id, {
+          paidAmount: info.paidAmount,
           paidAt: info.paidAt,
           notes: paymentNote(info, charge.notes),
         });
