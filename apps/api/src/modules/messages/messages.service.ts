@@ -136,18 +136,32 @@ export class MessagesService {
   }
 
   async contacts(userId: string, schoolId: string, role?: string | null) {
-    if (role === 'parent') return this.parentContacts(userId, schoolId);
+    const messaging = await this.messagingPolicy(schoolId);
+    if (role === 'parent') {
+      const base = await this.parentContacts(userId, schoolId);
+      return {
+        ...base,
+        teachers: messaging.parentToTeacher ? base.teachers : [],
+        messaging,
+      };
+    }
     if (role === 'teacher') {
       return {
         admins: await this.schoolAdmins(schoolId, userId),
         teachers: [],
-        parents: await this.parentsOfTeacher(userId, schoolId),
+        parents: messaging.teacherToParent ? await this.parentsOfTeacher(userId, schoolId) : [],
+        messaging,
       };
     }
     if (isSchoolLead(role)) {
-      return { admins: [], teachers: await this.schoolTeachers(schoolId), parents: await this.schoolParents(schoolId) };
+      return {
+        admins: [],
+        teachers: await this.schoolTeachers(schoolId),
+        parents: await this.schoolParents(schoolId),
+        messaging,
+      };
     }
-    return { admins: [], teachers: [], parents: [] };
+    return { admins: [], teachers: [], parents: [], messaging };
   }
 
   async openScoped(schoolId: string, userId: string, role: string | null, kind: string, withUserId?: string) {
@@ -173,6 +187,7 @@ export class MessagesService {
       const parentId = role === 'teacher' ? withUserId : userId;
       const teacherId = role === 'teacher' ? userId : withUserId;
       if (role !== 'teacher' && role !== 'parent') throw new ForbiddenException();
+      await this.assertTeacherParentDirection(schoolId, role);
       const allowed = await this.teacherTeachesParentChild(schoolId, teacherId, parentId);
       if (!allowed) throw new ForbiddenException('Η συνομιλία είναι μόνο με τη δασκάλα του παιδιού');
       return this.findOrCreate(schoolId, [parentId, teacherId], userId);
@@ -254,6 +269,7 @@ export class MessagesService {
   async sendMessage(conversationId: string, senderId: string, body?: string, mediaUrl?: string, fileUrls?: string[]) {
     await this.assertCanRead(conversationId, senderId);
     await this.ensureParticipant(conversationId, senderId);
+    await this.assertSendAllowedInConversation(conversationId, senderId);
     const text = (body ?? '').trim();
     const image = mediaUrl?.trim() || '';
     const files = (fileUrls ?? []).filter((u) => u.trim());
@@ -348,6 +364,70 @@ export class MessagesService {
   private revealed(hiddenAt: Date | null, latest?: Date | null) {
     if (!hiddenAt) return true;
     return !!latest && latest > hiddenAt;
+  }
+
+  private async messagingPolicy(schoolId: string) {
+    const school = await this.prisma.school.findUnique({
+      where: { id: schoolId },
+      select: {
+        parentToTeacherMessagingEnabled: true,
+        teacherToParentMessagingEnabled: true,
+      },
+    });
+    return {
+      parentToTeacher: school?.parentToTeacherMessagingEnabled !== false,
+      teacherToParent: school?.teacherToParentMessagingEnabled !== false,
+    };
+  }
+
+  private async assertTeacherParentDirection(schoolId: string, role: string) {
+    const messaging = await this.messagingPolicy(schoolId);
+    if (role === 'parent' && !messaging.parentToTeacher) {
+      throw new ForbiddenException('Η επικοινωνία με εκπαιδευτικούς είναι απενεργοποιημένη από το σχολείο.');
+    }
+    if (role === 'teacher' && !messaging.teacherToParent) {
+      throw new ForbiddenException('Η επικοινωνία με γονείς είναι απενεργοποιημένη από το σχολείο.');
+    }
+  }
+
+  private async assertSendAllowedInConversation(conversationId: string, senderId: string) {
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: {
+        schoolId: true,
+        participants: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                schoolMemberships: {
+                  where: { isActive: true },
+                  select: { role: true, schoolId: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!conversation) return;
+    const rolesFor = (userId: string) =>
+      (conversation.participants.find((p) => p.userId === userId)?.user.schoolMemberships ?? [])
+        .filter((m) => m.schoolId === conversation.schoolId)
+        .map((m) => m.role);
+    const senderRoles = rolesFor(senderId);
+    const others = conversation.participants.filter((p) => p.userId !== senderId);
+    if (others.length !== 1) return;
+    const otherRoles = rolesFor(others[0].userId);
+    const senderIsParent = senderRoles.includes('parent');
+    const senderIsTeacher = senderRoles.includes('teacher') && !senderRoles.includes('school_admin');
+    const otherIsParent = otherRoles.includes('parent');
+    const otherIsTeacher = otherRoles.includes('teacher') && !otherRoles.includes('school_admin');
+    if (senderIsParent && otherIsTeacher) {
+      await this.assertTeacherParentDirection(conversation.schoolId, 'parent');
+    } else if (senderIsTeacher && otherIsParent) {
+      await this.assertTeacherParentDirection(conversation.schoolId, 'teacher');
+    }
   }
 
   private visibleToTeacher(

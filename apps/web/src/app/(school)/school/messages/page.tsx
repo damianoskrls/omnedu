@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { api } from '@/lib/api';
+import { api, schoolsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
 import { ImagePlus, MessageSquare, Paperclip, Search, Send, Smile, Trash2, X } from 'lucide-react';
 
@@ -21,6 +21,7 @@ type TeacherContact = { id: string; name: string };
 export default function MessagesPage() {
   const user = useStoredUser();
   const schoolId = user?.schoolId ?? '';
+  const isAdmin = user?.role === 'school_admin' || user?.role === 'owner' || user?.role === 'super_admin';
   const [convos, setConvos] = useState<Conversation[]>([]);
   const [parents, setParents] = useState<ParentContact[]>([]);
   const [teachers, setTeachers] = useState<TeacherContact[]>([]);
@@ -35,6 +36,9 @@ export default function MessagesPage() {
   const [sending, setSending] = useState(false);
   const [query, setQuery] = useState('');
   const [typing, setTyping] = useState<{ conversationId: string; name: string }[]>([]);
+  const [parentToTeacher, setParentToTeacher] = useState(true);
+  const [teacherToParent, setTeacherToParent] = useState(true);
+  const [savingPolicy, setSavingPolicy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const filesRef = useRef<HTMLInputElement>(null);
   const lastTypingPost = useRef(0);
@@ -54,8 +58,36 @@ export default function MessagesPage() {
         setParents(Array.isArray(data?.parents) ? data.parents : []);
         setTeachers(Array.isArray(data?.teachers) ? data.teachers : []);
       }).catch(() => { setParents([]); setTeachers([]); }),
+      isAdmin
+        ? schoolsApi.get(schoolId).then((school: any) => {
+            setParentToTeacher(school?.parentToTeacherMessagingEnabled !== false);
+            setTeacherToParent(school?.teacherToParentMessagingEnabled !== false);
+          }).catch(() => undefined)
+        : Promise.resolve(),
     ]).finally(() => setLoading(false));
-  }, [schoolId]);
+  }, [schoolId, isAdmin]);
+
+  const saveMessagingPolicy = async (next: { parentToTeacher?: boolean; teacherToParent?: boolean }) => {
+    if (!schoolId || !isAdmin) return;
+    const prevParent = parentToTeacher;
+    const prevTeacher = teacherToParent;
+    const parentVal = next.parentToTeacher ?? prevParent;
+    const teacherVal = next.teacherToParent ?? prevTeacher;
+    setParentToTeacher(parentVal);
+    setTeacherToParent(teacherVal);
+    setSavingPolicy(true);
+    try {
+      await schoolsApi.update(schoolId, {
+        parentToTeacherMessagingEnabled: parentVal,
+        teacherToParentMessagingEnabled: teacherVal,
+      });
+    } catch {
+      setParentToTeacher(prevParent);
+      setTeacherToParent(prevTeacher);
+    } finally {
+      setSavingPolicy(false);
+    }
+  };
 
   useEffect(() => {
     if (!schoolId || !activeId) return;
@@ -212,6 +244,40 @@ export default function MessagesPage() {
         <h1 className="text-2xl font-bold text-gray-900">Μηνύματα</h1>
         <p className="text-sm text-gray-500 mt-1">Επικοινωνία με γονείς και εκπαιδευτικούς. Οι συνομιλίες γονέα με τη δασκάλα δεν εμφανίζονται εδώ.</p>
       </div>
+      {isAdmin && (
+        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+          <p className="text-sm font-semibold text-gray-900">Επικοινωνία γονέων ↔ εκπαιδευτικών</p>
+          <p className="mt-1 text-xs text-gray-500">Αν απενεργοποιήσεις μια κατεύθυνση, δεν ανοίγουν νέες συνομιλίες και δεν στέλνονται νέα μηνύματα σε υπάρχουσες.</p>
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-8">
+            <label className="flex items-center justify-between gap-3 sm:justify-start">
+              <span className="text-sm text-gray-700">Γονείς → Εκπαιδευτικοί</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={parentToTeacher}
+                disabled={savingPolicy}
+                onClick={() => saveMessagingPolicy({ parentToTeacher: !parentToTeacher })}
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:opacity-60 ${parentToTeacher ? 'bg-indigo-600' : 'bg-gray-200'}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${parentToTeacher ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </label>
+            <label className="flex items-center justify-between gap-3 sm:justify-start">
+              <span className="text-sm text-gray-700">Εκπαιδευτικοί → Γονείς</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={teacherToParent}
+                disabled={savingPolicy}
+                onClick={() => saveMessagingPolicy({ teacherToParent: !teacherToParent })}
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:opacity-60 ${teacherToParent ? 'bg-indigo-600' : 'bg-gray-200'}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${teacherToParent ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </label>
+          </div>
+        </div>
+      )}
       <div className="grid h-[calc(100vh-11rem)] min-h-[36rem] grid-cols-1 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:grid-cols-[340px_1fr]">
         <div className="flex min-h-0 flex-col border-b border-gray-100 lg:border-b-0 lg:border-r">
           <div className="shrink-0 border-b border-gray-100 p-3">
