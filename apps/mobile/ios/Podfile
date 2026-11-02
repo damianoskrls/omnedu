@@ -27,8 +27,11 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 flutter_ios_podfile_setup
 
 target 'Runner' do
-  # Static frameworks are the FlutterFire-recommended default for iOS plugins.
-  use_frameworks! :linkage => :static
+  # Dynamic frameworks (not :static) — static linkage broke Xcode Cloud with
+  # `Module 'file_picker' not found` in GeneratedPluginRegistrant.m.
+  # Native Firebase imports were removed from AppDelegate, so static is no longer required.
+  use_frameworks!
+  use_modular_headers!
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do
@@ -42,6 +45,7 @@ post_install do |installer|
     target.build_configurations.each do |config|
       config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
       config.build_settings['SWIFT_ENABLE_EXPLICIT_MODULES'] = 'NO'
+      config.build_settings['DEFINES_MODULE'] = 'YES'
     end
   end
 end
