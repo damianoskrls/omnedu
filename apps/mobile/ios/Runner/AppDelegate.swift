@@ -1,9 +1,12 @@
 import BackgroundTasks
-import FirebaseCore
-import FirebaseMessaging
 import Flutter
 import UIKit
 import UserNotifications
+
+// Firebase is configured from Dart (firebase_core / firebase_messaging).
+// Avoid native `import FirebaseCore` / `FirebaseMessaging` — Xcode Cloud Archive
+// failed with "Unable to resolve module dependency" on those modules.
+// Called by: phone_push.dart Firebase.initializeApp + FlutterAppDelegate APNs forwarding.
 
 private let noticeTaskId = "com.omnedu.omnedu.notices"
 
@@ -13,9 +16,6 @@ private let noticeTaskId = "com.omnedu.omnedu.notices"
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    if FirebaseApp.app() == nil {
-      FirebaseApp.configure()
-    }
     BGTaskScheduler.shared.register(forTaskWithIdentifier: noticeTaskId, using: nil) { task in
       guard let refresh = task as? BGAppRefreshTask else {
         task.setTaskCompleted(success: false)
@@ -47,7 +47,7 @@ private let noticeTaskId = "com.omnedu.omnedu.notices"
     _ application: UIApplication,
     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
   ) {
-    Messaging.messaging().apnsToken = deviceToken
+    // FlutterAppDelegate + firebase_messaging plugin receive the APNs token.
     super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
   }
 
