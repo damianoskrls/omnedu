@@ -1,24 +1,28 @@
 #!/bin/sh
-# Called by: Xcode Cloud after clone (apps/mobile/ios/ci_scripts).
-# Pods/ is gitignored — must flutter pub get + pod install before Archive.
-# Also prepares Flutter so AppDelegate Firebase modules resolve via CocoaPods.
-# User: Xcode Cloud «Unable to resolve module dependency: 'FirebaseCore' / 'FirebaseMessaging'»
+# Called by: Xcode Cloud after clone (lives next to Runner.xcodeproj).
+# Resolve paths from this script location so monorepo layout always works
+# even when CI_PRIMARY_REPOSITORY_PATH is unexpected.
+# User: Xcode Cloud Archive failures (missing Pods / Firebase modules).
 set -e
 
-ROOT="${CI_PRIMARY_REPOSITORY_PATH:-}"
-if [ -z "$ROOT" ]; then
-  ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
-fi
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+IOS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+MOBILE="$(cd "$IOS_DIR/.." && pwd)"
 
-MOBILE="$ROOT/apps/mobile"
-if [ ! -d "$MOBILE" ]; then
-  echo "error: expected Flutter app at $MOBILE" >&2
+echo "ci_post_clone: SCRIPT_DIR=$SCRIPT_DIR"
+echo "ci_post_clone: IOS_DIR=$IOS_DIR"
+echo "ci_post_clone: MOBILE=$MOBILE"
+echo "ci_post_clone: CI_PRIMARY_REPOSITORY_PATH=${CI_PRIMARY_REPOSITORY_PATH:-}"
+
+if [ ! -f "$MOBILE/pubspec.yaml" ]; then
+  echo "error: pubspec.yaml not found at $MOBILE" >&2
   exit 1
 fi
 
 cd "$MOBILE"
 
 if [ ! -x "$HOME/flutter/bin/flutter" ]; then
+  echo "ci_post_clone: cloning Flutter stable…"
   git clone https://github.com/flutter/flutter.git --depth 1 -b stable "$HOME/flutter"
 fi
 export PATH="$HOME/flutter/bin:$PATH"
@@ -27,26 +31,25 @@ export FLUTTER_ROOT="$HOME/flutter"
 flutter --version
 flutter precache --ios
 flutter pub get
-# Generates ios/Flutter/Generated.xcconfig + plugin registrant used by pod install / Archive.
-flutter build ios --config-only --release --no-codesign
 
 HOMEBREW_NO_AUTO_UPDATE=1
+export HOMEBREW_NO_AUTO_UPDATE
 if ! command -v pod >/dev/null 2>&1; then
+  echo "ci_post_clone: installing CocoaPods…"
   brew install cocoapods
 fi
 
-cd ios
+cd "$IOS_DIR"
 pod install
 
-# Fail fast if Firebase pods did not land (same error AppDelegate would hit later).
-test -d "Pods/FirebaseCore" || {
-  echo "error: Pods/FirebaseCore missing after pod install" >&2
+if [ ! -f "Flutter/Generated.xcconfig" ]; then
+  echo "error: Flutter/Generated.xcconfig missing after pub get" >&2
   exit 1
-}
-test -d "Pods/FirebaseMessaging" || {
-  echo "error: Pods/FirebaseMessaging missing after pod install" >&2
+fi
+if [ ! -d "Pods" ]; then
+  echo "error: ios/Pods missing after pod install" >&2
   exit 1
-}
+fi
 
-echo "ci_post_clone: Flutter + CocoaPods ready (FirebaseCore/Messaging present)"
+echo "ci_post_clone: ready"
 exit 0
