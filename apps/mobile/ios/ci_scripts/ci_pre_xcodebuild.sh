@@ -1,7 +1,5 @@
 #!/bin/sh
 # Called by: Xcode Cloud immediately before xcodebuild.
-# Re-assert Flutter env + pod install so plugin modules are on HEADER/FRAMEWORK paths.
-# User: recurring «Module 'file_picker' not found» on Archive.
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -11,8 +9,10 @@ MOBILE="$(cd "$IOS_DIR/.." && pwd)"
 export PATH="$HOME/flutter/bin:$PATH"
 export FLUTTER_ROOT="${FLUTTER_ROOT:-$HOME/flutter}"
 
-echo "ci_pre_xcodebuild: MOBILE=$MOBILE"
-echo "ci_pre_xcodebuild: FLUTTER_ROOT=$FLUTTER_ROOT"
+if [ ! -x "$FLUTTER_ROOT/bin/flutter" ]; then
+  echo "error: Flutter missing at $FLUTTER_ROOT — ci_post_clone should have installed it" >&2
+  exit 1
+fi
 
 cd "$MOBILE"
 flutter pub get
@@ -22,16 +22,8 @@ pod install
 
 test -f "Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"
 test -f "Flutter/Generated.xcconfig"
-test -f "Flutter/Release.xcconfig"
-
-# Prove the fixed include path resolves
-REL_PODS_XCCONFIG="$IOS_DIR/Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"
-test -f "$REL_PODS_XCCONFIG"
-echo "ci_pre_xcodebuild: Release.xcconfig include target exists: $REL_PODS_XCCONFIG"
-
-if [ ! -e "Flutter/Pods" ]; then
-  ln -s ../Pods "Flutter/Pods"
-fi
+rm -f Flutter/Pods
+ln -s ../Pods Flutter/Pods
 
 echo "ci_pre_xcodebuild: ready"
 exit 0

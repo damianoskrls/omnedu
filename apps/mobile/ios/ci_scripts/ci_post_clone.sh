@@ -1,14 +1,16 @@
 #!/bin/sh
 # Called by: Xcode Cloud after clone (apps/mobile/ios/ci_scripts).
-# Ensures Flutter + CocoaPods so Runner links plugin modules (file_picker, etc.).
-# User: Xcode Cloud «Module 'file_picker' not found» in GeneratedPluginRegistrant.m
+# Install Flutter + CocoaPods for the monorepo app at apps/mobile.
+# Keep checks simple — avoid `find | head` under `set -e` (SIGPIPE → exit 1).
+# User: Build 7 «Running ci_post_clone.sh script failed (exited with code 1)»
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 IOS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 MOBILE="$(cd "$IOS_DIR/.." && pwd)"
 
-echo "ci_post_clone: MOBILE=$MOBILE IOS_DIR=$IOS_DIR"
+echo "ci_post_clone: MOBILE=$MOBILE"
+echo "ci_post_clone: IOS_DIR=$IOS_DIR"
 echo "ci_post_clone: CI_PRIMARY_REPOSITORY_PATH=${CI_PRIMARY_REPOSITORY_PATH:-}"
 
 if [ ! -f "$MOBILE/pubspec.yaml" ]; then
@@ -19,47 +21,63 @@ fi
 cd "$MOBILE"
 
 if [ ! -x "$HOME/flutter/bin/flutter" ]; then
-  echo "ci_post_clone: cloning Flutter stable…"
+  echo "ci_post_clone: cloning Flutter stable into \$HOME/flutter…"
+  rm -rf "$HOME/flutter"
   git clone https://github.com/flutter/flutter.git --depth 1 -b stable "$HOME/flutter"
 fi
 export PATH="$HOME/flutter/bin:$PATH"
 export FLUTTER_ROOT="$HOME/flutter"
+export PUB_CACHE="${PUB_CACHE:-$HOME/.pub-cache}"
 
 flutter --version
 flutter precache --ios
 flutter pub get
 
+# Plugin symlinks live under ios/.symlinks after pub get
+if [ ! -d "$IOS_DIR/.symlinks/plugins" ]; then
+  echo "error: ios/.symlinks/plugins missing after flutter pub get" >&2
+  ls -la "$IOS_DIR" >&2 || true
+  exit 1
+fi
+
 HOMEBREW_NO_AUTO_UPDATE=1
 export HOMEBREW_NO_AUTO_UPDATE
 if ! command -v pod >/dev/null 2>&1; then
-  echo "ci_post_clone: installing CocoaPods…"
+  echo "ci_post_clone: brew install cocoapods…"
   brew install cocoapods
 fi
+pod --version
 
 cd "$IOS_DIR"
+echo "ci_post_clone: pod install…"
 pod install
 
-# Required artifacts for Archive
-test -f "Flutter/Generated.xcconfig" || { echo "error: missing Flutter/Generated.xcconfig" >&2; exit 1; }
+test -f "Flutter/Generated.xcconfig" || {
+  echo "error: missing Flutter/Generated.xcconfig" >&2
+  exit 1
+}
 test -f "Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig" || {
-  echo "error: missing Pods-Runner.release.xcconfig after pod install" >&2
-  exit 1
-}
-test -d ".symlinks/plugins/file_picker" || {
-  echo "error: file_picker symlink missing — flutter pub get did not link plugins" >&2
-  ls -la .symlinks/plugins 2>/dev/null || true
-  exit 1
-}
-test -d "Pods/file_picker" -o -d "Pods/Headers/Public/file_picker" -o -n "$(find Pods -maxdepth 3 -type d -name 'file_picker' 2>/dev/null | head -1)" || {
-  echo "error: file_picker pod not present under Pods/" >&2
-  ls Pods | head -50
+  echo "error: missing Pods-Runner.release.xcconfig" >&2
+  ls -la "Pods/Target Support Files/Pods-Runner" >&2 || ls -la Pods >&2 || true
   exit 1
 }
 
-# Compatibility symlink if any tool still resolves Pods under Flutter/
-if [ ! -e "Flutter/Pods" ]; then
-  ln -s ../Pods "Flutter/Pods"
+# file_picker is a path pod; confirm lockfile + symlink (no find|head)
+if ! grep -q "file_picker" Podfile.lock; then
+  echo "error: file_picker not listed in Podfile.lock" >&2
+  exit 1
+fi
+if [ ! -e ".symlinks/plugins/file_picker" ]; then
+  echo "error: .symlinks/plugins/file_picker missing" >&2
+  ls -la .symlinks/plugins >&2 || true
+  exit 1
 fi
 
-echo "ci_post_clone: ready (Pods-Runner.release.xcconfig + file_picker present)"
+# So both ../Pods and Flutter/Pods includes resolve
+rm -f Flutter/Pods
+ln -s ../Pods Flutter/Pods
+
+echo "ci_post_clone: ready"
+echo "ci_post_clone: Release pods xcconfig OK"
+echo "ci_post_clone: file_picker symlink OK"
 exit 0
