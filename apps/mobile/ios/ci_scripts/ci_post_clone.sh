@@ -1,8 +1,8 @@
 #!/bin/sh
 # Called by: Xcode Cloud after clone (apps/mobile/ios/ci_scripts).
-# Install Flutter + CocoaPods for the monorepo app at apps/mobile.
-# Keep checks simple — avoid `find | head` under `set -e` (SIGPIPE → exit 1).
-# User: Build 7 «Running ci_post_clone.sh script failed (exited with code 1)»
+# Flutter 3.47+ may not create ios/.symlinks on `pub get` alone — use
+# `flutter build ios --config-only` then `pod install`.
+# User Build 8 log: «error: ios/.symlinks/plugins missing after flutter pub get»
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -33,12 +33,9 @@ flutter --version
 flutter precache --ios
 flutter pub get
 
-# Plugin symlinks live under ios/.symlinks after pub get
-if [ ! -d "$IOS_DIR/.symlinks/plugins" ]; then
-  echo "error: ios/.symlinks/plugins missing after flutter pub get" >&2
-  ls -la "$IOS_DIR" >&2 || true
-  exit 1
-fi
+# Creates Flutter/Generated.xcconfig + plugin registrant / symlinks used by CocoaPods.
+echo "ci_post_clone: flutter build ios --config-only…"
+flutter build ios --config-only --release --no-codesign
 
 HOMEBREW_NO_AUTO_UPDATE=1
 export HOMEBREW_NO_AUTO_UPDATE
@@ -58,26 +55,16 @@ test -f "Flutter/Generated.xcconfig" || {
 }
 test -f "Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig" || {
   echo "error: missing Pods-Runner.release.xcconfig" >&2
-  ls -la "Pods/Target Support Files/Pods-Runner" >&2 || ls -la Pods >&2 || true
+  ls -la "Pods/Target Support Files" >&2 || ls -la Pods >&2 || true
   exit 1
 }
-
-# file_picker is a path pod; confirm lockfile + symlink (no find|head)
 if ! grep -q "file_picker" Podfile.lock; then
-  echo "error: file_picker not listed in Podfile.lock" >&2
-  exit 1
-fi
-if [ ! -e ".symlinks/plugins/file_picker" ]; then
-  echo "error: .symlinks/plugins/file_picker missing" >&2
-  ls -la .symlinks/plugins >&2 || true
+  echo "error: file_picker not listed in Podfile.lock after pod install" >&2
   exit 1
 fi
 
-# So both ../Pods and Flutter/Pods includes resolve
 rm -f Flutter/Pods
 ln -s ../Pods Flutter/Pods
 
 echo "ci_post_clone: ready"
-echo "ci_post_clone: Release pods xcconfig OK"
-echo "ci_post_clone: file_picker symlink OK"
 exit 0
