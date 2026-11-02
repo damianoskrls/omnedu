@@ -9,12 +9,72 @@ const MONTHS_GEN = ['', 'Ιανουαρίου', 'Φεβρουαρίου', 'Μα�
 
 const money = (value: number) => `€${Math.abs(value).toFixed(2)}`;
 
+export type PayMonthTarget = {
+  year: number;
+  month: number;
+  chargeId?: string | null;
+  totalDue: number;
+  paidAmount: number;
+  notes?: string | null;
+};
+
 function statusLabel(status: string, totalDue?: number) {
   if (status === 'paid' && Number(totalDue ?? 0) === 0) return { text: 'Καλύπτεται', className: 'bg-emerald-100 text-emerald-700' };
   if (status === 'paid') return { text: 'Εξοφλήθη', className: 'bg-green-100 text-green-700' };
   if (status === 'partial') return { text: 'Μερική πληρωμή', className: 'bg-blue-100 text-blue-700' };
   if (status === 'upcoming') return { text: 'Δεν έχει ανοίξει', className: 'bg-gray-100 text-gray-500' };
   return { text: 'Αναμονή πληρωμής', className: 'bg-amber-100 text-amber-800' };
+}
+
+function monthRemainder(totalDue: number, paidAmount: number) {
+  return Math.max(0, Number(totalDue || 0) - Number(paidAmount || 0));
+}
+
+function MonthAmount({
+  status,
+  totalDue,
+  paidAmount,
+}: {
+  status: string;
+  totalDue: number;
+  paidAmount: number;
+}) {
+  const due = Number(totalDue || 0);
+  const paid = Number(paidAmount || 0);
+  const remain = monthRemainder(due, paid);
+  const showRemain = status === 'partial' || status === 'unpaid' || status === 'upcoming' || status === 'overdue';
+
+  if (showRemain && due > 0) {
+    return (
+      <div className="text-right">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Υπόλοιπο</p>
+        <p className={`text-lg font-extrabold ${remain > 0.005 ? 'text-red-700' : 'text-gray-900'}`}>{money(remain)}</p>
+        <p className="mt-0.5 text-[11px] text-gray-500">
+          Οφειλή {money(due)} · Πληρώθηκε {money(paid)}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="text-right">
+      <p className="text-lg font-extrabold text-gray-900">{money(due)}</p>
+      {paid > 0.005 && due > 0 && (
+        <p className="mt-0.5 text-[11px] text-gray-500">Πληρώθηκε {money(paid)}</p>
+      )}
+    </div>
+  );
+}
+
+function toPayTarget(month: any): PayMonthTarget {
+  return {
+    year: Number(month.year),
+    month: Number(month.month),
+    chargeId: month.chargeId ?? null,
+    totalDue: Number(month.totalDue ?? 0),
+    paidAmount: Number(month.paidAmount ?? 0),
+    notes: month.notes ?? null,
+  };
 }
 
 export function StudentStatement({
@@ -33,7 +93,7 @@ export function StudentStatement({
   statement: any;
   isAdmin: boolean;
   saving: boolean;
-  onPayMonth: (chargeId: string, amount: number) => void;
+  onPayMonth: (target: PayMonthTarget) => void;
   onUndoMonth: (chargeId: string) => void;
   onPayExtra: (extra: any) => void;
   receipts?: any[];
@@ -57,7 +117,6 @@ export function StudentStatement({
       .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
     const tagged = ranked.find((r) => r.academicYear === key);
     if (tagged) return tagged;
-    // Older receipts uploaded before academicYear tagging: match by upload month/year.
     return ranked.find((r) => {
       if (r.academicYear) return false;
       const when = new Date(r.uploadedAt);
@@ -96,7 +155,7 @@ export function StudentStatement({
       <div className={`rounded-2xl px-5 py-4 text-white ${owed > 0 ? 'bg-[#77328D]' : 'bg-emerald-600'}`}>
         <p className="text-sm text-white/80">Σύνολο που εκκρεμεί τώρα</p>
         <p className="text-3xl font-extrabold tracking-tight">{owed > 0 ? money(owed) : 'Τίποτα'}</p>
-        <p className="text-xs text-white/75 mt-1">Ανοιχτοί μήνες, γραφική ύλη και εκδρομές που δεν έχουν εξοφληθεί.</p>
+        <p className="text-xs text-white/75 mt-1">Υπόλοιπα ανοιχτών μηνών, γραφική ύλη και εκδρομές που δεν έχουν εξοφληθεί.</p>
       </div>
 
       {current && (
@@ -107,7 +166,11 @@ export function StudentStatement({
               <h3 className="text-xl font-bold text-gray-900">{MONTHS[current.month]} {current.year}</h3>
             </div>
             <div className="text-right">
-              <div className="text-3xl font-extrabold text-gray-900">{money(Number(current.totalDue))}</div>
+              <MonthAmount
+                status={current.status}
+                totalDue={Number(current.totalDue)}
+                paidAmount={Number(current.paidAmount ?? 0)}
+              />
               <span className={`inline-block mt-1 text-xs font-semibold px-2 py-0.5 rounded-full ${statusLabel(current.status, Number(current.totalDue)).className}`}>
                 {statusLabel(current.status, Number(current.totalDue)).text}
               </span>
@@ -116,6 +179,8 @@ export function StudentStatement({
                   <PaymentDetailsLink
                     notes={current.notes}
                     paidAt={current.paidAt}
+                    totalDue={Number(current.totalDue)}
+                    paidAmount={Number(current.paidAmount ?? 0)}
                     receipt={receiptFor(current.month, current.year)}
                     onDownloadReceipt={onDownloadReceipt}
                     onUploadReceipt={isAdmin ? () => triggerUpload(current.month, current.year) : undefined}
@@ -135,13 +200,13 @@ export function StudentStatement({
           </div>
           <LineList lines={current.lines} />
           <ExtraList extras={current.extras} isAdmin={isAdmin} saving={saving} onPayExtra={onPayExtra} />
-          {isAdmin && current.chargeId && current.status !== 'paid' && current.status !== 'upcoming' && (
+          {isAdmin && current.status !== 'paid' && (
             <button
-              onClick={() => onPayMonth(current.chargeId, Number(current.totalDue))}
+              onClick={() => onPayMonth(toPayTarget(current))}
               disabled={saving}
               className="mt-4 w-full rounded-xl bg-[#77328D] py-2.5 text-sm font-semibold text-white disabled:opacity-50"
             >
-              Εξόφληση μήνα
+              Πληρωμή
             </button>
           )}
         </div>
@@ -161,7 +226,12 @@ export function StudentStatement({
             </span>
             {(statement.stationery.status === 'paid' || statement.stationery.status === 'partial') && (
               <div className="mt-1 flex justify-end">
-                <PaymentDetailsLink notes={statement.stationery.notes} paidAt={statement.stationery.paidAt} />
+                <PaymentDetailsLink
+                  notes={statement.stationery.notes}
+                  paidAt={statement.stationery.paidAt}
+                  totalDue={Number(statement.stationery.amount)}
+                  paidAmount={Number(statement.stationery.paidAmount ?? 0)}
+                />
               </div>
             )}
           </div>
@@ -186,8 +256,9 @@ export function StudentStatement({
           {(statement.months ?? []).map((month: any) => {
             const badge = statusLabel(month.status, Number(month.totalDue));
             const quiet = month.status === 'upcoming';
+            const canPay = isAdmin && month.status !== 'paid' && Number(month.totalDue) >= 0;
             return (
-              <div key={`${month.year}-${month.month}`} className={`px-5 py-4 ${quiet ? 'opacity-60' : ''}`}>
+              <div key={`${month.year}-${month.month}`} className={`px-5 py-4 ${quiet ? 'opacity-80' : ''}`}>
                 <div className="flex items-start gap-3">
                   <div className="w-36 shrink-0">
                     <p className="font-semibold text-gray-900">{MONTHS[month.month]}</p>
@@ -195,25 +266,38 @@ export function StudentStatement({
                   </div>
                   <div className="flex-1 min-w-0">
                     <LineList lines={month.lines} compact />
-                    <ExtraList extras={month.extras} isAdmin={isAdmin && !quiet} saving={saving} onPayExtra={onPayExtra} />
+                    <ExtraList extras={month.extras} isAdmin={isAdmin} saving={saving} onPayExtra={onPayExtra} />
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-lg font-extrabold text-gray-900">{money(Number(month.totalDue))}</p>
+                    <MonthAmount
+                      status={month.status}
+                      totalDue={Number(month.totalDue)}
+                      paidAmount={Number(month.paidAmount ?? 0)}
+                    />
                     <span className={`inline-block mt-1 text-xs font-semibold px-2 py-0.5 rounded-full ${badge.className}`}>{badge.text}</span>
-                    {(month.status === 'paid' || month.status === 'partial') && Number(month.totalDue) > 0 && (
+                    {(month.status === 'paid' || month.status === 'partial' || Number(month.paidAmount ?? 0) > 0.005) && Number(month.totalDue) > 0 && (
                       <div className="mt-1 flex justify-end">
                         <PaymentDetailsLink
                           notes={month.notes}
                           paidAt={month.paidAt}
+                          totalDue={Number(month.totalDue)}
+                          paidAmount={Number(month.paidAmount ?? 0)}
                           receipt={receiptFor(month.month, month.year)}
                           onDownloadReceipt={onDownloadReceipt}
-                          onUploadReceipt={isAdmin && !quiet ? () => triggerUpload(month.month, month.year) : undefined}
-                          onRequestSystemReceipt={isAdmin && !quiet && onRequestSystemReceipt ? () => onRequestSystemReceipt(month.month, month.year, month.notes) : undefined}
+                          onUploadReceipt={isAdmin ? () => triggerUpload(month.month, month.year) : undefined}
+                          onRequestSystemReceipt={isAdmin && onRequestSystemReceipt ? () => onRequestSystemReceipt(month.month, month.year, month.notes) : undefined}
                         />
                       </div>
                     )}
-                    {isAdmin && month.chargeId && month.status !== 'paid' && month.status !== 'upcoming' && (
-                      <button onClick={() => onPayMonth(month.chargeId, Number(month.totalDue))} className="block ml-auto mt-2 text-xs font-semibold text-[#77328D]">Εξόφληση</button>
+                    {canPay && (
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() => onPayMonth(toPayTarget(month))}
+                        className="block ml-auto mt-2 text-xs font-semibold text-[#77328D] disabled:opacity-50"
+                      >
+                        Πληρωμή
+                      </button>
                     )}
                     {isAdmin && month.chargeId && month.status === 'paid' && Number(month.totalDue) > 0 && (
                       <button onClick={() => onUndoMonth(month.chargeId)} className="block ml-auto mt-2 text-xs text-gray-400">Αναίρεση</button>
@@ -221,7 +305,7 @@ export function StudentStatement({
                     <ReceiptBadge
                       receipt={receiptFor(month.month, month.year)}
                       uploading={uploadingKey === monthKey(month.month, month.year)}
-                      showUpload={isAdmin && (month.status === 'paid' || month.status === 'partial') && !quiet}
+                      showUpload={isAdmin && (month.status === 'paid' || month.status === 'partial')}
                       onUpload={() => triggerUpload(month.month, month.year)}
                       onDownload={onDownloadReceipt}
                       onDelete={onDeleteReceipt}
@@ -330,7 +414,12 @@ function ExtraList({
             <span className="flex flex-col items-end">
               <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badge.className}`}>{badge.text}</span>
               {(extra.status === 'paid' || extra.status === 'partial') && (
-                <PaymentDetailsLink notes={extra.notes} paidAt={extra.paidAt} />
+                <PaymentDetailsLink
+                  notes={extra.notes}
+                  paidAt={extra.paidAt}
+                  totalDue={Number(extra.amount)}
+                  paidAmount={Number(extra.paidAmount ?? (extra.status === 'paid' ? extra.amount : 0))}
+                />
               )}
             </span>
             {isAdmin && extra.status !== 'paid' && (

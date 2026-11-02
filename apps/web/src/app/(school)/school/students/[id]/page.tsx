@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { studentsApi, billingApi, classesApi, activitiesApi, extraServicesApi, medicationRequestsApi, studentFormsApi, broadcastsApi, schoolEventsApi, questionnairesApi, parentsApi, attendanceApi } from '@/lib/api';
-import { StudentStatement } from './student-statement';
+import { StudentStatement, type PayMonthTarget } from './student-statement';
 import { buildStudentQuoteInput, chargeMatchesQuote, currentMonthKey, findStationeryCharge, isOpenMonth, quoteStudentMonth, schoolYearMonths, schoolYearOf } from '@/lib/month-quote';
 import { noteWithoutPayment, payerOptions, paymentNote, PaymentInfo, readPaymentRecord } from '@/lib/payment-note';
 import { createReceiptFile } from '@/lib/receipt-pdf';
@@ -1990,7 +1990,7 @@ export default function StudentProfilePage() {
           const remaining = Math.max(0, due - already);
           askPayment({
             title,
-            detail: 'Μηνιαία χρέωση',
+            detail: 'Μηνιαία χρέωση · μπορείς να βάλεις οποιοδήποτε ποσό',
             chargeAmount: remaining || due,
             chargeMonth: charge?.month,
             chargeYear: charge?.year,
@@ -2004,6 +2004,44 @@ export default function StudentProfilePage() {
               await loadBillingData();
             },
           });
+        };
+
+        // Opens/creates charge for unopened months then payment modal.
+        // User: «να παταω πληρωμή και να ανοίγει/δημιουργεί χρέωση»
+        const payMonthTarget = async (target: PayMonthTarget) => {
+          const title = `Μηνιαία ${MONTH_FULL[target.month] ?? target.month} ${target.year}`;
+          let charge: any = target.chargeId
+            ? charges.find((row: any) => row.id === target.chargeId)
+            : charges.find((row: any) => row.month === target.month && row.year === target.year);
+          if (!charge && target.chargeId) {
+            charge = {
+              id: target.chargeId,
+              month: target.month,
+              year: target.year,
+              totalDue: target.totalDue,
+              paidAmount: target.paidAmount,
+              notes: target.notes,
+            };
+          }
+          if (!charge) {
+            try {
+              const created = await billingApi.generateStudentCharge(schoolId, id, target.month, target.year) as any;
+              if (!created?.id) {
+                window.alert('Δεν δημιουργήθηκε χρέωση για αυτόν τον μήνα.');
+                return;
+              }
+              charge = created;
+              await loadBillingData();
+            } catch (err: any) {
+              window.alert(err?.message || 'Η χρέωση δεν άνοιξε. Δοκίμασε ξανά.');
+              return;
+            }
+          }
+          recordMonthPayment(
+            { ...charge, notes: charge.notes ?? target.notes },
+            Number(charge.totalDue ?? target.totalDue),
+            title,
+          );
         };
 
         // Year totals
@@ -2138,10 +2176,7 @@ export default function StudentProfilePage() {
                   const docs: any = await studentsApi.getDocuments(schoolId, id).catch(() => []);
                   setStudentReceipts(Array.isArray(docs) ? (docs as any[]).filter((d: any) => d.category === 'receipt') : []);
                 }}
-                onPayMonth={(chargeId, amount) => {
-                  const charge = charges.find((row: any) => row.id === chargeId) ?? { id: chargeId, paidAmount: 0, notes: '' };
-                  recordMonthPayment(charge, amount, 'Μηνιαία χρέωση');
-                }}
+                onPayMonth={(target) => { void payMonthTarget(target); }}
                 onUndoMonth={(chargeId) => {
                   billingApi.updateCharge(schoolId, chargeId, { paidAmount: 0, status: 'unpaid' }).then(loadBillingData);
                 }}
@@ -3708,7 +3743,7 @@ function StudentSnapshot({
       key: charge.id,
       tab: 'billing',
       label: `Μηνιαία ${SNAP_MONTHS[charge.month] ?? charge.month} ${charge.year}`,
-      detail: charge.status === 'overdue' ? 'Ληξιπρόθεσμο' : 'Εκκρεμεί',
+      detail: charge.status === 'overdue' ? 'Υπόλοιπο · ληξιπρόθεσμο' : 'Υπόλοιπο',
       amount: remain,
     });
   }

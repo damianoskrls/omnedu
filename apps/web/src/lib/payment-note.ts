@@ -27,14 +27,21 @@ export type PaymentRecord = {
   amount?: string;
 };
 
-export function readPaymentRecord(notes?: string | null): PaymentRecord | null {
-  const line = (notes ?? '')
-    .split('\n')
-    .map((row) => row.trim())
-    .find((row) => row.startsWith('Πληρωμή '));
-  if (!line) return null;
+function parsePaymentLine(line: string): PaymentRecord {
   const [date, method, payerName, amount] = line.slice('Πληρωμή '.length).split(' · ').map((part) => part.trim());
   return { date, method, payerName, amount };
+}
+
+export function readPaymentRecords(notes?: string | null): PaymentRecord[] {
+  return (notes ?? '')
+    .split('\n')
+    .map((row) => row.trim())
+    .filter((row) => row.startsWith('Πληρωμή '))
+    .map(parsePaymentLine);
+}
+
+export function readPaymentRecord(notes?: string | null): PaymentRecord | null {
+  return readPaymentRecords(notes)[0] ?? null;
 }
 
 export function noteWithoutPayment(notes?: string | null) {
@@ -56,14 +63,14 @@ export function payerOptions(parents?: any[]) {
     .sort((a, b) => Number(b.primary) - Number(a.primary));
 }
 
+/** Newest payment first; keeps prior Πληρωμή lines (append history). */
 export function paymentNote(info: PaymentInfo, previous?: string | null) {
   const [year, month, day] = info.paidAt.split('-');
   const date = day && month && year ? `${day}/${month}/${year}` : info.paidAt;
   const line = `Πληρωμή ${date} · ${methodLabel(info.method)} · ${info.payerName} · ${info.paidAmount.toFixed(2)}€`;
   const prev = (previous ?? '')
     .split('\n')
-    .map(row => row.trim())
-    .filter(row => row && !row.startsWith('Πληρωμή '))
-    .join('\n');
-  return prev ? `${line}\n${prev}` : line;
+    .map((row) => row.trim())
+    .filter(Boolean);
+  return [line, ...prev].join('\n');
 }
