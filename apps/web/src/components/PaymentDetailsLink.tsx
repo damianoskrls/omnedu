@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { FileText } from 'lucide-react';
-import { readPaymentRecord } from '@/lib/payment-note';
+import { readPaymentRecords } from '@/lib/payment-note';
 
 function formatPaidAt(value?: string | null) {
   if (!value) return '';
@@ -11,10 +11,16 @@ function formatPaidAt(value?: string | null) {
   return date.toLocaleDateString('el-GR');
 }
 
+function money(value: number) {
+  return `€${Math.abs(value).toFixed(2)}`;
+}
+
 export function PaymentDetailsLink({
   notes,
   paidAt,
   receipt,
+  totalDue,
+  paidAmount,
   onDownloadReceipt,
   onUploadReceipt,
   onRequestSystemReceipt,
@@ -22,14 +28,20 @@ export function PaymentDetailsLink({
   notes?: string | null;
   paidAt?: string | null;
   receipt?: any;
+  totalDue?: number;
+  paidAmount?: number;
   onDownloadReceipt?: (docId: string) => void;
   onUploadReceipt?: () => void;
   onRequestSystemReceipt?: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   const [generatingReceipt, setGeneratingReceipt] = useState(false);
-  const record = readPaymentRecord(notes);
-  const date = record?.date || formatPaidAt(paidAt);
+  const records = readPaymentRecords(notes);
+  const fallbackDate = formatPaidAt(paidAt);
+  const due = Number(totalDue);
+  const paid = Number(paidAmount);
+  const showBalance = Number.isFinite(due) && due > 0;
+  const remain = showBalance ? Math.max(0, due - (Number.isFinite(paid) ? paid : 0)) : 0;
 
   return (
     <>
@@ -44,27 +56,58 @@ export function PaymentDetailsLink({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setOpen(false)}>
           <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl" onClick={(event) => event.stopPropagation()}>
             <h3 className="text-lg font-bold text-gray-900">Λεπτομέρειες πληρωμής</h3>
-            <dl className="mt-4 space-y-3 text-sm">
-              <div className="flex justify-between gap-4">
-                <dt className="text-gray-500">Πότε</dt>
-                <dd className="font-semibold text-gray-900">{date || '—'}</dd>
+
+            {showBalance && (
+              <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50 px-3 py-3 text-sm">
+                <div className="flex justify-between gap-3">
+                  <span className="text-gray-500">Οφειλή</span>
+                  <span className="font-semibold text-gray-900">{money(due)}</span>
+                </div>
+                <div className="mt-1 flex justify-between gap-3">
+                  <span className="text-gray-500">Πληρώθηκε</span>
+                  <span className="font-semibold text-emerald-700">{money(Number.isFinite(paid) ? paid : 0)}</span>
+                </div>
+                <div className="mt-1 flex justify-between gap-3 border-t border-gray-200 pt-1">
+                  <span className="font-medium text-gray-700">Υπόλοιπο</span>
+                  <span className={`font-bold ${remain > 0.005 ? 'text-red-700' : 'text-emerald-700'}`}>{money(remain)}</span>
+                </div>
               </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-gray-500">Από ποιον</dt>
-                <dd className="text-right font-semibold text-gray-900">{record?.payerName || '—'}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-gray-500">Τρόπος</dt>
-                <dd className="font-semibold text-gray-900">{record?.method || '—'}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-gray-500">Ποσό</dt>
-                <dd className="font-semibold text-gray-900">{record?.amount || '—'}</dd>
-              </div>
-            </dl>
-            {!record && !date && (
-              <p className="mt-4 text-sm text-gray-500">Η πληρωμή σημειώθηκε χωρίς επιπλέον στοιχεία.</p>
             )}
+
+            <div className="mt-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Πληρωμές</p>
+              {records.length > 0 ? (
+                <ul className="max-h-56 space-y-2 overflow-y-auto">
+                  {records.map((record, index) => (
+                    <li key={`${record.date}-${record.amount}-${index}`} className="rounded-lg border border-gray-100 px-3 py-2 text-sm">
+                      <div className="flex justify-between gap-3">
+                        <span className="text-gray-500">Πότε</span>
+                        <span className="font-semibold text-gray-900">{record.date || fallbackDate || '—'}</span>
+                      </div>
+                      <div className="mt-1 flex justify-between gap-3">
+                        <span className="text-gray-500">Από ποιον</span>
+                        <span className="text-right font-semibold text-gray-900">{record.payerName || '—'}</span>
+                      </div>
+                      <div className="mt-1 flex justify-between gap-3">
+                        <span className="text-gray-500">Τρόπος</span>
+                        <span className="font-semibold text-gray-900">{record.method || '—'}</span>
+                      </div>
+                      <div className="mt-1 flex justify-between gap-3">
+                        <span className="text-gray-500">Ποσό</span>
+                        <span className="font-semibold text-gray-900">{record.amount || '—'}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-gray-500">
+                  {fallbackDate
+                    ? `Η πληρωμή σημειώθηκε στις ${fallbackDate} χωρίς επιπλέον στοιχεία.`
+                    : 'Η πληρωμή σημειώθηκε χωρίς επιπλέον στοιχεία.'}
+                </p>
+              )}
+            </div>
+
             {(receipt || onUploadReceipt || onRequestSystemReceipt) && (
               <div className="mt-4 border-t border-gray-100 pt-4">
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Απόδειξη</p>

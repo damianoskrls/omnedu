@@ -526,7 +526,21 @@ export class BillingService implements OnModuleInit {
       const advanceNote = add > need + 0.009
         ? `Προκαταβολή επόμενων μηνών · +${add.toFixed(2)}€`
         : null;
-      const mergedNotes = [charge.notes, note, advanceNote].filter(Boolean).join('\n').slice(0, 2000) || null;
+      // Client sends full payment history for the starting charge — do not prepend charge.notes again.
+      // Later waterfill months keep their own notes + newest Πληρωμή line + advance marker.
+      const isStart = charge.id === start.id;
+      const newestPayLine = note
+        .split('\n')
+        .map((row) => row.trim())
+        .find((row) => row.startsWith('Πληρωμή '));
+      const mergedNotes = (
+        isStart
+          ? [note || charge.notes, advanceNote]
+          : [charge.notes, newestPayLine, advanceNote]
+      )
+        .filter(Boolean)
+        .join('\n')
+        .slice(0, 2000) || null;
 
       const updated = await this.prisma.monthlyCharge.update({
         where: { id: charge.id },
