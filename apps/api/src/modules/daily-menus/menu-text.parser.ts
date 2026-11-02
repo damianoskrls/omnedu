@@ -46,8 +46,6 @@ const DEFAULT_AFTERNOON: Record<number, string> = {
   5: 'Δημητριακά',
 };
 
-const LUNCH_SIDE = 'Στο μεσημεριανό σερβίρεται και ψωμάκι, τυράκι, σαλάτα και φρούτο εποχής.';
-
 function fold(value: string) {
   return value
     .normalize('NFD')
@@ -115,11 +113,14 @@ export function parseMenuText(raw: string, fallbackMonth?: string): ParsedMenu {
   const body = noteIndex >= 0 ? text.slice(0, noteIndex) : text;
   const noteBlock = noteIndex >= 0 ? text.slice(noteIndex) : '';
   const afternoons = parseAfternoons(noteBlock);
-  const mentionsLunchSide = /ψωμακι/.test(fold(noteBlock)) && /φρουτο/.test(fold(noteBlock));
-  const notes = [
-    mentionsLunchSide ? LUNCH_SIDE : '',
-    'Απογευματινό για τα παιδιά που μένουν μετά τις 15:30.',
-  ].filter(Boolean).join(' ');
+  // Called by: DailyMenusService.importFile → parseMenuText (daily-menus.service.ts ~210).
+  // Writes: ParsedMenu.monthNotes → DailyMenuMonthNote via bulkUpsert. No other file extracts month notes from PDF text.
+  // User: «αυτο θα αλλαζει ανα μηνα οταν ανεβαζει ο διαχειριστης το διατροφολογιο. οποτε εκει θα πρεπει να μπορει να κανει και edit τις σημειωσεις»
+  const monthNotes = noteBlock
+    .replace(/\r/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim() || undefined;
 
   const header = /(Δευτέρα|Τρίτη|Τετάρτη|Πέμπτη|Παρασκευή)\s+(\d{1,2})/gi;
   const hits: { index: number; end: number; weekday: number; day: number }[] = [];
@@ -154,12 +155,10 @@ export function parseMenuText(raw: string, fallbackMonth?: string): ParsedMenu {
       midMorning: midMorning || undefined,
       lunch: lunch || undefined,
       afternoon: afternoon || undefined,
-      notes: notes || undefined,
     });
   });
 
   if (!days.length) warnings.push('Δεν βρέθηκαν ημέρες με δεκατιανό ή μεσημεριανό.');
-  const monthNotes = noteBlock.replace(/\s+/g, ' ').trim() || undefined;
   return { month, days, warnings, monthNotes };
 }
 
@@ -192,5 +191,14 @@ export function parseMenuJson(raw: string, fallbackMonth?: string): ParsedMenu {
       };
     })
     .filter((row: ParsedMenuDay) => row.date && (row.midMorning || row.lunch || row.breakfast || row.afternoon));
-  return { month, days, warnings: days.length ? [] : ['Δεν βρέθηκαν ημέρες στο αρχείο.'] };
+  const monthNotes =
+    typeof parsed.monthNotes === 'string'
+      ? parsed.monthNotes.replace(/\r/g, '').trim() || undefined
+      : undefined;
+  return {
+    month,
+    days,
+    warnings: days.length ? [] : ['Δεν βρέθηκαν ημέρες στο αρχείο.'],
+    monthNotes,
+  };
 }

@@ -79,6 +79,10 @@ export default function MenuPage() {
   const [importing, setImporting] = useState(false);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [monthNotes, setMonthNotes] = useState('');
+  // Called by: editable notes UI below. Persist via dailyMenusApi.saveMonthNotes / getMonthNotes.
+  // User: «edit τις σημειωσεις γτ κατα το ανεβασμα εχουν λαθει»
+  const [notesSaving, setNotesSaving] = useState(false);
+  const [notesSaved, setNotesSaved] = useState(false);
 
   const monthKey = format(currentMonth, 'yyyy-MM');
   const monthLabel = format(currentMonth, 'LLLL yyyy', { locale: el });
@@ -90,16 +94,20 @@ export default function MenuPage() {
     try {
       const from = format(startOfMonth(currentMonth), 'yyyy-MM-dd');
       const to = format(endOfMonth(currentMonth), 'yyyy-MM-dd');
-      const data = await dailyMenusApi.list(schoolId, {
-        from,
-        to,
-        audienceType: audience.audienceType,
-        audienceIds: JSON.stringify(audience.audienceIds),
-      }) as unknown as DayMenu[];
-      const rows = Array.isArray(data) ? data : [];
+      const [data, notesRow] = await Promise.all([
+        dailyMenusApi.list(schoolId, {
+          from,
+          to,
+          audienceType: audience.audienceType,
+          audienceIds: JSON.stringify(audience.audienceIds),
+        }) as Promise<unknown>,
+        dailyMenusApi.getMonthNotes(schoolId, format(currentMonth, 'yyyy-MM')).catch(() => null) as Promise<{ notes?: string } | null>,
+      ]);
+      const rows = Array.isArray(data) ? (data as DayMenu[]) : [];
       const map: Record<string, DayMenu> = {};
       rows.forEach((menu) => { map[String(menu.date).slice(0, 10)] = menu; });
       setMenus(map);
+      setMonthNotes(notesRow?.notes ?? '');
     } catch (err) {
       setPageError(errorText(err));
     } finally {
@@ -260,7 +268,8 @@ export default function MenuPage() {
     setImportOpen(true);
     try {
       const result = await dailyMenusApi.importFile(schoolId, file, monthKey) as unknown as ImportPreview;
-      setPreview(result);
+      // Always string so confirmImport saves what the preview textarea shows (not calendar monthNotes).
+      setPreview({ ...result, monthNotes: result.monthNotes ?? '' });
     } catch (err) {
       setPageError(errorText(err));
       setImportOpen(false);
@@ -272,8 +281,14 @@ export default function MenuPage() {
     setSaving(true);
     setPageError('');
     try {
-      await dailyMenusApi.bulk(schoolId, { days: preview.days, ...audience });
-      if (preview.monthNotes) setMonthNotes(preview.monthNotes);
+      const notes = preview.monthNotes ?? '';
+      await dailyMenusApi.bulk(schoolId, {
+        days: preview.days,
+        monthNotes: notes,
+        month: preview.month || monthKey,
+        ...audience,
+      });
+      setMonthNotes(notes);
       if (preview.month && preview.month !== monthKey) {
         const [year, month] = preview.month.split('-').map(Number);
         setCurrentMonth(new Date(year, month - 1, 1));
@@ -285,6 +300,20 @@ export default function MenuPage() {
     } catch (err) {
       setPageError(errorText(err));
     } finally { setSaving(false); }
+  };
+
+  const saveMonthNotes = async () => {
+    setNotesSaving(true);
+    setPageError('');
+    try {
+      await dailyMenusApi.saveMonthNotes(schoolId, { month: monthKey, notes: monthNotes });
+      setNotesSaved(true);
+      setTimeout(() => setNotesSaved(false), 2000);
+    } catch (err) {
+      setPageError(errorText(err));
+    } finally {
+      setNotesSaving(false);
+    }
   };
 
   const days = eachDayOfInterval({ start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) });
@@ -341,12 +370,35 @@ export default function MenuPage() {
         </div>
       )}
 
-      {monthNotes && (
-        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <p className="font-medium mb-1">Σημειώσεις μήνα</p>
-          <p className="whitespace-pre-wrap">{monthNotes}</p>
+      <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <p className="font-semibold">Σημειώσεις μήνα</p>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={saveMonthNotes}
+              disabled={notesSaving}
+              className="rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-800 disabled:opacity-50"
+            >
+              {notesSaving ? 'Αποθήκευση…' : notesSaved ? 'Αποθηκεύτηκε ✓' : 'Αποθήκευση σημειώσεων'}
+            </button>
+          )}
         </div>
-      )}
+        {isAdmin ? (
+          <textarea
+            value={monthNotes}
+            onChange={(e) => setMonthNotes(e.target.value)}
+            rows={8}
+            placeholder="Σημειώσεις που εμφανίζονται στους γονείς (συνοδευτικά, ποιότητα, παιδίατρος κ.λπ.)"
+            className="w-full resize-y rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-400"
+          />
+        ) : (
+          <p className="whitespace-pre-wrap text-amber-900">{monthNotes || 'Δεν υπάρχουν σημειώσεις για αυτόν τον μήνα.'}</p>
+        )}
+        <p className="mt-2 text-xs text-amber-700/80">
+          Οι σημειώσεις αλλάζουν ανά μήνα. Μετά το ανέβασμα PDF μπορείς να διορθώσεις λάθη της αυτόματης ανάγνωσης.
+        </p>
+      </div>
 
       {pageError && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{pageError}</div>}
 
@@ -578,6 +630,16 @@ export default function MenuPage() {
                       {day.afternoon && <p className="text-gray-600"><span className="text-blue-600">Απογευματινό:</span> {day.afternoon}</p>}
                     </div>
                   ))}
+                </div>
+                <div>
+                  <p className="mb-1 text-sm font-semibold text-gray-800">Σημειώσεις μήνα (επεξεργάσιμες)</p>
+                  <textarea
+                    value={preview.monthNotes ?? ''}
+                    onChange={(e) => setPreview({ ...preview, monthNotes: e.target.value })}
+                    rows={6}
+                    className="w-full resize-y rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Διόρθωσε τις σημειώσεις πριν την αποθήκευση…"
+                  />
                 </div>
                 <div className="flex gap-3">
                   <button onClick={() => { setImportOpen(false); setPreview(null); }} className="flex-1 border border-gray-300 text-gray-700 rounded-lg py-2 text-sm">Άκυρο</button>

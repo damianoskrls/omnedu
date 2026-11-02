@@ -15,11 +15,12 @@ type MenuInput = {
 };
 
 const AI_PROMPT = `Είσαι βοηθός παιδικού σταθμού. Διάβασε το διατροφολόγιο και επέστρεψε ΜΟΝΟ JSON:
-{"month":"yyyy-MM","days":[{"date":"yyyy-MM-dd","breakfast":"","midMorning":"","lunch":"","afternoon":"","notes":""}]}
+{"month":"yyyy-MM","monthNotes":"","days":[{"date":"yyyy-MM-dd","breakfast":"","midMorning":"","lunch":"","afternoon":""}]}
 Κανόνες:
 - Δεκατιανό → midMorning, Μεσημεριανό → lunch, Απογευματινό → afternoon, Πρωινό → breakfast.
 - Μόνο καθημερινές. Κράτα τα φαγητά στα ελληνικά, όπως είναι γραμμένα.
-- Αν η σημείωση λέει ότι κάθε μεσημέρι έχει ψωμάκι, τυράκι, σαλάτα και φρούτο, βάλε το στο notes και το απογευματινό ανά ημέρα στο afternoon.
+- Το μπλοκ «Σημειώσεις» (συνοδευτικά μεσημεριανού, απογευματινά ανά ημέρα, ποιότητα, παιδίατρος) βάλε ΟΛΟ στο monthNotes με αλλαγές γραμμής, ΟΧΙ στο κάθε day.
+- Το απογευματινό ανά ημέρα βάλε στο afternoon της αντίστοιχης ημέρας.
 - Μην επινοείς ημέρες που δεν φαίνονται.`;
 
 @Injectable()
@@ -67,12 +68,35 @@ export class DailyMenusService implements OnModuleInit {
   }
 
   async findByDate(schoolId: string, date: string, audienceType?: string, audienceIds?: string) {
+    // Called by: daily-menus.controller findByDate. Adds monthNotes for mobile bottom sheet.
+    // User: «οταν πατας πανω να σου εμφανιζει με ενα bottom sheet αναλυτικα ... σημειωσεις»
     const audience = normalizeAudience(audienceType, audienceIds);
     const menu = await this.prisma.dailyMenu.findUnique({
       where: menuUnique(schoolId, dateOnly(date), audience.audienceType, audience.audienceIds),
     });
     if (!menu) throw new NotFoundException('No menu for this date');
-    return menu;
+    const month = String(date).slice(0, 7);
+    const monthNote = await this.getMonthNotes(schoolId, month);
+    return { ...menu, monthNotes: monthNote?.notes ?? '' };
+  }
+
+  async getMonthNotes(schoolId: string, month: string) {
+    await this.ensureSchema();
+    if (!/^\d{4}-\d{2}$/.test(month)) throw new BadRequestException('Δώσε μήνα σε μορφή yyyy-MM.');
+    return this.prisma.dailyMenuMonthNote.findUnique({
+      where: { schoolId_month: { schoolId, month } },
+    });
+  }
+
+  async saveMonthNotes(schoolId: string, month: string, notes: string) {
+    await this.ensureSchema();
+    if (!/^\d{4}-\d{2}$/.test(month)) throw new BadRequestException('Δώσε μήνα σε μορφή yyyy-MM.');
+    const text = String(notes ?? '').trim();
+    return this.prisma.dailyMenuMonthNote.upsert({
+      where: { schoolId_month: { schoolId, month } },
+      create: { id: crypto.randomUUID(), schoolId, month, notes: text },
+      update: { notes: text },
+    });
   }
 
   async upsert(schoolId: string, data: MenuInput) {
@@ -102,7 +126,10 @@ export class DailyMenusService implements OnModuleInit {
     }
   }
 
-  async bulkUpsert(schoolId: string, body: { days?: MenuInput[]; audienceType?: string; audienceIds?: unknown }) {
+  async bulkUpsert(
+    schoolId: string,
+    body: { days?: MenuInput[]; audienceType?: string; audienceIds?: unknown; monthNotes?: string; month?: string },
+  ) {
     await this.ensureSchema();
     const days = body.days || [];
     if (!days.length) throw new BadRequestException('Δεν υπάρχουν ημέρες για αποθήκευση.');
@@ -111,6 +138,13 @@ export class DailyMenusService implements OnModuleInit {
     for (const day of days) {
       if (!day.date) continue;
       saved.push(await this.upsert(schoolId, { ...day, ...audience }));
+    }
+    const month =
+      body.month && /^\d{4}-\d{2}$/.test(body.month)
+        ? body.month
+        : String(days.find((d) => d.date)?.date || '').slice(0, 7);
+    if (month && body.monthNotes != null) {
+      await this.saveMonthNotes(schoolId, month, body.monthNotes);
     }
     return { saved: saved.length, days: saved };
   }
@@ -149,6 +183,9 @@ export class DailyMenusService implements OnModuleInit {
       });
       copied++;
     }
+    const fromNotes = await this.getMonthNotes(schoolId, body.from);
+    // Always overwrite target month notes (including empty) so stale notes do not linger.
+    await this.saveMonthNotes(schoolId, body.to, fromNotes?.notes ?? '');
     return { copied, to: body.to };
   }
 
@@ -215,6 +252,10 @@ export class DailyMenusService implements OnModuleInit {
         date: { gte: start, lte: end },
       },
     });
+    // Month notes are school-wide; only clear them when wiping the school-wide (all) audience.
+    if (audience.audienceType === 'all') {
+      await this.prisma.dailyMenuMonthNote.deleteMany({ where: { schoolId, month } });
+    }
     return { deleted: result.count };
   }
 

@@ -51,8 +51,9 @@ model School {
   invoices        Invoice[]
   notifications   Notification[]
   parentMeetings  ParentMeeting[]
-  dailyMenus      DailyMenu[]
-  menuTemplates   MenuTemplate[]
+  dailyMenus          DailyMenu[]
+  dailyMenuMonthNotes DailyMenuMonthNote[]
+  menuTemplates       MenuTemplate[]
   notifBroadcasts NotificationBroadcast[]
   extraServices        ExtraService[]
   notificationSettings NotificationSettings?
@@ -970,6 +971,21 @@ model DailyMenu {
   @@unique([schoolId, date, audienceType, audienceIds])
   @@index([schoolId, date])
   @@map("daily_menus")
+}
+
+/// School-wide month notes under the meal plan (editable after PDF/AI import).
+model DailyMenuMonthNote {
+  id        String   @id @default(uuid())
+  schoolId  String   @map("school_id")
+  month     String   // yyyy-MM
+  notes     String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, month])
+  @@map("daily_menu_month_notes")
 }
 
 // ─────────────────────────────────────────────────────────

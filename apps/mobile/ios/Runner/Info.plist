@@ -28,8 +28,12 @@
 	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- Called by: iOS privacy prompts / ITMS-90683 App Store Connect. Extends existing Info.plist (not new file). -->
+	<!-- User email: Missing NSLocationAlwaysAndWhenInUseUsageDescription for Runner.app -->
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Η Ονειροχώρα χρησιμοποιεί την τοποθεσία του οδηγού για να δείχνει στους γονείς πού βρίσκεται το σχολικό.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Η Ονειροχώρα χρησιμοποιεί την τοποθεσία του οδηγού στο παρασκήνιο για να δείχνει στους γονείς πού βρίσκεται το σχολικό κατά τη διαδρομή.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Η Ονειροχώρα χρησιμοποιεί την κάμερα για φωτογραφίες και βίντεο σε μηνύματα και εκδηλώσεις.</string>
 	<key>NSMicrophoneUsageDescription</key>

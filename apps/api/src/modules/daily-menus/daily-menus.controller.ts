@@ -1,8 +1,10 @@
-import { Controller, Get, Post, Delete, Param, Body, Query, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { DailyMenusService } from './daily-menus.service';
 import { Roles } from '../../common/decorators/roles.decorator';
+// Extends existing controller. Routes GET/PUT month-notes before :date.
+// User: «στο διατροφολογιο θελω να εμφανιζετε ... σημειωσεις ... edit τις σημειωσεις»
 
 @Controller({ path: 'schools/:schoolId/daily-menus', version: '1' })
 export class DailyMenusController {
@@ -42,6 +44,23 @@ export class DailyMenusController {
   @Roles('school_admin')
   copyMonth(@Param('schoolId') schoolId: string, @Body() body: any) {
     return this.svc.copyMonth(schoolId, body);
+  }
+
+  @Get('month-notes')
+  getMonthNotes(
+    @Param('schoolId') schoolId: string,
+    @Query('month') month: string,
+  ) {
+    return this.svc.getMonthNotes(schoolId, month);
+  }
+
+  @Put('month-notes')
+  @Roles('school_admin', 'owner')
+  saveMonthNotes(
+    @Param('schoolId') schoolId: string,
+    @Body() body: { month?: string; notes?: string },
+  ) {
+    return this.svc.saveMonthNotes(schoolId, String(body.month || ''), String(body.notes ?? ''));
   }
 
   @Get(':date')

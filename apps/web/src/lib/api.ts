@@ -374,6 +374,12 @@ export const dailyMenusApi = {
   bulk: (schoolId: string, data: any) => api.post(`/schools/${schoolId}/daily-menus/bulk`, data),
   copyMonth: (schoolId: string, data: { from: string; to: string; audienceType?: string; audienceIds?: string[] }) =>
     api.post(`/schools/${schoolId}/daily-menus/copy-month`, data),
+  // Called by: school/menu/page.tsx editable month notes. Schema: daily_menu_month_notes.
+  // User: «θα πρεπει να μπορει να κανει και edit τις σημειωσεις γτ κατα το ανεβασμα εχουν λαθει»
+  getMonthNotes: (schoolId: string, month: string) =>
+    api.get(`/schools/${schoolId}/daily-menus/month-notes`, { params: { month } }),
+  saveMonthNotes: (schoolId: string, data: { month: string; notes: string }) =>
+    api.put(`/schools/${schoolId}/daily-menus/month-notes`, data),
   importFile: (schoolId: string, file: File, month?: string) => {
     const form = new FormData();
     form.append('file', file);

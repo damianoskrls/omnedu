@@ -5,6 +5,8 @@ import '../../../core/widgets/person_face.dart';
 import 'bulletin_screen.dart';
 import 'event_instructions.dart';
 import 'events_screen.dart';
+import 'parent_child_pages.dart';
+// Extends DayMenuCard: notes → bottom sheet + monthly menu. User: «να εχει τις σημειωσεις και οταν πατας πανω... bottom sheet»
 
 const dayHistoryColors = [Color(0xFF77328D), Color(0xFFE95926)];
 
@@ -99,7 +101,12 @@ class DayHistoryPanel extends ConsumerWidget {
               error: (_, __) => DayHistoryEmptyCard('Δεν υπάρχει καταχωρημένο μενού', child: child),
               data: (menu) => menu == null
                   ? DayHistoryEmptyCard('Δεν υπάρχει καταχωρημένο μενού για σήμερα', child: child)
-                  : DayMenuCard(menu: menu, colors: colors, child: child),
+                  : DayMenuCard(
+                      menu: menu,
+                      colors: colors,
+                      child: child,
+                      schoolId: schoolId,
+                    ),
             ),
           ),
         ],
@@ -405,7 +412,12 @@ class SharedTodayMenu extends ConsumerWidget {
       error: (_, __) => DayHistoryEmptyCard('Δεν υπάρχει καταχωρημένο μενού', children: children),
       data: (menu) => menu == null
           ? DayHistoryEmptyCard('Δεν υπάρχει καταχωρημένο μενού για σήμερα', children: children)
-          : DayMenuCard(menu: menu, colors: dayHistoryColors, children: children),
+          : DayMenuCard(
+              menu: menu,
+              colors: dayHistoryColors,
+              children: children,
+              schoolId: schoolId,
+            ),
     );
   }
 }
@@ -946,7 +958,15 @@ class DayMenuCard extends StatelessWidget {
   final List<Color> colors;
   final Map<String, dynamic>? child;
   final List<Map<String, dynamic>> children;
-  const DayMenuCard({super.key, required this.menu, required this.colors, this.child, this.children = const []});
+  final String? schoolId;
+  const DayMenuCard({
+    super.key,
+    required this.menu,
+    required this.colors,
+    this.child,
+    this.children = const [],
+    this.schoolId,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -965,6 +985,9 @@ class DayMenuCard extends StatelessWidget {
         .map(ChildMention.fromMap)
         .whereType<ChildMention>()
         .toList();
+    final monthNotes = (menu['monthNotes'] as String?)?.trim() ?? '';
+    final dayNotes = (menu['notes'] as String?)?.trim() ?? '';
+    final hasNotesSheet = monthNotes.isNotEmpty || dayNotes.isNotEmpty;
 
     return Container(
       decoration: BoxDecoration(
@@ -982,7 +1005,7 @@ class DayMenuCard extends StatelessWidget {
               child: Align(alignment: Alignment.centerLeft, child: ChildMentions(people: people)),
             ),
           ...filled.map((item) {
-            final isLast = filled.last == item && (menu['notes'] == null || (menu['notes'] as String).isEmpty);
+            final isLast = filled.last == item && !hasNotesSheet;
             return Container(
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
               decoration: BoxDecoration(
@@ -1027,18 +1050,166 @@ class DayMenuCard extends StatelessWidget {
               ),
             );
           }),
-          if (menu['notes'] != null && (menu['notes'] as String).isNotEmpty)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: const BoxDecoration(
-                color: Color(0xFFF6F3FA),
-                borderRadius: BorderRadius.vertical(bottom: Radius.circular(18)),
+          if (hasNotesSheet)
+            Material(
+              color: const Color(0xFFF6F3FA),
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(18)),
+              child: InkWell(
+                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(18)),
+                onTap: () => _openMenuNotesSheet(context, filled, monthNotes, dayNotes),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  child: Row(
+                    children: [
+                      Icon(Icons.sticky_note_2_outlined, color: colors[0], size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Σημειώσεις',
+                          style: TextStyle(
+                            color: colors[0],
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        'Δες λεπτομέρειες',
+                        style: TextStyle(color: colors[0].withOpacity(0.75), fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                      Icon(Icons.chevron_right_rounded, color: colors[0], size: 20),
+                    ],
+                  ),
+                ),
               ),
-              child: Text('📝 ${menu['notes']}', style: TextStyle(color: colors[0], fontSize: 12)),
             ),
         ],
       ),
+    );
+  }
+
+  void _openMenuNotesSheet(
+    BuildContext context,
+    List<(String, IconData, dynamic)> filled,
+    String monthNotes,
+    String dayNotes,
+  ) {
+    final childName = (child?['fullName'] as String?) ??
+        (children.isNotEmpty ? children.first['fullName'] as String? : null) ??
+        '';
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (ctx) {
+        final maxH = MediaQuery.of(ctx).size.height * 0.85;
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxH),
+            child: Padding(
+            padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + MediaQuery.of(ctx).viewInsets.bottom),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE5E7EB),
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Διατροφολόγιο σήμερα',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: colors[0]),
+                  ),
+                  const SizedBox(height: 14),
+                  ...filled.map(
+                    (item) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(item.$2, size: 18, color: colors[0]),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(item.$1,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFFE95926),
+                                    )),
+                                const SizedBox(height: 2),
+                                Text(
+                                  item.$3 as String,
+                                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Color(0xFF2C2422)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (monthNotes.isNotEmpty || dayNotes.isNotEmpty) ...[
+                    const Divider(height: 28),
+                    Text(
+                      'Σημειώσεις',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: colors[0]),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      monthNotes.isNotEmpty ? monthNotes : dayNotes,
+                      style: const TextStyle(fontSize: 13, height: 1.5, color: Color(0xFF374151)),
+                    ),
+                  ],
+                  if (schoolId != null) ...[
+                    const SizedBox(height: 18),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: FilledButton.icon(
+                        onPressed: () {
+                          Navigator.of(ctx).pop();
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => MonthlyMealsScreen(
+                                schoolId: schoolId!,
+                                childName: childName.isEmpty ? 'Μαθητής' : childName,
+                              ),
+                            ),
+                          );
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: colors[0],
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        icon: const Icon(Icons.calendar_month_rounded),
+                        label: const Text(
+                          'Όλο το διατροφολόγιο του μήνα',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
