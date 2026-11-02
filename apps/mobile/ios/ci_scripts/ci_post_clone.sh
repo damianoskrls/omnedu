@@ -1,8 +1,8 @@
 #!/bin/sh
 # Called by: Xcode Cloud after clone (apps/mobile/ios/ci_scripts).
-# Flutter 3.47+ may not create ios/.symlinks on `pub get` alone — use
-# `flutter build ios --config-only` then `pod install`.
-# User Build 8 log: «error: ios/.symlinks/plugins missing after flutter pub get»
+# Use CocoaPods only — Flutter 3.47+ tries SwiftPM for file_picker's
+# DKImagePickerController and fails without Package.resolved.
+# User Build 9: «Could not resolve package dependencies… dkimagepickercontroller»
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -30,10 +30,11 @@ export FLUTTER_ROOT="$HOME/flutter"
 export PUB_CACHE="${PUB_CACHE:-$HOME/.pub-cache}"
 
 flutter --version
+# Must run after Flutter install — keeps plugins on CocoaPods (not SwiftPM).
+flutter config --no-enable-swift-package-manager
 flutter precache --ios
 flutter pub get
 
-# Creates Flutter/Generated.xcconfig + plugin registrant / symlinks used by CocoaPods.
 echo "ci_post_clone: flutter build ios --config-only…"
 flutter build ios --config-only --release --no-codesign
 

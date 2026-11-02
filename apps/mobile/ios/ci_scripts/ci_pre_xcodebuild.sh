@@ -14,6 +14,8 @@ if [ ! -x "$FLUTTER_ROOT/bin/flutter" ]; then
   exit 1
 fi
 
+flutter config --no-enable-swift-package-manager
+
 cd "$MOBILE"
 flutter pub get
 flutter build ios --config-only --release --no-codesign
