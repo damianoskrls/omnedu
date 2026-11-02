@@ -1,2 +1,5 @@
-#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"
+// Paths are relative to this file (ios/Flutter/), so Pods live at ../Pods.
+// The old `Pods/...` include is optional (#include?) and was silently skipped on
+// Xcode Cloud → Module 'file_picker' not found in GeneratedPluginRegistrant.m.
+#include? "../Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"
 #include "Generated.xcconfig"
