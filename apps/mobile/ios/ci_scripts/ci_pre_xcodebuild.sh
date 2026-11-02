@@ -10,12 +10,13 @@ export PATH="$HOME/flutter/bin:$PATH"
 export FLUTTER_ROOT="${FLUTTER_ROOT:-$HOME/flutter}"
 
 if [ ! -x "$FLUTTER_ROOT/bin/flutter" ]; then
-  echo "error: Flutter missing at $FLUTTER_ROOT — ci_post_clone should have installed it" >&2
+  echo "error: Flutter missing at $FLUTTER_ROOT" >&2
   exit 1
 fi
 
 cd "$MOBILE"
 flutter pub get
+flutter build ios --config-only --release --no-codesign
 
 cd "$IOS_DIR"
 pod install
