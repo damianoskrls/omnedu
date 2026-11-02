@@ -1,7 +1,8 @@
 name: omnedu
 description: omnedu — School management app for Parents & Teachers
 publish_to: none
-version: 1.0.37+202610291402
+# Bump for TestFlight after Xcode Cloud Archive succeeds (old TF build was 202610291404).
+version: 1.0.38+202611021420
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
