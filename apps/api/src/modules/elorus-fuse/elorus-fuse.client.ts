@@ -103,6 +103,13 @@ export class ElorusFuseClient {
     return this.request<FuseInvoiceResult>('POST', url, organizationVat, payload);
   }
 
+  async emailInvoice(organizationVat: string, uid: string, to: string, cc: string[] = []): Promise<unknown> {
+    const url = `${this.baseUrl()}/v1_0/invoice/${encodeURIComponent(uid)}/email/`;
+    const body: Record<string, unknown> = { to };
+    if (cc.length) body.cc = cc;
+    return this.request('POST', url, organizationVat, body);
+  }
+
   async listInvoices(
     organizationVat: string,
     params: {

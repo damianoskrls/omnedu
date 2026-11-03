@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   ElorusFuseApiError,
   ElorusFuseClient,
@@ -84,6 +85,7 @@ export class ElorusFuseService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly client: ElorusFuseClient,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async getFiscalSettings(schoolId: string) {
@@ -152,8 +154,57 @@ export class ElorusFuseService {
         schoolId,
         ...(studentId ? { studentId } : {}),
       },
+      include: {
+        student: { select: { id: true, fullName: true } },
+      },
       orderBy: [{ issueDate: 'desc' }, { createdAt: 'desc' }],
     });
+  }
+
+  /** Parent-facing list: issued docs for their children, with open/download links. */
+  async listDocumentsForParent(schoolId: string, parentUserId: string) {
+    const children = await this.prisma.student.findMany({
+      where: { schoolId, isActive: true, parents: { some: { userId: parentUserId } } },
+      select: { id: true, fullName: true },
+    });
+    if (!children.length) return [];
+    const names = new Map(children.map((c) => [c.id, c.fullName]));
+    const docs = await this.prisma.fiscalDocument.findMany({
+      where: {
+        schoolId,
+        status: 'issued',
+        studentId: { in: children.map((c) => c.id) },
+      },
+      orderBy: [{ issueDate: 'desc' }, { createdAt: 'desc' }],
+    });
+    return docs.map((doc) => ({
+      id: doc.id,
+      kind: 'fiscal',
+      documentKind: doc.documentKind,
+      invoiceType: doc.invoiceType,
+      series: doc.series,
+      number: doc.number,
+      title: `${doc.documentKind === 'service_invoice' ? 'Τιμολόγιο' : 'Απόδειξη'} ${doc.series}-${doc.number}`,
+      description: doc.description,
+      grossValue: doc.grossValue,
+      issueDate: doc.issueDate,
+      mark: doc.mark,
+      fuseUid: doc.fuseUid,
+      qrUrl: doc.qrUrl,
+      verificationUrl: doc.verificationUrl || doc.qrUrl,
+      studentId: doc.studentId,
+      studentName: doc.studentId ? (names.get(doc.studentId) ?? '') : '',
+      status: doc.status,
+      mydataStatus: doc.mydataStatus,
+      createdAt: doc.createdAt,
+    }));
+  }
+
+  async getDocumentForParent(schoolId: string, parentUserId: string, id: string) {
+    const rows = await this.listDocumentsForParent(schoolId, parentUserId);
+    const doc = rows.find((r) => r.id === id);
+    if (!doc) throw new NotFoundException('Το παραστατικό δεν βρέθηκε');
+    return doc;
   }
 
   async getDocument(schoolId: string, id: string) {
@@ -336,7 +387,9 @@ export class ElorusFuseService {
 
     try {
       const result = await this.client.createInvoice(issuerVat, payload);
-      return this.persistFuseSuccess(pending.id, result);
+      const saved = await this.persistFuseSuccess(pending.id, result);
+      await this.notifyParentsOfIssue(schoolId, saved);
+      return saved;
     } catch (err) {
       if (err instanceof ElorusFuseApiError && err.statusCode === 0) {
         // Indeterminate: try to recover by series/number lookup before marking failed.
@@ -388,7 +441,73 @@ export class ElorusFuseService {
         errorMessage: null,
         rawResponse: JSON.stringify(result),
       },
+      include: {
+        student: { select: { id: true, fullName: true } },
+      },
     });
+  }
+
+  private async notifyParentsOfIssue(schoolId: string, doc: {
+    id: string;
+    studentId: string | null;
+    documentKind: string;
+    series: string;
+    number: string;
+    description: string;
+    grossValue: any;
+    fuseUid: string | null;
+    verificationUrl: string | null;
+    qrUrl: string | null;
+    student?: { id: string; fullName: string } | null;
+  }) {
+    if (!doc.studentId) return;
+    const kindLabel = doc.documentKind === 'service_invoice' ? 'Τιμολόγιο' : 'Απόδειξη';
+    const title = `${kindLabel} ${doc.series}-${doc.number}`;
+    const amount = Number(doc.grossValue || 0).toFixed(2);
+    const body = `Εκδόθηκε ${kindLabel.toLowerCase()} €${amount} — ${doc.description}`;
+    try {
+      await this.notifications.notifyStudentParents(schoolId, doc.studentId, {
+        event: 'receipt',
+        type: 'fiscal_document',
+        title,
+        body,
+        data: {
+          fiscalDocumentId: doc.id,
+          series: doc.series,
+          number: doc.number,
+          screen: 'receipts',
+        },
+      });
+    } catch (err) {
+      this.logger.warn(`Parent notify failed for fiscal ${doc.id}: ${(err as Error).message}`);
+    }
+
+    // Best-effort: email official Fuse document to parent emails when UID exists.
+    if (!doc.fuseUid) return;
+    try {
+      const school = await this.prisma.school.findUnique({
+        where: { id: schoolId },
+        select: { vatNumber: true },
+      });
+      const issuerVat = String(school?.vatNumber || '').trim();
+      if (!issuerVat) return;
+      const parents = await this.prisma.studentParent.findMany({
+        where: { studentId: doc.studentId },
+        include: { user: { select: { email: true } } },
+      });
+      const emails = [...new Set(
+        parents.map((p) => String(p.user?.email || '').trim()).filter((e) => e.includes('@')),
+      )];
+      for (const email of emails.slice(0, 3)) {
+        try {
+          await this.client.emailInvoice(issuerVat, doc.fuseUid, email);
+        } catch (emailErr) {
+          this.logger.warn(`Fuse email to ${email} failed: ${(emailErr as Error).message}`);
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`Fuse parent email skipped: ${(err as Error).message}`);
+    }
   }
 
   async refresh(schoolId: string, id: string) {

@@ -5,13 +5,50 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api/api_client.dart';
 
 final myReceiptsProvider = FutureProvider.family<List<dynamic>, String>((ref, schoolId) async {
   final dio = ref.read(dioProvider);
-  final resp = await dio.get('/schools/$schoolId/billing/receipts/mine');
-  return resp.data is List ? resp.data as List<dynamic> : [];
+  final receiptsResp = await dio.get('/schools/$schoolId/billing/receipts/mine');
+  final receipts = receiptsResp.data is List ? List<dynamic>.from(receiptsResp.data as List) : <dynamic>[];
+  List<dynamic> fiscal = const [];
+  try {
+    final fiscalResp = await dio.get('/schools/$schoolId/fiscal-documents/mine');
+    fiscal = fiscalResp.data is List ? List<dynamic>.from(fiscalResp.data as List) : <dynamic>[];
+  } catch (_) {
+    // Older API without fiscal endpoints — keep classic receipts only.
+  }
+  final merged = <Map<String, dynamic>>[];
+  for (final row in receipts) {
+    if (row is! Map) continue;
+    final map = Map<String, dynamic>.from(row);
+    map['kind'] = map['kind'] ?? 'receipt';
+    merged.add(map);
+  }
+  for (final row in fiscal) {
+    if (row is! Map) continue;
+    final map = Map<String, dynamic>.from(row);
+    map['kind'] = 'fiscal';
+    // Reuse receipt card fields.
+    map['fileUrl'] = map['verificationUrl'] ?? map['qrUrl'] ?? '';
+    map['uploadedAt'] = map['issueDate'] ?? map['createdAt'];
+    map['notes'] = [
+      if ((map['grossValue'] ?? '').toString().isNotEmpty) '€${map['grossValue']}',
+      if ((map['mark'] ?? '').toString().isNotEmpty) 'MARK ${map['mark']}',
+    ].where((part) => part.toString().trim().isNotEmpty).join(' · ');
+    map['academicYear'] = (map['issueDate'] ?? '').toString().length >= 4
+        ? (map['issueDate'] as String).substring(0, 4)
+        : null;
+    merged.add(map);
+  }
+  merged.sort((a, b) {
+    final aDate = DateTime.tryParse(a['uploadedAt']?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
+    final bDate = DateTime.tryParse(b['uploadedAt']?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
+    return bDate.compareTo(aDate);
+  });
+  return merged;
 });
 
 class ReceiptsScreen extends ConsumerWidget {
@@ -23,7 +60,7 @@ class ReceiptsScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFF6F3FA),
       appBar: AppBar(
-        title: const Text('Οι αποδείξεις μου'),
+        title: const Text('Αποδείξεις & παραστατικά'),
         actions: [
           IconButton(onPressed: () => ref.invalidate(myReceiptsProvider(schoolId)), icon: const Icon(Icons.refresh_rounded)),
         ],
@@ -68,13 +105,13 @@ class ParentReceipts extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (showHeading) ...[
-              const Text('Οι αποδείξεις μου', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
+              const Text('Αποδείξεις & παραστατικά', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
               const SizedBox(height: 8),
             ],
             if (mine.isEmpty)
               const Padding(
                 padding: EdgeInsets.only(bottom: 12),
-                child: Text('Δεν έχουν εκδοθεί αποδείξεις ακόμα.', style: TextStyle(color: Color(0xFF9CA3AF))),
+                child: Text('Δεν έχουν εκδοθεί αποδείξεις ή παραστατικά ακόμα.', style: TextStyle(color: Color(0xFF9CA3AF))),
               )
             else
               _ReceiptsByYear(receipts: mine, schoolId: schoolId),
@@ -240,6 +277,25 @@ class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
 
   Future<void> _download() async {
     if (widget.onDownload != null) { widget.onDownload!(widget.receipt); return; }
+    final kind = widget.receipt['kind']?.toString() ?? 'receipt';
+    if (kind == 'fiscal') {
+      final url = (widget.receipt['verificationUrl'] ?? widget.receipt['qrUrl'] ?? widget.receipt['fileUrl'])
+          ?.toString()
+          .trim() ?? '';
+      if (url.isEmpty) { _say(context, 'Δεν υπάρχει σύνδεσμος επαλήθευσης ακόμα.'); return; }
+      setState(() => _downloading = true);
+      try {
+        final uri = Uri.tryParse(url);
+        if (uri == null) { _say(context, 'Άκυρος σύνδεσμος παραστατικού.'); return; }
+        final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+        if (!opened && mounted) _say(context, 'Δεν άνοιξε ο σύνδεσμος του παραστατικού.');
+      } catch (_) {
+        if (mounted) _say(context, 'Σφάλμα κατά το άνοιγμα του παραστατικού.');
+      } finally {
+        if (mounted) setState(() => _downloading = false);
+      }
+      return;
+    }
     final docId = widget.receipt['id']?.toString() ?? '';
     final fileUrl = widget.receipt['fileUrl']?.toString().trim() ?? '';
     if (docId.isEmpty || fileUrl.isEmpty) { _say(context, 'Η απόδειξη δεν έχει αρχείο.'); return; }
@@ -279,7 +335,11 @@ class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
   @override
   Widget build(BuildContext context) {
     final receipt = widget.receipt;
-    final title = receipt['title']?.toString().trim().isNotEmpty == true ? receipt['title'].toString() : 'Απόδειξη';
+    final kind = receipt['kind']?.toString() ?? 'receipt';
+    final isFiscal = kind == 'fiscal';
+    final title = receipt['title']?.toString().trim().isNotEmpty == true
+        ? receipt['title'].toString()
+        : (isFiscal ? 'Παραστατικό' : 'Απόδειξη');
     final child = receipt['studentName']?.toString() ?? '';
     final when = _receiptDate(receipt['uploadedAt']?.toString());
     final notes = receipt['notes']?.toString() ?? '';
@@ -296,6 +356,10 @@ class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF111827))),
+          if (isFiscal) ...[
+            const SizedBox(height: 2),
+            const Text('Φορολογικό παραστατικό (Elorus)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF059669))),
+          ],
           if (monthLabel.isNotEmpty) ...[
             const SizedBox(height: 2),
             Text(monthLabel, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF77328D))),
@@ -313,8 +377,10 @@ class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
             width: double.infinity,
             child: FilledButton.icon(
               onPressed: _downloading ? null : _download,
-              icon: _downloading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.download_rounded),
-              label: Text(_downloading ? 'Φόρτωση...' : 'Κατέβασμα'),
+              icon: _downloading
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : Icon(isFiscal ? Icons.open_in_new_rounded : Icons.download_rounded),
+              label: Text(_downloading ? 'Φόρτωση...' : (isFiscal ? 'Άνοιγμα / λήψη' : 'Κατέβασμα')),
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF77328D),
                 foregroundColor: Colors.white,
