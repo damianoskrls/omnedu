@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { billingApi, levelsApi, schoolEventsApi, broadcastsApi, schoolsApi } from '@/lib/api';
+import { billingApi, levelsApi, schoolEventsApi, broadcastsApi, schoolsApi, fiscalApi } from '@/lib/api';
 import { eventDisplayStatus } from '@/lib/event-status';
 import { payerOptions, paymentNote } from '@/lib/payment-note';
 import { PaymentConfirmModal, PaymentPrompt } from '@/components/PaymentConfirmModal';
@@ -81,6 +81,19 @@ export default function BillingPage() {
   const [savingSiblingPolicy, setSavingSiblingPolicy] = useState(false);
   const [siblingPolicySaved, setSiblingPolicySaved] = useState(false);
 
+  // Elorus Fuse fiscal settings
+  const [fiscalSettings, setFiscalSettings] = useState({
+    vatNumber: '',
+    fiscalRetailSeries: 'ΑΠ',
+    fiscalInvoiceSeries: 'ΤΙΜ',
+    fiscalVatCategory: '1',
+    fiscalVatExemptionCategory: '',
+    fuseConfigured: false,
+    fuseBaseUrl: 'https://api.fuse-staging.gr',
+  });
+  const [savingFiscal, setSavingFiscal] = useState(false);
+  const [fiscalSaved, setFiscalSaved] = useState(false);
+
   // Settings modals
   const [editingLevelFee, setEditingLevelFee] = useState<any>(null); // { levelId, levelName, monthlyFee }
   const [editingOverride, setEditingOverride] = useState<any>(null); // student charge selected for override/subsidy management
@@ -96,13 +109,14 @@ export default function BillingPage() {
     if (!schoolId) return;
     setLoading(true);
     try {
-      const [ch, st, lv, lf, school, sibPol] = await Promise.all([
+      const [ch, st, lv, lf, school, sibPol, fiscal] = await Promise.all([
         billingApi.getCharges(schoolId, month, year),
         billingApi.stats(schoolId),
         levelsApi.list(schoolId),
         billingApi.getLevelFees(schoolId),
         schoolsApi.get(schoolId),
         billingApi.getSiblingDiscountPolicy(schoolId).catch(() => null),
+        fiscalApi.getSettings(schoolId).catch(() => null),
       ]);
       const chargesArr = Array.isArray(ch) ? ch : [];
       setCharges(chargesArr);
@@ -111,6 +125,17 @@ export default function BillingPage() {
       setLevelFees(Array.isArray(lf) ? lf : []);
       if ((school as any)?.billingDueDay != null) setBillingDueDay(String((school as any).billingDueDay));
       if (sibPol) setSiblingPolicy({ siblingDiscountEnabled: (sibPol as any).siblingDiscountEnabled ?? false, siblingDiscount2Pct: (sibPol as any).siblingDiscount2Pct ?? null, siblingDiscount3PlusPct: (sibPol as any).siblingDiscount3PlusPct ?? null });
+      if (fiscal) {
+        setFiscalSettings({
+          vatNumber: (fiscal as any).vatNumber || '',
+          fiscalRetailSeries: (fiscal as any).fiscalRetailSeries || 'ΑΠ',
+          fiscalInvoiceSeries: (fiscal as any).fiscalInvoiceSeries || 'ΤΙΜ',
+          fiscalVatCategory: (fiscal as any).fiscalVatCategory != null ? String((fiscal as any).fiscalVatCategory) : '1',
+          fiscalVatExemptionCategory: (fiscal as any).fiscalVatExemptionCategory != null ? String((fiscal as any).fiscalVatExemptionCategory) : '',
+          fuseConfigured: Boolean((fiscal as any).fuseConfigured),
+          fuseBaseUrl: (fiscal as any).fuseBaseUrl || 'https://api.fuse-staging.gr',
+        });
+      }
 
       // Auto-generate for the current month if no charges exist yet
       const now = new Date();
@@ -314,6 +339,31 @@ export default function BillingPage() {
     }
   }
 
+  async function saveFiscalSettings() {
+    setSavingFiscal(true);
+    try {
+      const updated: any = await fiscalApi.updateSettings(schoolId, {
+        vatNumber: fiscalSettings.vatNumber.trim() || null,
+        fiscalRetailSeries: fiscalSettings.fiscalRetailSeries.trim() || null,
+        fiscalInvoiceSeries: fiscalSettings.fiscalInvoiceSeries.trim() || null,
+        fiscalVatCategory: fiscalSettings.fiscalVatCategory === '' ? null : Number(fiscalSettings.fiscalVatCategory),
+        fiscalVatExemptionCategory: fiscalSettings.fiscalVatExemptionCategory === '' ? null : Number(fiscalSettings.fiscalVatExemptionCategory),
+      });
+      setFiscalSettings((prev) => ({
+        ...prev,
+        vatNumber: updated?.vatNumber || '',
+        fiscalRetailSeries: updated?.fiscalRetailSeries || 'ΑΠ',
+        fiscalInvoiceSeries: updated?.fiscalInvoiceSeries || 'ΤΙΜ',
+        fiscalVatCategory: updated?.fiscalVatCategory != null ? String(updated.fiscalVatCategory) : '1',
+        fiscalVatExemptionCategory: updated?.fiscalVatExemptionCategory != null ? String(updated.fiscalVatExemptionCategory) : '',
+      }));
+      setFiscalSaved(true);
+      setTimeout(() => setFiscalSaved(false), 2000);
+    } finally {
+      setSavingFiscal(false);
+    }
+  }
+
   async function saveLevelFee() {
     if (!editingLevelFee) return;
     await billingApi.upsertLevelFee(schoolId, editingLevelFee.levelId, {
@@ -457,6 +507,11 @@ export default function BillingPage() {
           saveSiblingPolicy={saveSiblingPolicy}
           savingSiblingPolicy={savingSiblingPolicy}
           siblingPolicySaved={siblingPolicySaved}
+          fiscalSettings={fiscalSettings}
+          setFiscalSettings={setFiscalSettings}
+          saveFiscalSettings={saveFiscalSettings}
+          savingFiscal={savingFiscal}
+          fiscalSaved={fiscalSaved}
         />
       ) : tab === 'events' ? (
         /* ---- Events tab ---- */
@@ -891,12 +946,85 @@ export default function BillingPage() {
   );
 }
 
-function SettingsTab({ levels, levelFees, editingLevelFee, setEditingLevelFee, saveLevelFee, billingDueDay, setBillingDueDay, saveBillingDueDay, savingDueDay, dueDaySaved, siblingPolicy, setSiblingPolicy, saveSiblingPolicy, savingSiblingPolicy, siblingPolicySaved }: any) {
+function SettingsTab({ levels, levelFees, editingLevelFee, setEditingLevelFee, saveLevelFee, billingDueDay, setBillingDueDay, saveBillingDueDay, savingDueDay, dueDaySaved, siblingPolicy, setSiblingPolicy, saveSiblingPolicy, savingSiblingPolicy, siblingPolicySaved, fiscalSettings, setFiscalSettings, saveFiscalSettings, savingFiscal, fiscalSaved }: any) {
   const feeMap: Record<string, any> = {};
   levelFees.forEach((lf: any) => { feeMap[lf.levelId] = lf; });
 
   return (
     <div className="space-y-4">
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+      <h2 className="text-base font-bold text-gray-900 mb-1">Ηλεκτρονική τιμολόγηση (Elorus Fuse)</h2>
+      <p className="text-sm text-gray-500 mb-4">
+        ΑΦΜ εκδότη και σειρές παραστατικών για έκδοση απόδειξης/τιμολογίου από τα Οικονομικά μαθητή.
+        Το API token ορίζεται στο server env (<code className="text-xs">ELORUS_FUSE_API_TOKEN</code>).
+      </p>
+      <div className="mb-3 text-xs text-gray-500">
+        Base URL: <span className="font-mono">{fiscalSettings.fuseBaseUrl}</span>
+        {' · '}
+        Token: {fiscalSettings.fuseConfigured ? (
+          <span className="text-emerald-700 font-medium">ρυθμισμένο</span>
+        ) : (
+          <span className="text-amber-700 font-medium">λείπει</span>
+        )}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">ΑΦΜ σχολείου</label>
+          <input
+            value={fiscalSettings.vatNumber}
+            onChange={(e: any) => setFiscalSettings({ ...fiscalSettings, vatNumber: e.target.value })}
+            placeholder="π.χ. 999999999"
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Κατηγορία ΦΠΑ (myDATA)</label>
+          <input
+            type="number"
+            value={fiscalSettings.fiscalVatCategory}
+            onChange={(e: any) => setFiscalSettings({ ...fiscalSettings, fiscalVatCategory: e.target.value })}
+            placeholder="1 = 24%"
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Σειρά απόδειξης (11.2)</label>
+          <input
+            value={fiscalSettings.fiscalRetailSeries}
+            onChange={(e: any) => setFiscalSettings({ ...fiscalSettings, fiscalRetailSeries: e.target.value })}
+            placeholder="ΑΠ"
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Σειρά τιμολογίου (2.1)</label>
+          <input
+            value={fiscalSettings.fiscalInvoiceSeries}
+            onChange={(e: any) => setFiscalSettings({ ...fiscalSettings, fiscalInvoiceSeries: e.target.value })}
+            placeholder="ΤΙΜ"
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="block text-xs font-medium text-gray-600 mb-1">Κατηγορία απαλλαγής ΦΠΑ <span className="text-gray-400 font-normal">(προαιρετικό)</span></label>
+          <input
+            type="number"
+            value={fiscalSettings.fiscalVatExemptionCategory}
+            onChange={(e: any) => setFiscalSettings({ ...fiscalSettings, fiscalVatExemptionCategory: e.target.value })}
+            placeholder="κενό αν δεν ισχύει"
+            className="w-full max-w-xs border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
+      </div>
+      <button
+        onClick={saveFiscalSettings}
+        disabled={savingFiscal}
+        className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+      >
+        {fiscalSaved ? <Check className="h-3.5 w-3.5" /> : null}
+        {fiscalSaved ? 'Αποθηκεύτηκε' : savingFiscal ? 'Αποθήκευση...' : 'Αποθήκευση'}
+      </button>
+    </div>
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
       <h2 className="text-base font-bold text-gray-900 mb-1">Ημερομηνία Εξόφλησης</h2>
       <p className="text-sm text-gray-500 mb-4">Ορίστε την ημέρα του μήνα που πρέπει να εξοφλούν οι γονείς (π.χ. 10 = κάθε 10η του μήνα). Εμφανίζεται στην εφαρμογή ως αντίστροφη μέτρηση.</p>
