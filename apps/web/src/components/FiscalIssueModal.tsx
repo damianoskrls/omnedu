@@ -480,9 +480,14 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued, a
             </div>
           )}
 
+          <div className="rounded-lg bg-slate-50 border border-slate-100 text-slate-700 text-xs px-3 py-2.5 leading-relaxed">
+            Το ποσό του παραστατικού είναι <strong>ανεξάρτητο</strong> από την καταγραφή πληρωμής στα Οικονομικά.
+            Π.χ. ο γονέας μπορεί να έχει πληρώσει €400 και εδώ να κόψεις παραστατικό €100 — η πληρωμή δεν αλλάζει.
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Ποσό (€ μικτό)</label>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Ποσό παραστατικού (€ μικτό)</label>
               <input
                 type="number"
                 min={0}

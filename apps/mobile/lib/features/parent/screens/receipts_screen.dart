@@ -31,11 +31,14 @@ final myReceiptsProvider = FutureProvider.family<List<dynamic>, String>((ref, sc
     if (row is! Map) continue;
     final map = Map<String, dynamic>.from(row);
     map['kind'] = 'fiscal';
-    // Reuse receipt card fields.
-    map['fileUrl'] = map['verificationUrl'] ?? map['qrUrl'] ?? '';
+    // Reuse receipt card fields. Empty fileUrl = pending verification link.
+    final openUrl = (map['verificationUrl'] ?? map['qrUrl'] ?? '').toString().trim();
+    map['fileUrl'] = openUrl;
     map['uploadedAt'] = map['issueDate'] ?? map['createdAt'];
+    final gross = _formatEuro(map['grossValue']);
+    map['amountLabel'] = gross;
     map['notes'] = [
-      if ((map['grossValue'] ?? '').toString().isNotEmpty) '€${map['grossValue']}',
+      if ((map['description'] ?? '').toString().trim().isNotEmpty) map['description'].toString().trim(),
       if ((map['mark'] ?? '').toString().isNotEmpty) 'MARK ${map['mark']}',
     ].where((part) => part.toString().trim().isNotEmpty).join(' · ');
     map['academicYear'] = (map['issueDate'] ?? '').toString().length >= 4
@@ -96,8 +99,10 @@ class ParentReceipts extends ConsumerWidget {
       data: (rows) {
         final mine = rows.where((row) {
           if (row is! Map) return false;
+          final kind = row['kind']?.toString() ?? 'receipt';
           final fileUrl = row['fileUrl']?.toString().trim() ?? '';
-          if (fileUrl.isEmpty) return false;
+          // Classic receipts need a file; fiscal may be pending without URL yet.
+          if (kind != 'fiscal' && fileUrl.isEmpty) return false;
           if (studentId == null || studentId!.isEmpty) return true;
           return row['studentId']?.toString() == studentId;
         }).map((row) => Map<String, dynamic>.from(row as Map)).toList();
@@ -106,8 +111,15 @@ class ParentReceipts extends ConsumerWidget {
           children: [
             if (showHeading) ...[
               const Text('Αποδείξεις & παραστατικά', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
             ],
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Το ποσό παραστατικού μπορεί να διαφέρει από το ποσό πληρωμής στα Οικονομικά.',
+                style: TextStyle(fontSize: 12, color: Color(0xFF6B7280), height: 1.35),
+              ),
+            ),
             if (mine.isEmpty)
               const Padding(
                 padding: EdgeInsets.only(bottom: 12),
@@ -274,15 +286,54 @@ class _ReceiptCard extends ConsumerStatefulWidget {
 
 class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
   bool _downloading = false;
+  bool _refreshing = false;
+
+  bool get _isFiscal => (widget.receipt['kind']?.toString() ?? 'receipt') == 'fiscal';
+
+  String get _fiscalOpenUrl =>
+      (widget.receipt['verificationUrl'] ?? widget.receipt['qrUrl'] ?? widget.receipt['fileUrl'])
+          ?.toString()
+          .trim() ??
+      '';
+
+  bool get _fiscalPending {
+    if (!_isFiscal) return false;
+    final status = widget.receipt['status']?.toString() ?? '';
+    return _fiscalOpenUrl.isEmpty || status == 'pending';
+  }
+
+  Future<void> _refreshFiscal() async {
+    final docId = widget.receipt['id']?.toString() ?? '';
+    if (docId.isEmpty || widget.schoolId.isEmpty) {
+      ref.invalidate(myReceiptsProvider(widget.schoolId));
+      return;
+    }
+    setState(() => _refreshing = true);
+    try {
+      final dio = ref.read(dioProvider);
+      await dio.post('/schools/${widget.schoolId}/fiscal-documents/mine/$docId/refresh');
+      if (!mounted) return;
+      ref.invalidate(myReceiptsProvider(widget.schoolId));
+      _say(context, 'Ανανεώθηκε το παραστατικό.');
+    } catch (_) {
+      if (mounted) {
+        ref.invalidate(myReceiptsProvider(widget.schoolId));
+        _say(context, 'Δεν είναι έτοιμο ακόμα — δοκίμασε σε λίγο.');
+      }
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
+  }
 
   Future<void> _download() async {
     if (widget.onDownload != null) { widget.onDownload!(widget.receipt); return; }
     final kind = widget.receipt['kind']?.toString() ?? 'receipt';
     if (kind == 'fiscal') {
-      final url = (widget.receipt['verificationUrl'] ?? widget.receipt['qrUrl'] ?? widget.receipt['fileUrl'])
-          ?.toString()
-          .trim() ?? '';
-      if (url.isEmpty) { _say(context, 'Δεν υπάρχει σύνδεσμος επαλήθευσης ακόμα.'); return; }
+      final url = _fiscalOpenUrl;
+      if (url.isEmpty) {
+        await _refreshFiscal();
+        return;
+      }
       setState(() => _downloading = true);
       try {
         final uri = Uri.tryParse(url);
@@ -335,8 +386,8 @@ class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
   @override
   Widget build(BuildContext context) {
     final receipt = widget.receipt;
-    final kind = receipt['kind']?.toString() ?? 'receipt';
-    final isFiscal = kind == 'fiscal';
+    final isFiscal = _isFiscal;
+    final pending = _fiscalPending;
     final title = receipt['title']?.toString().trim().isNotEmpty == true
         ? receipt['title'].toString()
         : (isFiscal ? 'Παραστατικό' : 'Απόδειξη');
@@ -344,6 +395,10 @@ class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
     final when = _receiptDate(receipt['uploadedAt']?.toString());
     final notes = receipt['notes']?.toString() ?? '';
     final monthLabel = _monthLabel(receipt['academicYear']?.toString());
+    final amountLabel = (receipt['amountLabel']?.toString().trim().isNotEmpty == true)
+        ? receipt['amountLabel'].toString()
+        : (isFiscal ? _formatEuro(receipt['grossValue']) : '');
+    final busy = _downloading || _refreshing;
     return Container(
       margin: EdgeInsets.only(bottom: widget.nested ? 8 : 10),
       padding: const EdgeInsets.all(14),
@@ -355,10 +410,33 @@ class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF111827))),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF111827))),
+              ),
+              if (amountLabel.isNotEmpty)
+                Text(
+                  amountLabel,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    color: isFiscal ? const Color(0xFF059669) : const Color(0xFF111827),
+                  ),
+                ),
+            ],
+          ),
           if (isFiscal) ...[
             const SizedBox(height: 2),
-            const Text('Φορολογικό παραστατικό (Elorus)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF059669))),
+            Text(
+              pending ? 'Φορολογικό παραστατικό · Σε επεξεργασία' : 'Φορολογικό παραστατικό (Elorus)',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: pending ? const Color(0xFFD97706) : const Color(0xFF059669),
+              ),
+            ),
           ],
           if (monthLabel.isNotEmpty) ...[
             const SizedBox(height: 2),
@@ -376,13 +454,21 @@ class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
-              onPressed: _downloading ? null : _download,
-              icon: _downloading
+              onPressed: busy ? null : (pending ? _refreshFiscal : _download),
+              icon: busy
                   ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : Icon(isFiscal ? Icons.open_in_new_rounded : Icons.download_rounded),
-              label: Text(_downloading ? 'Φόρτωση...' : (isFiscal ? 'Άνοιγμα / λήψη' : 'Κατέβασμα')),
+                  : Icon(pending
+                      ? Icons.refresh_rounded
+                      : (isFiscal ? Icons.open_in_new_rounded : Icons.download_rounded)),
+              label: Text(
+                busy
+                    ? 'Φόρτωση...'
+                    : (pending
+                        ? 'Ανανέωση'
+                        : (isFiscal ? 'Άνοιγμα / λήψη' : 'Κατέβασμα')),
+              ),
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF77328D),
+                backgroundColor: pending ? const Color(0xFFD97706) : const Color(0xFF77328D),
                 foregroundColor: Colors.white,
                 minimumSize: const Size.fromHeight(46),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -442,6 +528,13 @@ String _receiptDate(String? iso) {
   final day = local.day.toString().padLeft(2, '0');
   final month = local.month.toString().padLeft(2, '0');
   return '$day/$month/${local.year}';
+}
+
+String _formatEuro(dynamic value) {
+  if (value == null) return '';
+  final n = value is num ? value.toDouble() : double.tryParse(value.toString().replaceAll(',', '.'));
+  if (n == null) return '';
+  return '€${n.toStringAsFixed(2)}';
 }
 
 void _say(BuildContext context, String message) {

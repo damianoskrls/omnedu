@@ -2226,7 +2226,7 @@ export default function StudentProfilePage() {
                   <div>
                     <h3 className="font-semibold text-gray-900">Φορολογικά παραστατικά (Elorus Fuse)</h3>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      Έκδοση απόδειξης ή τιμολογίου στο demo/myDATA χωρίς να αλλάζει η καταγραφή πληρωμής.
+                      Έκδοση απόδειξης ή τιμολογίου στο myDATA. Το ποσό παραστατικού είναι ανεξάρτητο από την πληρωμή (π.χ. πληρωμή €400, παραστατικό €100).
                     </p>
                   </div>
                   <button

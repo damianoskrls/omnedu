@@ -161,7 +161,7 @@ export class ElorusFuseService {
     });
   }
 
-  /** Parent-facing list: issued docs for their children, with open/download links. */
+  /** Parent-facing list: pending/issued docs for their children (failed hidden). */
   async listDocumentsForParent(schoolId: string, parentUserId: string) {
     const children = await this.prisma.student.findMany({
       where: { schoolId, isActive: true, parents: { some: { userId: parentUserId } } },
@@ -172,7 +172,7 @@ export class ElorusFuseService {
     const docs = await this.prisma.fiscalDocument.findMany({
       where: {
         schoolId,
-        status: 'issued',
+        status: { in: ['pending', 'issued'] },
         studentId: { in: children.map((c) => c.id) },
       },
       orderBy: [{ issueDate: 'desc' }, { createdAt: 'desc' }],
@@ -205,6 +205,13 @@ export class ElorusFuseService {
     const doc = rows.find((r) => r.id === id);
     if (!doc) throw new NotFoundException('Το παραστατικό δεν βρέθηκε');
     return doc;
+  }
+
+  /** Parent may refresh their own child's document to pick up verification URL / MARK. */
+  async refreshForParent(schoolId: string, parentUserId: string, id: string) {
+    await this.getDocumentForParent(schoolId, parentUserId, id);
+    await this.refresh(schoolId, id);
+    return this.getDocumentForParent(schoolId, parentUserId, id);
   }
 
   async getDocument(schoolId: string, id: string) {

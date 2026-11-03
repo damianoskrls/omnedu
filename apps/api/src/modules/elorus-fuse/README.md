@@ -25,5 +25,7 @@ ELORUS_FUSE_API_TOKEN=<token>
 - `GET/PATCH /schools/:schoolId/fiscal-settings`
 - `GET/POST /schools/:schoolId/fiscal-documents`
 - `POST /schools/:schoolId/fiscal-documents/:id/refresh`
+- Parent: `GET .../fiscal-documents/mine`, `GET .../mine/:id`, `POST .../mine/:id/refresh`
 
 Payment recording and the internal «Απόδειξη Είσπραξης» PDF are unchanged; fiscal issue is a separate admin action.
+The fiscal document amount is independent of the payment ledger (`paidAmount`).
