@@ -2249,13 +2249,38 @@ export default function StudentProfilePage() {
                     return;
                   }
                   askPayment({
-                    title: extra.description || 'Γραφική ύλη',
+                    title: extra.description || extra.title || 'Γραφική ύλη',
                     detail: 'Έκτακτη χρέωση',
                     chargeAmount: Number(extra.amount) || 0,
                     run: async (info) => {
                       await handlePayOneTime({ id: extra.id, amount: extra.amount, notes: '' }, info.paidAmount, info);
                     },
                   });
+                }}
+                onUndoExtra={async (extra) => {
+                  if (extra.kind === 'event') {
+                    const enrollment = (student.eventEnrollments ?? []).find((row: any) => row.id === extra.id)
+                      || {
+                        id: extra.id,
+                        eventId: extra.eventId,
+                        event: { title: extra.title, costPerChild: extra.amount },
+                      };
+                    if (!enrollment?.eventId && !extra.eventId) {
+                      window.alert('Δεν βρέθηκε η εκδρομή για αναίρεση.');
+                      return;
+                    }
+                    await handleMarkEventPaid(
+                      { ...enrollment, eventId: enrollment.eventId || extra.eventId },
+                      false,
+                    );
+                    await loadBillingData();
+                    return;
+                  }
+                  await billingApi.updateOneTimeCharge(schoolId, extra.id, {
+                    paidAmount: 0,
+                    status: 'unpaid',
+                  });
+                  await loadBillingData();
                 }}
               />
             )}

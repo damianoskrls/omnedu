@@ -381,7 +381,19 @@ Future<void> openNotification(BuildContext context, WidgetRef ref, Map<String, d
     return;
   }
 
-  if (type == 'receipt') {
+  if (type == 'receipt' || type == 'fiscal_document') {
+    ref.invalidate(myReceiptsProvider(schoolId));
+    final openUrl = (data['verificationUrl'] ?? data['qrUrl'])?.toString().trim() ?? '';
+    final fiscalId = data['fiscalDocumentId']?.toString() ?? '';
+    if (type == 'fiscal_document' && (openUrl.isNotEmpty || fiscalId.isNotEmpty)) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => NoticeDetailScreen(notice: notice, schoolId: schoolId),
+        ),
+      );
+      return;
+    }
     await Navigator.push(context, MaterialPageRoute(builder: (_) => ReceiptsScreen(schoolId: schoolId)));
     return;
   }
@@ -540,7 +552,7 @@ Future<void> openNotification(BuildContext context, WidgetRef ref, Map<String, d
     return;
   }
 
-  await Navigator.push(context, MaterialPageRoute(builder: (_) => NoticeDetailScreen(notice: notice)));
+  await Navigator.push(context, MaterialPageRoute(builder: (_) => NoticeDetailScreen(notice: notice, schoolId: schoolId)));
 }
 
 class InboxScreen extends ConsumerWidget {
@@ -590,7 +602,7 @@ class InboxScreen extends ConsumerWidget {
     if (type == 'message') return Icons.chat_bubble_rounded;
     if (type == 'daily_report') return Icons.menu_book_rounded;
     if (type == 'payment') return Icons.payments_rounded;
-    if (type == 'receipt') return Icons.receipt_long_rounded;
+    if (type == 'receipt' || type == 'fiscal_document') return Icons.receipt_long_rounded;
     if (type == 'celebration') return Icons.celebration_rounded;
     if (type == 'school_event' || type == 'event_post') return Icons.photo_library_rounded;
     if (type == 'bus_closure') return Icons.directions_bus_rounded;
@@ -685,16 +697,18 @@ class _NoticeListState extends State<_NoticeList> {
   }
 }
 
-class NoticeDetailScreen extends StatefulWidget {
+class NoticeDetailScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic> notice;
-  const NoticeDetailScreen({super.key, required this.notice});
+  final String? schoolId;
+  const NoticeDetailScreen({super.key, required this.notice, this.schoolId});
 
   @override
-  State<NoticeDetailScreen> createState() => _NoticeDetailScreenState();
+  ConsumerState<NoticeDetailScreen> createState() => _NoticeDetailScreenState();
 }
 
-class _NoticeDetailScreenState extends State<NoticeDetailScreen> {
+class _NoticeDetailScreenState extends ConsumerState<NoticeDetailScreen> {
   final Set<int> _opening = {};
+  bool _openingFiscal = false;
 
   List<Map<String, String>> _pdfs(Map<String, dynamic> data) {
     final raw = data['pdfs'];
@@ -710,6 +724,55 @@ class _NoticeDetailScreenState extends State<NoticeDetailScreen> {
       out.add({'url': url, 'filename': filename});
     }
     return out;
+  }
+
+  Future<void> _openFiscal(Map<String, dynamic> data) async {
+    final schoolId = widget.schoolId ?? ref.read(authProvider).user?.schoolId ?? '';
+    var url = (data['verificationUrl'] ?? data['qrUrl'])?.toString().trim() ?? '';
+    final fiscalId = data['fiscalDocumentId']?.toString() ?? '';
+    setState(() => _openingFiscal = true);
+    try {
+      if (url.isEmpty && fiscalId.isNotEmpty && schoolId.isNotEmpty) {
+        final resp = await ref.read(dioProvider).get('/schools/$schoolId/fiscal-documents/mine/$fiscalId');
+        final row = resp.data is Map ? Map<String, dynamic>.from(resp.data as Map) : <String, dynamic>{};
+        url = (row['verificationUrl'] ?? row['qrUrl'] ?? row['fileUrl'])?.toString().trim() ?? '';
+      }
+      if (url.isEmpty) {
+        if (!mounted) return;
+        if (schoolId.isNotEmpty) {
+          ref.invalidate(myReceiptsProvider(schoolId));
+          await Navigator.push(context, MaterialPageRoute(builder: (_) => ReceiptsScreen(schoolId: schoolId)));
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Δεν υπάρχει σύνδεσμος παραστατικού ακόμα.')),
+          );
+        }
+        return;
+      }
+      final uri = Uri.tryParse(url);
+      if (uri == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Άκυρος σύνδεσμος παραστατικού.')),
+          );
+        }
+        return;
+      }
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Δεν άνοιξε το παραστατικό.')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Σφάλμα κατά το άνοιγμα του παραστατικού.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _openingFiscal = false);
+    }
   }
 
   Future<void> _openPdf(int index, String url) async {
@@ -753,6 +816,11 @@ class _NoticeDetailScreenState extends State<NoticeDetailScreen> {
     final imageUrl = data['imageUrl']?.toString() ?? '';
     final pdfs = _pdfs(data);
     final when = _noticeWhen(notice);
+    final type = notice['type']?.toString() ?? data['type']?.toString() ?? '';
+    final isFiscal = type == 'fiscal_document'
+        || (data['fiscalDocumentId']?.toString().isNotEmpty == true)
+        || (data['screen']?.toString() == 'receipts' && title.contains('Απόδειξη ΑΠ'));
+    final schoolId = widget.schoolId ?? ref.read(authProvider).user?.schoolId ?? '';
     return Scaffold(
       backgroundColor: const Color(0xFFF6F3FA),
       appBar: AppBar(
@@ -777,6 +845,13 @@ class _NoticeDetailScreenState extends State<NoticeDetailScreen> {
                 if (title.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF2C2422), height: 1.25)),
+                ],
+                if (isFiscal) ...[
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Φορολογικό παραστατικό (Elorus)',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF059669)),
+                  ),
                 ],
                 if (imageUrl.isNotEmpty) ...[
                   const SizedBox(height: 16),
@@ -839,14 +914,49 @@ class _NoticeDetailScreenState extends State<NoticeDetailScreen> {
           ),
           Padding(
             padding: EdgeInsets.fromLTRB(16, 8, 16, 12 + systemBottomInset(context)),
-            child: SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: const Color(0xFF77328D)),
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Κλείσιμο', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-              ),
+            child: Column(
+              children: [
+                if (isFiscal) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(backgroundColor: const Color(0xFF059669)),
+                      onPressed: _openingFiscal ? null : () => _openFiscal(data),
+                      icon: _openingFiscal
+                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.open_in_new_rounded),
+                      label: Text(
+                        _openingFiscal ? 'Άνοιγμα...' : 'Άνοιγμα / λήψη παραστατικού',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (schoolId.isNotEmpty)
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: OutlinedButton(
+                        onPressed: () {
+                          ref.invalidate(myReceiptsProvider(schoolId));
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => ReceiptsScreen(schoolId: schoolId)));
+                        },
+                        child: const Text('Όλες οι αποδείξεις', style: TextStyle(fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                ],
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(backgroundColor: const Color(0xFF77328D)),
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Κλείσιμο', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                  ),
+                ),
+              ],
             ),
           ),
         ],

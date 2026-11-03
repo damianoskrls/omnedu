@@ -497,6 +497,7 @@ export class ElorusFuseService {
     const amount = Number(doc.grossValue || 0).toFixed(2);
     const body = `Εκδόθηκε ${kindLabel.toLowerCase()} €${amount} — ${doc.description}`;
     try {
+      const openUrl = String(doc.verificationUrl || doc.qrUrl || '').trim();
       await this.notifications.notifyStudentParents(schoolId, doc.studentId, {
         event: 'receipt',
         type: 'fiscal_document',
@@ -507,6 +508,9 @@ export class ElorusFuseService {
           series: doc.series,
           number: doc.number,
           screen: 'receipts',
+          ...(openUrl ? { verificationUrl: openUrl } : {}),
+          grossValue: amount,
+          description: doc.description || '',
         },
       });
     } catch (err) {
