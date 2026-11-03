@@ -379,6 +379,8 @@ export const fiscalApi = {
   }) => api.post(`/schools/${schoolId}/fiscal-documents`, data),
   refresh: (schoolId: string, id: string) =>
     api.post(`/schools/${schoolId}/fiscal-documents/${id}/refresh`),
+  resend: (schoolId: string, id: string) =>
+    api.post(`/schools/${schoolId}/fiscal-documents/${id}/resend`),
 };
 
 export const levelsApi = {
