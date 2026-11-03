@@ -12,6 +12,7 @@ import { AttendanceModule } from './modules/attendance/attendance.module';
 import { ActivitiesModule } from './modules/activities/activities.module';
 import { MessagesModule } from './modules/messages/messages.module';
 import { BillingModule } from './modules/billing/billing.module';
+import { ElorusFuseModule } from './modules/elorus-fuse/elorus-fuse.module';
 import { StaffModule } from './modules/staff/staff.module';
 import { LevelsModule } from './modules/levels/levels.module';
 import { ParentMeetingsModule } from './modules/parent-meetings/parent-meetings.module';
@@ -48,6 +49,7 @@ import { HealthController } from './modules/health/health.controller';
     ActivitiesModule,
     MessagesModule,
     BillingModule,
+    ElorusFuseModule,
     StaffModule,
     LevelsModule,
     ParentMeetingsModule,

@@ -21,4 +21,9 @@ export default () => ({
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
     privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
   },
+  elorusFuse: {
+    // Demo/staging default. Production: https://api.elorusfuse.gr
+    baseUrl: process.env.ELORUS_FUSE_BASE_URL || 'https://api.fuse-staging.gr',
+    apiToken: process.env.ELORUS_FUSE_API_TOKEN || '',
+  },
 });

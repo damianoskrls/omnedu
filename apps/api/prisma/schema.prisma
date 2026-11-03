@@ -33,6 +33,12 @@ model School {
   teacherToParentMessagingEnabled  Boolean @default(true) @map("teacher_to_parent_messaging_enabled")
   latitude                   Float?    @map("latitude")
   longitude                  Float?    @map("longitude")
+  // Elorus Fuse / myDATA fiscal identity (issuer)
+  vatNumber                  String?   @map("vat_number")
+  fiscalRetailSeries         String?   @map("fiscal_retail_series")
+  fiscalInvoiceSeries        String?   @map("fiscal_invoice_series")
+  fiscalVatCategory          Int?      @map("fiscal_vat_category")
+  fiscalVatExemptionCategory Int?      @map("fiscal_vat_exemption_category")
   createdAt                  DateTime  @default(now()) @map("created_at")
 
   members            SchoolMember[]
@@ -76,6 +82,8 @@ model School {
   celebrations         SchoolCelebration[]
   partyInvitations     PartyInvitation[]
   routeCompletions     RouteCompletion[]
+  fiscalDocuments      FiscalDocument[]
+  fiscalSeriesCounters FiscalSeriesCounter[]
 
   @@map("schools")
 }
@@ -418,6 +426,7 @@ model Student {
   monthlyCharges        MonthlyCharge[]
   oneTimeCharges        OneTimeCharge[]
   documents             StudentDocument[]
+  fiscalDocuments       FiscalDocument[]
   siblingLinks          StudentSibling[]   @relation("StudentSiblingA")
   siblingOf             StudentSibling[]   @relation("StudentSiblingB")
   partyInvitationsAsHost PartyInvitation[] @relation("PartyInvitationBirthdayStudent")
@@ -836,6 +845,71 @@ model MonthlyCharge {
   @@unique([studentId, month, year])
   @@index([schoolId, month, year, status])
   @@map("monthly_charges")
+}
+
+// ─────────────────────────────────────────────────────────
+// ELORUS FUSE / myDATA FISCAL DOCUMENTS
+// ─────────────────────────────────────────────────────────
+
+model FiscalSeriesCounter {
+  id        String   @id @default(uuid())
+  schoolId  String   @map("school_id")
+  series    String
+  lastNumber Int     @default(0) @map("last_number")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, series])
+  @@index([schoolId])
+  @@map("fiscal_series_counters")
+}
+
+model FiscalDocument {
+  id                   String    @id @default(uuid())
+  schoolId             String    @map("school_id")
+  studentId            String?   @map("student_id")
+  monthlyChargeId      String?   @map("monthly_charge_id")
+  oneTimeChargeId      String?   @map("one_time_charge_id")
+  documentKind         String    @map("document_kind") // retail_receipt | service_invoice
+  invoiceType          String    @map("invoice_type") // myDATA 11.2 | 2.1
+  series               String
+  number               String
+  issueDate            DateTime  @map("issue_date") @db.Date
+  description          String
+  netValue             Decimal   @map("net_value") @db.Decimal(10, 2)
+  vatCategory          Int       @map("vat_category")
+  vatExemptionCategory Int?      @map("vat_exemption_category")
+  vatAmount            Decimal   @map("vat_amount") @db.Decimal(10, 2)
+  grossValue           Decimal   @map("gross_value") @db.Decimal(10, 2)
+  paymentMethodType    Int?      @map("payment_method_type")
+  cpVatNumber          String?   @map("cp_vat_number")
+  cpName               String?   @map("cp_name")
+  cpCountry            String?   @map("cp_country")
+  cpStreet             String?   @map("cp_street")
+  cpNumber             String?   @map("cp_number")
+  cpPostalCode         String?   @map("cp_postal_code")
+  cpCity               String?   @map("cp_city")
+  fuseUid              String?   @map("fuse_uid")
+  mark                 String?
+  authenticationCode   String?   @map("authentication_code")
+  qrUrl                String?   @map("qr_url")
+  verificationUrl      String?   @map("verification_url")
+  mydataStatus         String?   @map("mydata_status")
+  status               String    @default("pending") // pending | issued | failed
+  errorMessage         String?   @map("error_message") @db.Text
+  rawResponse          String?   @map("raw_response") @db.Text
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  school  School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  student Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+
+  @@unique([schoolId, series, number])
+  @@index([schoolId, studentId])
+  @@index([schoolId, status])
+  @@index([fuseUid])
+  @@map("fiscal_documents")
 }
 
 // ─────────────────────────────────────────────────────────

@@ -140,11 +140,18 @@ export class SchoolsService implements OnModuleInit {
     billingDueDay?: number | null;
     parentToTeacherMessagingEnabled?: boolean;
     teacherToParentMessagingEnabled?: boolean;
+    vatNumber?: string | null;
+    fiscalRetailSeries?: string | null;
+    fiscalInvoiceSeries?: string | null;
+    fiscalVatCategory?: number | null;
+    fiscalVatExemptionCategory?: number | null;
   }) {
     const allowed = [
       'name', 'logoUrl', 'primaryColor', 'subscriptionPlan', 'isActive',
       'operatingRegulation', 'financialRegulation', 'billingDueDay',
       'parentToTeacherMessagingEnabled', 'teacherToParentMessagingEnabled',
+      'vatNumber', 'fiscalRetailSeries', 'fiscalInvoiceSeries',
+      'fiscalVatCategory', 'fiscalVatExemptionCategory',
     ] as const;
     const payload: Record<string, unknown> = {};
     for (const key of allowed) {

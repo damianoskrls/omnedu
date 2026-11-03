@@ -333,6 +333,45 @@ export const billingApi = {
     api.patch(`/schools/${schoolId}/billing/sibling-discount-policy`, data),
 };
 
+export const fiscalApi = {
+  getSettings: (schoolId: string) => api.get(`/schools/${schoolId}/fiscal-settings`),
+  updateSettings: (schoolId: string, data: {
+    vatNumber?: string | null;
+    fiscalRetailSeries?: string | null;
+    fiscalInvoiceSeries?: string | null;
+    fiscalVatCategory?: number | null;
+    fiscalVatExemptionCategory?: number | null;
+  }) => api.patch(`/schools/${schoolId}/fiscal-settings`, data),
+  listDocuments: (schoolId: string, studentId?: string) =>
+    api.get(`/schools/${schoolId}/fiscal-documents`, { params: studentId ? { studentId } : {} }),
+  getDocument: (schoolId: string, id: string) =>
+    api.get(`/schools/${schoolId}/fiscal-documents/${id}`),
+  issue: (schoolId: string, data: {
+    studentId?: string;
+    monthlyChargeId?: string;
+    oneTimeChargeId?: string;
+    documentKind: 'retail_receipt' | 'service_invoice';
+    description: string;
+    grossAmount: number;
+    issueDate?: string;
+    series?: string;
+    paymentMethodType?: number;
+    vatCategory?: number;
+    vatExemptionCategory?: number | null;
+    counterparty?: {
+      vatNumber?: string;
+      name?: string;
+      country?: string;
+      street?: string;
+      number?: string;
+      postalCode?: string;
+      city?: string;
+    };
+  }) => api.post(`/schools/${schoolId}/fiscal-documents`, data),
+  refresh: (schoolId: string, id: string) =>
+    api.post(`/schools/${schoolId}/fiscal-documents/${id}/refresh`),
+};
+
 export const levelsApi = {
   list: (schoolId: string) => api.get(`/schools/${schoolId}/levels`),
   get: (schoolId: string, id: string) => api.get(`/schools/${schoolId}/levels/${id}`),

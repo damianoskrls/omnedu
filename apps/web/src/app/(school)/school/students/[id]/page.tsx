@@ -3,13 +3,15 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { studentsApi, billingApi, classesApi, activitiesApi, extraServicesApi, medicationRequestsApi, studentFormsApi, broadcastsApi, schoolEventsApi, questionnairesApi, parentsApi, attendanceApi } from '@/lib/api';
+import { studentsApi, billingApi, classesApi, activitiesApi, extraServicesApi, medicationRequestsApi, studentFormsApi, broadcastsApi, schoolEventsApi, questionnairesApi, parentsApi, attendanceApi, fiscalApi } from '@/lib/api';
 import { StudentStatement, type PayMonthTarget } from './student-statement';
 import { buildStudentQuoteInput, chargeMatchesQuote, currentMonthKey, findStationeryCharge, isOpenMonth, quoteStudentMonth, schoolYearMonths, schoolYearOf } from '@/lib/month-quote';
 import { noteWithoutPayment, payerOptions, paymentNote, PaymentInfo, readPaymentRecord } from '@/lib/payment-note';
 import { createReceiptFile } from '@/lib/receipt-pdf';
 import { PaymentConfirmModal, PaymentPrompt } from '@/components/PaymentConfirmModal';
 import { PaymentDetailsLink } from '@/components/PaymentDetailsLink';
+import { FiscalIssueModal, type FiscalIssuePrefill } from '@/components/FiscalIssueModal';
+import { FiscalDocumentsList } from '@/components/FiscalDocumentsList';
 import { useStoredUser } from '@/lib/auth';
 import { PersonAvatar } from '@/components/PersonAvatar';
 import { Time24Input } from '@/components/Time24Input';
@@ -131,6 +133,10 @@ export default function StudentProfilePage() {
   const [charges, setCharges] = useState<any[]>([]);
   const [statement, setStatement] = useState<any>(null);
   const [studentReceipts, setStudentReceipts] = useState<any[]>([]);
+  const [fiscalDocuments, setFiscalDocuments] = useState<any[]>([]);
+  const [fiscalIssueOpen, setFiscalIssueOpen] = useState(false);
+  const [fiscalPrefill, setFiscalPrefill] = useState<FiscalIssuePrefill | null>(null);
+  const [refreshingFiscalId, setRefreshingFiscalId] = useState<string | null>(null);
   const [oneTimeCharges, setOneTimeCharges] = useState<any[]>([]);
   const [chargesLoading, setChargesLoading] = useState(false);
   const [subsidies, setSubsidies] = useState<any[]>([]);
@@ -234,7 +240,7 @@ export default function StudentProfilePage() {
     const job = (async () => {
     setChargesLoading(true);
     try {
-      const [ch, subs, otc, lf, fee, card, freshStudent, cls, docs]: any = await Promise.all([
+      const [ch, subs, otc, lf, fee, card, freshStudent, cls, docs, fiscalDocs]: any = await Promise.all([
         billingApi.getStudentCharges(schoolId, id).catch(() => []),
         billingApi.getSubsidies(schoolId, id).catch(() => []),
         billingApi.getOneTimeCharges(schoolId, { studentId: id }).catch(() => []),
@@ -244,6 +250,7 @@ export default function StudentProfilePage() {
         studentsApi.get(schoolId, id).catch(() => null),
         classesApi.list(schoolId).catch(() => []),
         studentsApi.getDocuments(schoolId, id).catch(() => []),
+        fiscalApi.listDocuments(schoolId, id).catch(() => []),
       ]);
       const monthly = Array.isArray(ch) ? ch : [];
       const subsidyRows = Array.isArray(subs) ? subs : [];
@@ -263,6 +270,7 @@ export default function StudentProfilePage() {
       setFeeOverride(override);
       setStatement(card && Array.isArray(card.months) ? card : null);
       setStudentReceipts(Array.isArray(docs) ? (docs as any[]).filter((d: any) => d.category === 'receipt') : []);
+      setFiscalDocuments(Array.isArray(fiscalDocs) ? fiscalDocs : []);
     } finally {
       setChargesLoading(false);
     }
@@ -2197,6 +2205,43 @@ export default function StudentProfilePage() {
                 }}
               />
             )}
+            {isAdmin && (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-semibold text-gray-900">Φορολογικά παραστατικά (Elorus Fuse)</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Έκδοση απόδειξης ή τιμολογίου στο demo/myDATA χωρίς να αλλάζει η καταγραφή πληρωμής.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const remain = Number(statement?.totals?.remainder ?? statement?.totals?.remaining ?? 0);
+                      const paid = Number(statement?.totals?.paid ?? 0);
+                      const suggested = remain > 0 ? remain : (paid > 0 ? paid : 0);
+                      setFiscalPrefill({
+                        studentId: id,
+                        studentName: student?.fullName,
+                        grossAmount: suggested || undefined,
+                        description: `Δίδακτρα — ${student?.fullName || 'μαθητής'}`,
+                      });
+                      setFiscalIssueOpen(true);
+                    }}
+                    className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700"
+                  >
+                    <FileText className="h-3.5 w-3.5" /> Έκδοση παραστατικού
+                  </button>
+                </div>
+                <FiscalDocumentsList
+                  schoolId={schoolId}
+                  documents={fiscalDocuments}
+                  refreshingId={refreshingFiscalId}
+                  setRefreshingId={setRefreshingFiscalId}
+                  onChanged={() => { void loadBillingData(); }}
+                />
+              </div>
+            )}
             {statement && isAdmin && (
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
                 {oneTimeForm ? (
@@ -3720,6 +3765,13 @@ export default function StudentProfilePage() {
         </div>
       )}
       <PaymentConfirmModal prompt={payPrompt} onClose={() => setPayPrompt(null)} />
+      <FiscalIssueModal
+        schoolId={schoolId}
+        open={fiscalIssueOpen}
+        prefill={fiscalPrefill}
+        onClose={() => { setFiscalIssueOpen(false); setFiscalPrefill(null); }}
+        onIssued={() => { void loadBillingData(); }}
+      />
     </div>
   );
 }
