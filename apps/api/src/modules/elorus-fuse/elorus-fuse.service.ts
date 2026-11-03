@@ -163,8 +163,9 @@ export class ElorusFuseService {
 
   /** Parent-facing list: pending/issued docs for their children (failed hidden). */
   async listDocumentsForParent(schoolId: string, parentUserId: string) {
+    // Include inactive students — fiscal history must remain visible after archive.
     const children = await this.prisma.student.findMany({
-      where: { schoolId, isActive: true, parents: { some: { userId: parentUserId } } },
+      where: { schoolId, parents: { some: { userId: parentUserId } } },
       select: { id: true, fullName: true },
     });
     if (!children.length) return [];
@@ -186,17 +187,24 @@ export class ElorusFuseService {
       number: doc.number,
       title: `${doc.documentKind === 'service_invoice' ? 'Τιμολόγιο' : 'Απόδειξη'} ${doc.series}-${doc.number}`,
       description: doc.description,
-      grossValue: doc.grossValue,
-      issueDate: doc.issueDate,
+      // Decimal → number so mobile always gets a plain JSON number
+      grossValue: Number(doc.grossValue),
+      issueDate: doc.issueDate instanceof Date
+        ? doc.issueDate.toISOString().slice(0, 10)
+        : doc.issueDate,
       mark: doc.mark,
       fuseUid: doc.fuseUid,
       qrUrl: doc.qrUrl,
-      verificationUrl: doc.verificationUrl || doc.qrUrl,
+      verificationUrl: doc.verificationUrl || doc.qrUrl || null,
       studentId: doc.studentId,
       studentName: doc.studentId ? (names.get(doc.studentId) ?? '') : '',
       status: doc.status,
       mydataStatus: doc.mydataStatus,
       createdAt: doc.createdAt,
+      fileUrl: doc.verificationUrl || doc.qrUrl || null,
+      uploadedAt: doc.issueDate instanceof Date
+        ? doc.issueDate.toISOString()
+        : (doc.createdAt instanceof Date ? doc.createdAt.toISOString() : doc.createdAt),
     }));
   }
 

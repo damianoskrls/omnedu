@@ -9,16 +9,28 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api/api_client.dart';
 
+List<dynamic> _asList(dynamic raw) {
+  if (raw is List) return List<dynamic>.from(raw);
+  if (raw is Map && raw['data'] is List) return List<dynamic>.from(raw['data'] as List);
+  if (raw is Map && raw['items'] is List) return List<dynamic>.from(raw['items'] as List);
+  return const [];
+}
+
 final myReceiptsProvider = FutureProvider.family<List<dynamic>, String>((ref, schoolId) async {
   final dio = ref.read(dioProvider);
   final receiptsResp = await dio.get('/schools/$schoolId/billing/receipts/mine');
-  final receipts = receiptsResp.data is List ? List<dynamic>.from(receiptsResp.data as List) : <dynamic>[];
+  final receipts = _asList(receiptsResp.data);
   List<dynamic> fiscal = const [];
+  Object? fiscalError;
   try {
     final fiscalResp = await dio.get('/schools/$schoolId/fiscal-documents/mine');
-    fiscal = fiscalResp.data is List ? List<dynamic>.from(fiscalResp.data as List) : <dynamic>[];
-  } catch (_) {
-    // Older API without fiscal endpoints — keep classic receipts only.
+    fiscal = _asList(fiscalResp.data);
+  } on DioException catch (err) {
+    // 404 = older API without fiscal routes. Anything else: keep a marker row so the UI is not blank.
+    final code = err.response?.statusCode;
+    if (code != 404) fiscalError = err;
+  } catch (err) {
+    fiscalError = err;
   }
   final merged = <Map<String, dynamic>>[];
   for (final row in receipts) {
@@ -32,19 +44,35 @@ final myReceiptsProvider = FutureProvider.family<List<dynamic>, String>((ref, sc
     final map = Map<String, dynamic>.from(row);
     map['kind'] = 'fiscal';
     // Reuse receipt card fields. Empty fileUrl = pending verification link.
-    final openUrl = (map['verificationUrl'] ?? map['qrUrl'] ?? '').toString().trim();
+    final openUrl = (map['verificationUrl'] ?? map['qrUrl'] ?? map['fileUrl'] ?? '').toString().trim();
     map['fileUrl'] = openUrl;
-    map['uploadedAt'] = map['issueDate'] ?? map['createdAt'];
+    map['verificationUrl'] = map['verificationUrl'] ?? openUrl;
+    map['uploadedAt'] = map['uploadedAt'] ?? map['issueDate'] ?? map['createdAt'];
     final gross = _formatEuro(map['grossValue']);
     map['amountLabel'] = gross;
+    if ((map['title'] ?? '').toString().trim().isEmpty) {
+      final series = map['series']?.toString() ?? '';
+      final number = map['number']?.toString() ?? '';
+      final kindLabel = map['documentKind']?.toString() == 'service_invoice' ? 'Τιμολόγιο' : 'Απόδειξη';
+      map['title'] = '$kindLabel $series-$number'.trim();
+    }
     map['notes'] = [
       if ((map['description'] ?? '').toString().trim().isNotEmpty) map['description'].toString().trim(),
       if ((map['mark'] ?? '').toString().isNotEmpty) 'MARK ${map['mark']}',
     ].where((part) => part.toString().trim().isNotEmpty).join(' · ');
-    map['academicYear'] = (map['issueDate'] ?? '').toString().length >= 4
-        ? (map['issueDate'] as String).substring(0, 4)
-        : null;
+    final issue = (map['issueDate'] ?? map['uploadedAt'] ?? '').toString();
+    map['academicYear'] = issue.length >= 4 ? issue.substring(0, 4) : null;
     merged.add(map);
+  }
+  if (fiscalError != null && fiscal.isEmpty) {
+    merged.add({
+      'kind': 'fiscal_error',
+      'title': 'Τα φορολογικά παραστατικά δεν φορτώθηκαν',
+      'notes': 'Τράβηξε για ανανέωση ή δοκίμασε αργότερα.',
+      'fileUrl': 'error',
+      'uploadedAt': DateTime.now().toIso8601String(),
+      'studentId': null,
+    });
   }
   merged.sort((a, b) {
     final aDate = DateTime.tryParse(a['uploadedAt']?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
@@ -102,10 +130,16 @@ class ParentReceipts extends ConsumerWidget {
           final kind = row['kind']?.toString() ?? 'receipt';
           final fileUrl = row['fileUrl']?.toString().trim() ?? '';
           // Classic receipts need a file; fiscal may be pending without URL yet.
-          if (kind != 'fiscal' && fileUrl.isEmpty) return false;
+          if (kind == 'fiscal' || kind == 'fiscal_error') {
+            if (studentId == null || studentId!.isEmpty) return true;
+            if (kind == 'fiscal_error') return true;
+            return row['studentId']?.toString() == studentId;
+          }
+          if (fileUrl.isEmpty) return false;
           if (studentId == null || studentId!.isEmpty) return true;
           return row['studentId']?.toString() == studentId;
         }).map((row) => Map<String, dynamic>.from(row as Map)).toList();
+        final fiscalCount = mine.where((r) => r['kind']?.toString() == 'fiscal').length;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -116,10 +150,18 @@ class ParentReceipts extends ConsumerWidget {
             const Padding(
               padding: EdgeInsets.only(bottom: 8),
               child: Text(
-                'Το ποσό παραστατικού μπορεί να διαφέρει από το ποσό πληρωμής στα Οικονομικά.',
+                'Εδώ εμφανίζονται και τα φορολογικά παραστατικά (Elorus). Το ποσό μπορεί να διαφέρει από την πληρωμή.',
                 style: TextStyle(fontSize: 12, color: Color(0xFF6B7280), height: 1.35),
               ),
             ),
+            if (fiscalCount > 0)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  '$fiscalCount φορολογικ${fiscalCount == 1 ? 'ό παραστατικό' : 'ά παραστατικά'}',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF059669)),
+                ),
+              ),
             if (mine.isEmpty)
               const Padding(
                 padding: EdgeInsets.only(bottom: 12),
@@ -386,6 +428,35 @@ class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
   @override
   Widget build(BuildContext context) {
     final receipt = widget.receipt;
+    final kind = receipt['kind']?.toString() ?? 'receipt';
+    if (kind == 'fiscal_error') {
+      return Container(
+        margin: EdgeInsets.only(bottom: widget.nested ? 8 : 10),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF7ED),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFFED7AA)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(receipt['title']?.toString() ?? 'Σφάλμα', style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF9A3412))),
+            const SizedBox(height: 4),
+            Text(receipt['notes']?.toString() ?? '', style: const TextStyle(fontSize: 13, color: Color(0xFF9A3412))),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => ref.invalidate(myReceiptsProvider(widget.schoolId)),
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Δοκίμασε ξανά'),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     final isFiscal = _isFiscal;
     final pending = _fiscalPending;
     final title = receipt['title']?.toString().trim().isNotEmpty == true

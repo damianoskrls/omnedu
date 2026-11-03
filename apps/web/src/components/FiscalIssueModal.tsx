@@ -291,6 +291,10 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued, a
       setError('Επίλεξε μαθητή ή άλλαξε σε χειροκίνητα στοιχεία');
       return;
     }
+    // Without a linked student, parents cannot see the document in the app.
+    if (!studentId && !prefill?.studentId && recipientMode === 'manual') {
+      // allowed — bank invoices etc. Admin is warned in the UI below.
+    }
     setSubmitting(true);
     try {
       const linkedStudentId = recipientMode === 'student'
@@ -421,6 +425,11 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued, a
                   Χειροκίνητα (π.χ. τράπεζα)
                 </button>
               </div>
+              {recipientMode === 'manual' && !studentId && !prefill?.studentId && (
+                <p className="text-[11px] text-amber-700 mt-1.5">
+                  Χωρίς επιλεγμένο μαθητή το παραστατικό <strong>δεν εμφανίζεται</strong> στην εφαρμογή του γονέα.
+                </p>
+              )}
             </div>
           )}
 
