@@ -36,6 +36,11 @@ export class SchoolsService implements OnModuleInit {
   private async ensureFiscalSchema() {
     // Prisma School model includes Elorus Fuse fields; missing columns make GET /schools/:id 500.
     const statements = [
+      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "vat_number" TEXT`,
+      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "billing_street" TEXT`,
+      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "billing_number" TEXT`,
+      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "billing_postal_code" TEXT`,
+      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "billing_city" TEXT`,
       `ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "vat_number" TEXT`,
       `ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "fiscal_retail_series" TEXT`,
       `ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "fiscal_invoice_series" TEXT`,

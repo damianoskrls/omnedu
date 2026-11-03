@@ -1,12 +1,26 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import { fiscalApi } from '@/lib/api';
+
+export type FiscalParentOption = {
+  userId: string;
+  fullName: string;
+  vatNumber?: string | null;
+  billingStreet?: string | null;
+  billingNumber?: string | null;
+  billingPostalCode?: string | null;
+  billingCity?: string | null;
+  isPrimary?: boolean;
+  relation?: string | null;
+};
 
 export type FiscalIssuePrefill = {
   studentId: string;
   studentName?: string;
+  studentAddress?: string | null;
+  parents?: FiscalParentOption[];
   monthlyChargeId?: string;
   oneTimeChargeId?: string;
   grossAmount?: number;
@@ -30,12 +44,33 @@ const PAYMENT_METHODS = [
   { value: 5, label: 'Επί πιστώσει' },
 ];
 
+function applyParent(
+  parent: FiscalParentOption | undefined,
+  studentAddress: string | null | undefined,
+  setters: {
+    setCpVat: (v: string) => void;
+    setCpName: (v: string) => void;
+    setCpStreet: (v: string) => void;
+    setCpNumber: (v: string) => void;
+    setCpPostal: (v: string) => void;
+    setCpCity: (v: string) => void;
+  },
+) {
+  setters.setCpName(parent?.fullName || '');
+  setters.setCpVat(parent?.vatNumber || '');
+  setters.setCpStreet(parent?.billingStreet || studentAddress || '');
+  setters.setCpNumber(parent?.billingNumber || '');
+  setters.setCpPostal(parent?.billingPostalCode || '');
+  setters.setCpCity(parent?.billingCity || '');
+}
+
 export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued }: Props) {
   const [kind, setKind] = useState<'retail_receipt' | 'service_invoice'>('retail_receipt');
   const [grossAmount, setGrossAmount] = useState('');
   const [description, setDescription] = useState('');
   const [series, setSeries] = useState('');
   const [paymentMethodType, setPaymentMethodType] = useState(3);
+  const [parentUserId, setParentUserId] = useState('');
   const [cpVat, setCpVat] = useState('');
   const [cpName, setCpName] = useState('');
   const [cpCountry, setCpCountry] = useState('GR');
@@ -46,6 +81,8 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued }:
   const [defaults, setDefaults] = useState<any>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  const parents = useMemo(() => prefill?.parents || [], [prefill]);
 
   useEffect(() => {
     if (!open || !schoolId) return;
@@ -63,17 +100,16 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued }:
     if (!open || !prefill) return;
     setKind('retail_receipt');
     setGrossAmount(prefill.grossAmount != null ? String(prefill.grossAmount) : '');
-    setDescription(prefill.description || `Δίδακτρα — ${prefill.studentName || 'μαθητής'}`);
+    setDescription(prefill.description || `Φοίτηση — ${prefill.studentName || 'μαθητής'}`);
     setError('');
-    setCpVat('');
-    setCpName('');
     setCpCountry('GR');
-    setCpStreet('');
-    setCpNumber('');
-    setCpPostal('');
-    setCpCity('');
     setPaymentMethodType(3);
-  }, [open, prefill]);
+    const primary = parents.find((p) => p.isPrimary) || parents[0];
+    setParentUserId(primary?.userId || '');
+    applyParent(primary, prefill.studentAddress, {
+      setCpVat, setCpName, setCpStreet, setCpNumber, setCpPostal, setCpCity,
+    });
+  }, [open, prefill, parents]);
 
   useEffect(() => {
     if (!defaults) return;
@@ -86,6 +122,14 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued }:
 
   if (!open || !prefill) return null;
 
+  function onSelectParent(userId: string) {
+    setParentUserId(userId);
+    const parent = parents.find((p) => p.userId === userId);
+    applyParent(parent, prefill?.studentAddress, {
+      setCpVat, setCpName, setCpStreet, setCpNumber, setCpPostal, setCpCity,
+    });
+  }
+
   async function submit() {
     setError('');
     const amount = parseFloat(grossAmount.replace(',', '.'));
@@ -97,8 +141,12 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued }:
       setError('Βάλε περιγραφή');
       return;
     }
-    if (kind === 'service_invoice' && (!cpVat.trim() || !cpName.trim())) {
-      setError('Για τιμολόγιο απαιτούνται ΑΦΜ και επωνυμία');
+    if (!cpName.trim()) {
+      setError('Βάλε επωνυμία πελάτη (γονέα) — όπως στο κλασικό παραστατικό');
+      return;
+    }
+    if (kind === 'service_invoice' && !cpVat.trim()) {
+      setError('Για τιμολόγιο απαιτείται ΑΦΜ πελάτη');
       return;
     }
     setSubmitting(true);
@@ -112,15 +160,15 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued }:
         grossAmount: amount,
         series: series.trim() || undefined,
         paymentMethodType,
-        counterparty: kind === 'service_invoice' ? {
-          vatNumber: cpVat.trim(),
+        counterparty: {
+          vatNumber: cpVat.trim() || undefined,
           name: cpName.trim(),
           country: cpCountry.trim() || 'GR',
           street: cpStreet.trim() || undefined,
           number: cpNumber.trim() || undefined,
           postalCode: cpPostal.trim() || undefined,
           city: cpCity.trim() || undefined,
-        } : undefined,
+        },
       });
       if (doc?.status === 'failed') {
         setError(doc.errorMessage || 'Η έκδοση απέτυχε');
@@ -147,7 +195,7 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued }:
           <div>
             <h3 className="text-base font-bold text-gray-900">Έκδοση παραστατικού</h3>
             <p className="text-xs text-gray-500 mt-0.5">
-              Elorus Fuse · {prefill.studentName || 'μαθητής'}
+              Elorus Fuse · {prefill.studentName || 'μαθητής'} · στοιχεία πελάτη = γονέας
             </p>
           </div>
           <button type="button" onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
@@ -158,12 +206,12 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued }:
         <div className="px-5 py-4 space-y-4">
           {defaults && !defaults.fuseConfigured && (
             <div className="rounded-lg bg-amber-50 text-amber-800 text-sm px-3 py-2">
-              Δεν έχει οριστεί <code className="text-xs">ELORUS_FUSE_API_TOKEN</code> στο API. Η έκδοση θα αποτύχει μέχρι να προστεθεί.
+              Δεν έχει οριστεί <code className="text-xs">ELORUS_FUSE_API_TOKEN</code> στο API.
             </div>
           )}
           {defaults && !defaults.vatNumber && (
             <div className="rounded-lg bg-amber-50 text-amber-800 text-sm px-3 py-2">
-              Λείπει το ΑΦΜ σχολείου. Όρισέ το στις Ρυθμίσεις → Οικονομικά.
+              Λείπει το ΑΦΜ <strong>σχολείου/εταιρείας</strong> (εκδότης). Όρισέ το στις Ρυθμίσεις Οικονομικών — όχι το ΑΦΜ του γονέα.
             </div>
           )}
 
@@ -221,11 +269,12 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued }:
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Περιγραφή</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Περιγραφή γραμμής</label>
             <input
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+              placeholder="π.χ. Φοίτηση Νηπιαγωγείο Οκτώβριος"
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
             />
           </div>
@@ -243,57 +292,75 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued }:
             </select>
           </div>
 
-          {kind === 'service_invoice' && (
-            <div className="space-y-3 rounded-xl border border-gray-100 bg-gray-50 p-3">
-              <p className="text-xs font-semibold text-gray-700">Αντισυμβαλλόμενος</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">ΑΦΜ *</label>
-                  <input
-                    value={cpVat}
-                    onChange={(e) => setCpVat(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">Χώρα</label>
-                  <input
-                    value={cpCountry}
-                    onChange={(e) => setCpCountry(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
-                  />
-                </div>
-              </div>
+          <div className="space-y-3 rounded-xl border border-gray-100 bg-gray-50 p-3">
+            <p className="text-xs font-semibold text-gray-700">Στοιχεία πελάτη (γονέας)</p>
+            {parents.length > 0 && (
               <div>
-                <label className="block text-xs text-gray-600 mb-1">Επωνυμία *</label>
+                <label className="block text-xs text-gray-600 mb-1">Γονέας</label>
+                <select
+                  value={parentUserId}
+                  onChange={(e) => onSelectParent(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                >
+                  {parents.map((p) => (
+                    <option key={p.userId} value={p.userId}>
+                      {p.fullName}{p.isPrimary ? ' (κύριος)' : ''}{p.relation ? ` · ${p.relation}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">ΑΦΜ πελάτη {kind === 'service_invoice' ? '*' : ''}</label>
                 <input
-                  value={cpName}
-                  onChange={(e) => setCpName(e.target.value)}
+                  value={cpVat}
+                  onChange={(e) => setCpVat(e.target.value)}
+                  placeholder="π.χ. 125944067"
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
                 />
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                <div className="col-span-2">
-                  <label className="block text-xs text-gray-600 mb-1">Οδός</label>
-                  <input value={cpStreet} onChange={(e) => setCpStreet(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">Αρ.</label>
-                  <input value={cpNumber} onChange={(e) => setCpNumber(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">Τ.Κ.</label>
-                  <input value={cpPostal} onChange={(e) => setCpPostal(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">Πόλη</label>
-                  <input value={cpCity} onChange={(e) => setCpCity(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" />
-                </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Χώρα</label>
+                <input
+                  value={cpCountry}
+                  onChange={(e) => setCpCountry(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                />
               </div>
             </div>
-          )}
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">Επωνυμία / Ονοματεπώνυμο *</label>
+              <input
+                value={cpName}
+                onChange={(e) => setCpName(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="col-span-2">
+                <label className="block text-xs text-gray-600 mb-1">Οδός</label>
+                <input value={cpStreet} onChange={(e) => setCpStreet(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Αρ.</label>
+                <input value={cpNumber} onChange={(e) => setCpNumber(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Τ.Κ.</label>
+                <input value={cpPostal} onChange={(e) => setCpPostal(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Πόλη</label>
+                <input value={cpCity} onChange={(e) => setCpCity(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" />
+              </div>
+            </div>
+            <p className="text-[11px] text-gray-500">
+              Αποθήκευσε ΑΦΜ/διεύθυνση στον γονέα (tab Γονείς) για να συμπληρώνονται αυτόματα την επόμενη φορά.
+            </p>
+          </div>
 
           {error && (
             <div className="rounded-lg bg-red-50 text-red-700 text-sm px-3 py-2">{error}</div>

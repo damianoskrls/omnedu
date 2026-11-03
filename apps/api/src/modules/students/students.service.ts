@@ -10,6 +10,11 @@ const parentUserSelect = {
   email: true,
   phone: true,
   avatarUrl: true,
+  vatNumber: true,
+  billingStreet: true,
+  billingNumber: true,
+  billingPostalCode: true,
+  billingCity: true,
 } as const;
 
 const parentChildSelect = {
@@ -177,7 +182,7 @@ export class StudentsService {
         },
         parents: {
           include: {
-            user: { select: { id: true, fullName: true, email: true, avatarUrl: true, phone: true } },
+            user: { select: parentUserSelect },
           },
         },
         dailyReports: {
@@ -464,17 +469,35 @@ export class StudentsService {
 
   async updateParent(studentId: string, schoolId: string, parentUserId: string, data: {
     fullName?: string; phone?: string; relation?: string; isPrimary?: boolean;
+    vatNumber?: string | null;
+    billingStreet?: string | null;
+    billingNumber?: string | null;
+    billingPostalCode?: string | null;
+    billingCity?: string | null;
   }) {
     const exists = await this.prisma.studentParent.findFirst({ where: { studentId, userId: parentUserId } });
     if (!exists) throw new Error('Parent link not found');
 
     return this.prisma.$transaction(async (tx) => {
-      if (data.fullName !== undefined || data.phone !== undefined) {
+      if (
+        data.fullName !== undefined ||
+        data.phone !== undefined ||
+        data.vatNumber !== undefined ||
+        data.billingStreet !== undefined ||
+        data.billingNumber !== undefined ||
+        data.billingPostalCode !== undefined ||
+        data.billingCity !== undefined
+      ) {
         await tx.user.update({
           where: { id: parentUserId },
           data: {
             ...(data.fullName !== undefined ? { fullName: data.fullName } : {}),
             ...(data.phone !== undefined ? { phone: normalizePhone(data.phone) } : {}),
+            ...(data.vatNumber !== undefined ? { vatNumber: data.vatNumber?.trim() || null } : {}),
+            ...(data.billingStreet !== undefined ? { billingStreet: data.billingStreet?.trim() || null } : {}),
+            ...(data.billingNumber !== undefined ? { billingNumber: data.billingNumber?.trim() || null } : {}),
+            ...(data.billingPostalCode !== undefined ? { billingPostalCode: data.billingPostalCode?.trim() || null } : {}),
+            ...(data.billingCity !== undefined ? { billingCity: data.billingCity?.trim() || null } : {}),
           },
         });
       }
@@ -649,7 +672,14 @@ export class StudentsService {
     });
   }
 
-  async updateStandaloneParent(schoolId: string, userId: string, data: { fullName?: string; email?: string; phone?: string; notes?: string }) {
+  async updateStandaloneParent(schoolId: string, userId: string, data: {
+    fullName?: string; email?: string; phone?: string; notes?: string;
+    vatNumber?: string | null;
+    billingStreet?: string | null;
+    billingNumber?: string | null;
+    billingPostalCode?: string | null;
+    billingCity?: string | null;
+  }) {
     const member = await this.prisma.schoolMember.findFirst({ where: { schoolId, userId } });
     if (!member) throw new NotFoundException('Ο γονέας δεν βρέθηκε');
     await Promise.all([
@@ -659,6 +689,11 @@ export class StudentsService {
           ...(data.fullName !== undefined ? { fullName: data.fullName } : {}),
           ...(data.phone !== undefined ? { phone: normalizePhone(data.phone) } : {}),
           ...(data.email !== undefined ? { email: data.email } : {}),
+          ...(data.vatNumber !== undefined ? { vatNumber: data.vatNumber?.trim() || null } : {}),
+          ...(data.billingStreet !== undefined ? { billingStreet: data.billingStreet?.trim() || null } : {}),
+          ...(data.billingNumber !== undefined ? { billingNumber: data.billingNumber?.trim() || null } : {}),
+          ...(data.billingPostalCode !== undefined ? { billingPostalCode: data.billingPostalCode?.trim() || null } : {}),
+          ...(data.billingCity !== undefined ? { billingCity: data.billingCity?.trim() || null } : {}),
         },
       }),
       data.notes !== undefined

@@ -181,7 +181,14 @@ export const studentsApi = {
     api.delete(`/schools/${schoolId}/students/${id}/siblings/${siblingId}`),
   addParent: (schoolId: string, id: string, data: { fullName: string; email?: string; phone?: string; relation?: string; isPrimary?: boolean }) =>
     api.post(`/schools/${schoolId}/students/${id}/parents`, data),
-  updateParent: (schoolId: string, id: string, parentUserId: string, data: { fullName?: string; phone?: string; relation?: string; isPrimary?: boolean }) =>
+  updateParent: (schoolId: string, id: string, parentUserId: string, data: {
+    fullName?: string; phone?: string; relation?: string; isPrimary?: boolean;
+    vatNumber?: string | null;
+    billingStreet?: string | null;
+    billingNumber?: string | null;
+    billingPostalCode?: string | null;
+    billingCity?: string | null;
+  }) =>
     api.patch(`/schools/${schoolId}/students/${id}/parents/${parentUserId}`, data),
   removeParent: (schoolId: string, id: string, parentUserId: string) =>
     api.delete(`/schools/${schoolId}/students/${id}/parents/${parentUserId}`),
