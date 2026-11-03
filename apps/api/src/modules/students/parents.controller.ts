@@ -35,7 +35,14 @@ export class ParentsController {
   update(
     @Param('schoolId') schoolId: string,
     @Param('userId') userId: string,
-    @Body() body: { fullName?: string; email?: string; phone?: string; notes?: string },
+    @Body() body: {
+      fullName?: string; email?: string; phone?: string; notes?: string;
+      vatNumber?: string | null;
+      billingStreet?: string | null;
+      billingNumber?: string | null;
+      billingPostalCode?: string | null;
+      billingCity?: string | null;
+    },
   ) {
     return this.students.updateStandaloneParent(schoolId, userId, body);
   }

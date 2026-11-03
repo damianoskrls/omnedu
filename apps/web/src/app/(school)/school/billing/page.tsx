@@ -7,6 +7,7 @@ import { eventDisplayStatus } from '@/lib/event-status';
 import { payerOptions, paymentNote } from '@/lib/payment-note';
 import { PaymentConfirmModal, PaymentPrompt } from '@/components/PaymentConfirmModal';
 import { PaymentDetailsLink } from '@/components/PaymentDetailsLink';
+import { FiscalIssueModal, type FiscalIssuePrefill } from '@/components/FiscalIssueModal';
 import { useStoredUser } from '@/lib/auth';
 import { currentMonthKey } from '@/lib/month-quote';
 import {
@@ -64,6 +65,8 @@ export default function BillingPage() {
   const [fiscalDocs, setFiscalDocs] = useState<any[]>([]);
   const [fiscalDocsLoading, setFiscalDocsLoading] = useState(false);
   const [refreshingFiscalId, setRefreshingFiscalId] = useState<string | null>(null);
+  const [fiscalIssueOpen, setFiscalIssueOpen] = useState(false);
+  const [fiscalPrefill, setFiscalPrefill] = useState<FiscalIssuePrefill | null>(null);
 
   // Events tab state
   const [events, setEvents] = useState<any[]>([]);
@@ -554,11 +557,23 @@ export default function BillingPage() {
         />
       ) : tab === 'fiscal' ? (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
-          <div>
-            <h2 className="text-base font-bold text-gray-900">Όλα τα φορολογικά παραστατικά</h2>
-            <p className="text-sm text-gray-500 mt-0.5">
-              Αποδείξεις και τιμολόγια που εκδόθηκαν μέσω Elorus Fuse. Οι γονείς τα βλέπουν και στην εφαρμογή τους.
-            </p>
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+            <div>
+              <h2 className="text-base font-bold text-gray-900">Όλα τα φορολογικά παραστατικά</h2>
+              <p className="text-sm text-gray-500 mt-0.5">
+                Αποδείξεις και τιμολόγια μέσω Elorus Fuse. Επίλεξε μαθητή/γονέα ή πέρασε χειροκίνητα στοιχεία (π.χ. τράπεζα).
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setFiscalPrefill(null);
+                setFiscalIssueOpen(true);
+              }}
+              className="shrink-0 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700"
+            >
+              <FileText className="h-4 w-4" /> Έκδοση παραστατικού
+            </button>
           </div>
           {fiscalDocsLoading ? (
             <div className="text-center py-12 text-gray-400">Φόρτωση...</div>
@@ -1038,6 +1053,15 @@ export default function BillingPage() {
       )}
 
       <PaymentConfirmModal prompt={payPrompt} onClose={() => setPayPrompt(null)} />
+
+      <FiscalIssueModal
+        schoolId={schoolId}
+        open={fiscalIssueOpen}
+        prefill={fiscalPrefill}
+        allowStudentPicker
+        onClose={() => { setFiscalIssueOpen(false); setFiscalPrefill(null); }}
+        onIssued={() => { void loadFiscalDocs(); }}
+      />
 
       {/* Student settings modal (override + subsidies) */}
       {editingOverride && (

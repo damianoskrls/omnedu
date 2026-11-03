@@ -135,6 +135,13 @@ model User {
   passwordHash String   @map("password_hash")
   fullName     String   @map("full_name")
   avatarUrl    String?  @map("avatar_url")
+  /// AFM for fiscal documents (parent as customer on school receipts/invoices).
+  vatNumber    String?  @map("vat_number")
+  /// Optional billing address lines for Fuse counterparty.
+  billingStreet     String? @map("billing_street")
+  billingNumber     String? @map("billing_number")
+  billingPostalCode String? @map("billing_postal_code")
+  billingCity       String? @map("billing_city")
   isSuperAdmin Boolean  @default(false) @map("is_super_admin")
   isActive     Boolean  @default(true) @map("is_active")
   createdAt    DateTime @default(now()) @map("created_at")

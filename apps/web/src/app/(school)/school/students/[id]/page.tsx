@@ -1279,7 +1279,22 @@ export default function StudentProfilePage() {
                       {isAdmin && (
                         <div className="flex gap-1 shrink-0">
                           <button
-                            onClick={() => { setParentForm({ userId: p.userId, fullName: p.user.fullName, email: p.user.email || '', phone: p.user.phone || '', relation: p.relation, isPrimary: p.isPrimary }); setShowAddParent(false); }}
+                            onClick={() => {
+                              setParentForm({
+                                userId: p.userId,
+                                fullName: p.user.fullName,
+                                email: p.user.email || '',
+                                phone: p.user.phone || '',
+                                relation: p.relation,
+                                isPrimary: p.isPrimary,
+                                vatNumber: p.user.vatNumber || '',
+                                billingStreet: p.user.billingStreet || '',
+                                billingNumber: p.user.billingNumber || '',
+                                billingPostalCode: p.user.billingPostalCode || '',
+                                billingCity: p.user.billingCity || '',
+                              });
+                              setShowAddParent(false);
+                            }}
                             className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600"
                             title="Επεξεργασία"
                           >
@@ -2223,8 +2238,20 @@ export default function StudentProfilePage() {
                       setFiscalPrefill({
                         studentId: id,
                         studentName: student?.fullName,
+                        studentAddress: student?.address || null,
+                        parents: (student?.parents || []).map((p: any) => ({
+                          userId: p.userId || p.user?.id,
+                          fullName: p.user?.fullName || '',
+                          vatNumber: p.user?.vatNumber || null,
+                          billingStreet: p.user?.billingStreet || null,
+                          billingNumber: p.user?.billingNumber || null,
+                          billingPostalCode: p.user?.billingPostalCode || null,
+                          billingCity: p.user?.billingCity || null,
+                          isPrimary: Boolean(p.isPrimary),
+                          relation: p.relation || null,
+                        })).filter((p: any) => p.userId && p.fullName),
                         grossAmount: suggested || undefined,
-                        description: `Δίδακτρα — ${student?.fullName || 'μαθητής'}`,
+                        description: `Φοίτηση — ${student?.fullName || 'μαθητής'}`,
                       });
                       setFiscalIssueOpen(true);
                     }}
@@ -3538,6 +3565,56 @@ export default function StudentProfilePage() {
                   />
                 </div>
               )}
+              {!selectedExistingParentId && (
+                <div className="space-y-3 rounded-xl border border-indigo-50 bg-indigo-50/40 p-3">
+                  <p className="text-xs font-semibold text-indigo-900">Στοιχεία για παραστατικά (πελάτης)</p>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">ΑΦΜ γονέα</label>
+                    <input
+                      value={parentForm.vatNumber || ''}
+                      onChange={e => setParentForm({ ...parentForm, vatNumber: e.target.value })}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                      placeholder="π.χ. 125944067"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-2">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Οδός</label>
+                      <input
+                        value={parentForm.billingStreet || ''}
+                        onChange={e => setParentForm({ ...parentForm, billingStreet: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Αρ.</label>
+                      <input
+                        value={parentForm.billingNumber || ''}
+                        onChange={e => setParentForm({ ...parentForm, billingNumber: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Τ.Κ.</label>
+                      <input
+                        value={parentForm.billingPostalCode || ''}
+                        onChange={e => setParentForm({ ...parentForm, billingPostalCode: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Πόλη</label>
+                      <input
+                        value={parentForm.billingCity || ''}
+                        onChange={e => setParentForm({ ...parentForm, billingCity: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -3576,6 +3653,11 @@ export default function StudentProfilePage() {
                         phone: parentForm.phone || undefined,
                         relation: parentForm.relation,
                         isPrimary: parentForm.isPrimary,
+                        vatNumber: parentForm.vatNumber || null,
+                        billingStreet: parentForm.billingStreet || null,
+                        billingNumber: parentForm.billingNumber || null,
+                        billingPostalCode: parentForm.billingPostalCode || null,
+                        billingCity: parentForm.billingCity || null,
                       });
                     }
                     const fresh: any = await studentsApi.get(schoolId, id);

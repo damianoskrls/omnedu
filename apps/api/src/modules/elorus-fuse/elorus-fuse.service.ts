@@ -289,21 +289,24 @@ export class ElorusFuseService {
     const net = rate > 0 ? gross / (1 + rate) : gross;
     const vatAmount = gross - net;
 
+    // Counterparty = πελάτης (γονέας). Required for invoices; recommended for
+    // service receipts so the printed/Fuse document matches classic school APYs.
     let counterparty = dto.counterparty;
+    const cpName = String(counterparty?.name || '').trim();
+    const cpVat = String(counterparty?.vatNumber || '').trim();
     if (kind === 'service_invoice') {
-      const cpVat = String(counterparty?.vatNumber || '').trim();
-      const cpName = String(counterparty?.name || '').trim();
       if (!cpVat || !cpName) {
-        throw new BadRequestException('Για τιμολόγιο απαιτούνται ΑΦΜ και επωνυμία αντισυμβαλλόμενου');
+        throw new BadRequestException('Για τιμολόγιο απαιτούνται ΑΦΜ και επωνυμία πελάτη (γονέα)');
       }
+    }
+    if (cpName) {
       counterparty = {
         ...counterparty,
-        vatNumber: cpVat,
+        vatNumber: cpVat || undefined,
         name: cpName,
         country: String(counterparty?.country || 'GR').trim() || 'GR',
       };
     } else {
-      // Retail receipt: omit counterparty AFM
       counterparty = undefined;
     }
 

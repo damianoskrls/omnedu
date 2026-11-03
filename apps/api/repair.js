@@ -44,6 +44,12 @@ const repairs = [
   `DROP INDEX IF EXISTS "route_completions_service_id_direction_day_key_key"`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "rc_service_route_day_idx" ON "route_completions"(service_id, COALESCE(route_id, direction), day_key)`,
   `ALTER TABLE "student_services" ADD COLUMN IF NOT EXISTS "dropoff_route_id" TEXT`,
+  // Parent/customer AFM for fiscal counterparty
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "vat_number" TEXT`,
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "billing_street" TEXT`,
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "billing_number" TEXT`,
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "billing_postal_code" TEXT`,
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "billing_city" TEXT`,
   // Elorus Fuse / myDATA fiscal
   `ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "vat_number" TEXT`,
   `ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "fiscal_retail_series" TEXT`,
