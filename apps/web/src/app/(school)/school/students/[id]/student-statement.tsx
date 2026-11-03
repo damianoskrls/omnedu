@@ -243,6 +243,7 @@ export function StudentStatement({
   onPayMonth,
   onUndoMonth,
   onPayExtra,
+  onUndoExtra,
   receipts = [],
   fiscalDocuments = [],
   onUploadReceipt,
@@ -259,6 +260,7 @@ export function StudentStatement({
   onPayMonth: (target: PayMonthTarget) => void;
   onUndoMonth: (chargeId: string) => void;
   onPayExtra: (extra: any) => void;
+  onUndoExtra?: (extra: any) => void;
   receipts?: any[];
   fiscalDocuments?: any[];
   onUploadReceipt?: (file: File, month: number, year: number, title: string) => Promise<void>;
@@ -371,7 +373,7 @@ export function StudentStatement({
             </div>
           </div>
           <LineList lines={current.lines} />
-          <ExtraList extras={current.extras} isAdmin={isAdmin} saving={saving} onPayExtra={onPayExtra} />
+          <ExtraList extras={current.extras} isAdmin={isAdmin} saving={saving} onPayExtra={onPayExtra} onUndoExtra={onUndoExtra} />
           {isAdmin && (
             <MonthActionButtons
               canPay={current.status !== 'paid'}
@@ -419,6 +421,16 @@ export function StudentStatement({
               Είσπραξη
             </button>
           )}
+          {isAdmin && onUndoExtra && (statement.stationery.status === 'paid' || statement.stationery.status === 'partial') && Number(statement.stationery.paidAmount ?? statement.stationery.amount) > 0 && (
+            <button
+              type="button"
+              onClick={() => onUndoExtra({ id: statement.stationery.id, kind: 'once', amount: statement.stationery.amount, status: statement.stationery.status })}
+              disabled={saving}
+              className="rounded-lg px-3 py-2 text-xs font-medium text-gray-400 hover:text-red-500 disabled:opacity-50"
+            >
+              Αναίρεση
+            </button>
+          )}
         </div>
       )}
 
@@ -442,7 +454,7 @@ export function StudentStatement({
                   </div>
                   <div className="flex-1 min-w-0">
                     <LineList lines={month.lines} compact />
-                    <ExtraList extras={month.extras} isAdmin={isAdmin} saving={saving} onPayExtra={onPayExtra} />
+                    <ExtraList extras={month.extras} isAdmin={isAdmin} saving={saving} onPayExtra={onPayExtra} onUndoExtra={onUndoExtra} />
                   </div>
                   <div className="text-right shrink-0 min-w-[9.5rem]">
                     <MonthAmount
@@ -511,17 +523,20 @@ function ExtraList({
   isAdmin,
   saving,
   onPayExtra,
+  onUndoExtra,
 }: {
   extras?: any[];
   isAdmin: boolean;
   saving: boolean;
   onPayExtra: (extra: any) => void;
+  onUndoExtra?: (extra: any) => void;
 }) {
   if (!extras?.length) return null;
   return (
     <div className="mt-2 space-y-1">
       {extras.map((extra) => {
         const badge = statusLabel(extra.status === 'pending_payment' ? 'unpaid' : extra.status, Number(extra.amount));
+        const canUndo = isAdmin && Boolean(onUndoExtra) && (extra.status === 'paid' || extra.status === 'partial');
         return (
           <div key={extra.id} className="flex items-center gap-2 rounded-lg bg-orange-50 px-3 py-2 text-sm">
             <span className="flex-1 text-gray-800">{extra.kind === 'event' ? `Εκδρομή · ${extra.title}` : extra.title}</span>
@@ -539,6 +554,16 @@ function ExtraList({
             </span>
             {isAdmin && extra.status !== 'paid' && (
               <button onClick={() => onPayExtra(extra)} disabled={saving} className="text-xs font-semibold text-green-700">Είσπραξη</button>
+            )}
+            {canUndo && (
+              <button
+                type="button"
+                onClick={() => onUndoExtra?.(extra)}
+                disabled={saving}
+                className="text-xs font-medium text-gray-400 hover:text-red-500 disabled:opacity-50"
+              >
+                Αναίρεση
+              </button>
             )}
           </div>
         );
