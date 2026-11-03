@@ -64,11 +64,20 @@ export class ElorusFuseClient {
   constructor(private readonly config: ConfigService) {}
 
   private baseUrl(): string {
-    return String(this.config.get<string>('elorusFuse.baseUrl') || 'https://api.fuse-staging.gr').replace(/\/$/, '');
+    return this.baseUrlPublic();
   }
 
   private apiToken(): string {
-    return String(this.config.get<string>('elorusFuse.apiToken') || '').trim();
+    // Prefer ConfigService, fall back to process.env (Railway injects at runtime).
+    const fromConfig = this.config.get<string>('elorusFuse.apiToken');
+    const fromEnv = process.env.ELORUS_FUSE_API_TOKEN;
+    return String(fromConfig || fromEnv || '').trim();
+  }
+
+  baseUrlPublic(): string {
+    const fromConfig = this.config.get<string>('elorusFuse.baseUrl');
+    const fromEnv = process.env.ELORUS_FUSE_BASE_URL;
+    return String(fromConfig || fromEnv || 'https://api.fuse-staging.gr').replace(/\/$/, '');
   }
 
   isConfigured(): boolean {

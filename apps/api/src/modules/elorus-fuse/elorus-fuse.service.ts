@@ -103,7 +103,7 @@ export class ElorusFuseService {
     return {
       ...school,
       fuseConfigured: this.client.isConfigured(),
-      fuseBaseUrl: process.env.ELORUS_FUSE_BASE_URL || 'https://api.fuse-staging.gr',
+      fuseBaseUrl: this.client.baseUrlPublic(),
     };
   }
 
