@@ -139,36 +139,65 @@ class ParentReceipts extends ConsumerWidget {
           if (studentId == null || studentId!.isEmpty) return true;
           return row['studentId']?.toString() == studentId;
         }).map((row) => Map<String, dynamic>.from(row as Map)).toList();
-        final fiscalCount = mine.where((r) => r['kind']?.toString() == 'fiscal').length;
+        final fiscal = mine.where((r) => r['kind']?.toString() == 'fiscal' || r['kind']?.toString() == 'fiscal_error').toList();
+        final classic = mine.where((r) => r['kind']?.toString() != 'fiscal' && r['kind']?.toString() != 'fiscal_error').toList();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (showHeading) ...[
-              const Text('Αποδείξεις & παραστατικά', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
-              const SizedBox(height: 4),
+              const Text('Παραστατικά & αποδείξεις', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
+              const SizedBox(height: 8),
             ],
-            const Padding(
-              padding: EdgeInsets.only(bottom: 8),
-              child: Text(
-                'Εδώ εμφανίζονται και τα φορολογικά παραστατικά (Elorus). Το ποσό μπορεί να διαφέρει από την πληρωμή.',
-                style: TextStyle(fontSize: 12, color: Color(0xFF6B7280), height: 1.35),
+            // Dedicated Elorus block — always first and expanded so parents can download.
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFECFDF5),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFA7F3D0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Φορολογικά παραστατικά (Elorus)',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF065F46)),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Απόδειξη / τιμολόγιο myDATA. Πάτα «Άνοιγμα / λήψη» για να το κατεβάσεις.',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF047857), height: 1.35),
+                  ),
+                  const SizedBox(height: 10),
+                  if (fiscal.isEmpty)
+                    const Text(
+                      'Δεν υπάρχει ακόμα φορολογικό παραστατικό.',
+                      style: TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+                    )
+                  else
+                    ...fiscal.map((doc) => _ReceiptCard(receipt: doc, schoolId: schoolId)),
+                ],
               ),
             ),
-            if (fiscalCount > 0)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  '$fiscalCount φορολογικ${fiscalCount == 1 ? 'ό παραστατικό' : 'ά παραστατικά'}',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF059669)),
-                ),
-              ),
-            if (mine.isEmpty)
+            const SizedBox(height: 16),
+            const Text(
+              'Αποδείξεις είσπραξης',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF111827)),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Εσωτερικές αποδείξεις πληρωμής (όχι Elorus).',
+              style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+            ),
+            const SizedBox(height: 8),
+            if (classic.isEmpty)
               const Padding(
                 padding: EdgeInsets.only(bottom: 12),
-                child: Text('Δεν έχουν εκδοθεί αποδείξεις ή παραστατικά ακόμα.', style: TextStyle(color: Color(0xFF9CA3AF))),
+                child: Text('Δεν υπάρχουν αποδείξεις είσπραξης ακόμα.', style: TextStyle(color: Color(0xFF9CA3AF))),
               )
             else
-              _ReceiptsByYear(receipts: mine, schoolId: schoolId),
+              _ReceiptsByYear(receipts: classic, schoolId: schoolId),
           ],
         );
       },

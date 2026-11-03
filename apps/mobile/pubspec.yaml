@@ -2,7 +2,7 @@ name: omnedu
 description: omnedu — School management app for Parents & Teachers
 publish_to: none
 # Bump for TestFlight push fix (production APNs entitlements).
-version: 1.0.38+202611021450
+version: 1.0.39+202611031538
 
 environment:
   sdk: '>=3.4.0 <4.0.0'

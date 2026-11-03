@@ -105,7 +105,11 @@ class BillingScreen extends ConsumerWidget {
                   ),
                 // Grand summary card
                 if (data.isNotEmpty) _SummaryCard(total: grandTotal, paid: grandPaid, owed: grandOwed),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
+
+                // Fiscal + receipts near the top so parents can download Elorus docs without scrolling past all charges.
+                ParentReceipts(schoolId: schoolId),
+                const SizedBox(height: 16),
 
                 // Per-child sections
                 ...data.map((entry) {
@@ -121,10 +125,6 @@ class BillingScreen extends ConsumerWidget {
                     events: events,
                   );
                 }),
-
-                // Receipts last — year accordion so charges stay visible first
-                const SizedBox(height: 8),
-                ParentReceipts(schoolId: schoolId),
               ],
             ),
           );
