@@ -28,6 +28,36 @@ void main() {
     expect(find.text('Κατέβασμα'), findsOneWidget);
   });
 
+  testWidgets('fiscal pending card shows amount and refresh instead of open', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ReceiptList(
+            receipts: const [
+              {
+                'kind': 'fiscal',
+                'title': 'Απόδειξη ΑΠ-12',
+                'studentName': 'Ίριδα',
+                'status': 'pending',
+                'grossValue': 100,
+                'amountLabel': '€100.00',
+                'uploadedAt': '2026-11-03T08:00:00.000Z',
+                'fileUrl': '',
+              },
+            ],
+            onDownload: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Απόδειξη ΑΠ-12'), findsOneWidget);
+    expect(find.text('€100.00'), findsOneWidget);
+    expect(find.textContaining('Σε επεξεργασία'), findsOneWidget);
+    expect(find.text('Ανανέωση'), findsOneWidget);
+    expect(find.text('Άνοιγμα / λήψη'), findsNothing);
+  });
+
   testWidgets('receipts on billing are grouped by year in an accordion', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

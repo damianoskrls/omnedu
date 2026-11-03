@@ -43,6 +43,16 @@ export class ElorusFuseController {
     return this.fuse.getDocumentForParent(schoolId, user.sub, id);
   }
 
+  @Post('fiscal-documents/mine/:id/refresh')
+  @Roles('parent', 'school_admin', 'super_admin')
+  refreshMine(
+    @Param('schoolId') schoolId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.fuse.refreshForParent(schoolId, user.sub, id);
+  }
+
   @Get('fiscal-documents')
   @Roles('school_admin', 'super_admin')
   listDocuments(
