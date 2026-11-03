@@ -400,27 +400,21 @@ export class ElorusFuseService {
     const issuerVat = String(school?.vatNumber || '').trim();
     if (!issuerVat) throw new BadRequestException('Λείπει το ΑΦΜ σχολείου');
 
-    if (!doc.fuseUid) {
-      // Try find by series/number
-      try {
-        const found = await this.client.listInvoices(issuerVat, {
-          series: doc.series,
-          number: doc.number,
-          page_size: 5,
-        });
-        const match = (found.results || [])[0];
-        if (match) return this.persistFuseSuccess(doc.id, match);
-      } catch (err) {
-        throw new BadRequestException(
-          err instanceof Error ? err.message : 'Αποτυχία αναζήτησης στο Elorus Fuse',
-        );
-      }
-      throw new BadRequestException('Το παραστατικό δεν έχει ακόμα Fuse UID');
-    }
-
     try {
-      const latest = await this.client.getInvoice(issuerVat, doc.fuseUid);
-      if (!latest) throw new NotFoundException('Δεν βρέθηκε στο Elorus Fuse');
+      let latest: FuseInvoiceResult | null = null;
+      if (doc.fuseUid) {
+        latest = await this.client.getInvoice(issuerVat, doc.fuseUid);
+      }
+      if (!latest) {
+        latest = await this.client.findBySeriesNumber(issuerVat, doc.series, doc.number);
+      }
+      if (!latest) {
+        // Document may already be issued locally with QR/verification; don't scare the admin.
+        if (doc.status === 'issued' && (doc.verificationUrl || doc.qrUrl || doc.mark)) {
+          return doc;
+        }
+        throw new NotFoundException('Δεν βρέθηκε ακόμα στο Elorus Fuse — δοκίμασε σε λίγο');
+      }
       return this.persistFuseSuccess(doc.id, latest);
     } catch (err) {
       if (err instanceof NotFoundException) throw err;

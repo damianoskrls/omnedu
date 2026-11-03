@@ -49,7 +49,11 @@ export function FiscalDocumentsList({
       await fiscalApi.refresh(schoolId, id);
       onChanged();
     } catch (err: any) {
-      window.alert(err?.response?.data?.message || err?.message || 'Αποτυχία ανανέωσης');
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Αποτυχία ανανέωσης';
+      window.alert(Array.isArray(msg) ? msg.join(', ') : String(msg));
     } finally {
       setRefreshingId?.(null);
     }

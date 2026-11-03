@@ -105,26 +105,55 @@ export class ElorusFuseClient {
 
   async listInvoices(
     organizationVat: string,
-    params: { series?: string; number?: string; page?: number; page_size?: number } = {},
+    params: {
+      series?: string;
+      number?: string;
+      search?: string;
+      search_fields?: string;
+      page?: number;
+      page_size?: number;
+    } = {},
   ): Promise<{ count?: number; results?: FuseInvoiceResult[]; next?: string | null; previous?: string | null }> {
     const qs = new URLSearchParams();
     if (params.series) qs.set('series', params.series);
     if (params.number) qs.set('number', params.number);
+    if (params.search) qs.set('search', params.search);
+    if (params.search_fields) qs.set('search_fields', params.search_fields);
     if (params.page) qs.set('page', String(params.page));
     if (params.page_size) qs.set('page_size', String(params.page_size));
     const q = qs.toString();
+    // Official path is /v1_0/invoice/list/ with query string (not path segment).
     const url = `${this.baseUrl()}/v1_0/invoice/list/${q ? `?${q}` : ''}`;
     return this.request('GET', url, organizationVat);
   }
 
+  /** Fuse has no GET-by-uid resource; look up via list search. */
   async getInvoice(organizationVat: string, uid: string): Promise<FuseInvoiceResult | null> {
-    const url = `${this.baseUrl()}/v1_0/invoice/${encodeURIComponent(uid)}/`;
-    try {
-      return await this.request<FuseInvoiceResult>('GET', url, organizationVat);
-    } catch (err) {
-      if (err instanceof ElorusFuseApiError && err.statusCode === 404) return null;
-      throw err;
-    }
+    const found = await this.listInvoices(organizationVat, {
+      search: uid,
+      search_fields: 'uid',
+      page_size: 20,
+    });
+    const rows = found.results || [];
+    const exact = rows.find((r) => String(r.uid || '') === uid);
+    return exact || null;
+  }
+
+  async findBySeriesNumber(
+    organizationVat: string,
+    series: string,
+    number: string,
+  ): Promise<FuseInvoiceResult | null> {
+    const found = await this.listInvoices(organizationVat, {
+      series,
+      number,
+      page_size: 20,
+    });
+    const rows = found.results || [];
+    const exact = rows.find(
+      (r) => String((r as any).series || '') === series && String((r as any).number || '') === number,
+    );
+    return exact || rows[0] || null;
   }
 
   private async request<T>(
