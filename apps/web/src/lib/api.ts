@@ -344,6 +344,8 @@ export const fiscalApi = {
   }) => api.patch(`/schools/${schoolId}/fiscal-settings`, data),
   listDocuments: (schoolId: string, studentId?: string) =>
     api.get(`/schools/${schoolId}/fiscal-documents`, { params: studentId ? { studentId } : {} }),
+  listMine: (schoolId: string) =>
+    api.get(`/schools/${schoolId}/fiscal-documents/mine`),
   getDocument: (schoolId: string, id: string) =>
     api.get(`/schools/${schoolId}/fiscal-documents/${id}`),
   issue: (schoolId: string, data: {

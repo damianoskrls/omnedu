@@ -1,6 +1,8 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { ElorusFuseService, IssueFiscalDocumentDto } from './elorus-fuse.service';
 
 @ApiTags('elorus-fuse')
@@ -19,6 +21,26 @@ export class ElorusFuseController {
   @Roles('school_admin', 'super_admin')
   updateFiscalSettings(@Param('schoolId') schoolId: string, @Body() body: any) {
     return this.fuse.updateFiscalSettings(schoolId, body);
+  }
+
+  /** Parent: issued fiscal docs for their children (open/download via verification URL). */
+  @Get('fiscal-documents/mine')
+  @Roles('parent', 'school_admin', 'super_admin')
+  listMine(
+    @Param('schoolId') schoolId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.fuse.listDocumentsForParent(schoolId, user.sub);
+  }
+
+  @Get('fiscal-documents/mine/:id')
+  @Roles('parent', 'school_admin', 'super_admin')
+  getMine(
+    @Param('schoolId') schoolId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.fuse.getDocumentForParent(schoolId, user.sub, id);
   }
 
   @Get('fiscal-documents')

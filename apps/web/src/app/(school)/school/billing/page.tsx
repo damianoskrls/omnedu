@@ -12,7 +12,7 @@ import { currentMonthKey } from '@/lib/month-quote';
 import {
   ChevronLeft, ChevronRight, Settings, Zap, Bus, CheckCircle2,
   Clock, AlertCircle, Euro, Plus, Pencil, Trash2, X, Check,
-  CalendarDays, Filter, BellRing, ExternalLink, ChevronDown, ChevronUp, Users,
+  CalendarDays, Filter, BellRing, ExternalLink, ChevronDown, ChevronUp, Users, FileText,
 } from 'lucide-react';
 
 const MONTHS_GR = [
@@ -59,8 +59,11 @@ export default function BillingPage() {
   const [levelFees, setLevelFees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
-  const [tab, setTab] = useState<'charges' | 'events' | 'settings'>('charges');
+  const [tab, setTab] = useState<'charges' | 'events' | 'fiscal' | 'settings'>('charges');
   const [showUnpaidOnly, setShowUnpaidOnly] = useState(false);
+  const [fiscalDocs, setFiscalDocs] = useState<any[]>([]);
+  const [fiscalDocsLoading, setFiscalDocsLoading] = useState(false);
+  const [refreshingFiscalId, setRefreshingFiscalId] = useState<string | null>(null);
 
   // Events tab state
   const [events, setEvents] = useState<any[]>([]);
@@ -172,6 +175,36 @@ export default function BillingPage() {
       setEvents(Array.isArray(evts) ? evts : []);
     }).catch(() => setEvents([])).finally(() => setEventsLoading(false));
   }, [tab, schoolId]);
+
+  const loadFiscalDocs = useCallback(async () => {
+    if (!schoolId) return;
+    setFiscalDocsLoading(true);
+    try {
+      const rows: any = await fiscalApi.listDocuments(schoolId);
+      setFiscalDocs(Array.isArray(rows) ? rows : []);
+    } catch {
+      setFiscalDocs([]);
+    } finally {
+      setFiscalDocsLoading(false);
+    }
+  }, [schoolId]);
+
+  useEffect(() => {
+    if (tab !== 'fiscal' || !schoolId) return;
+    void loadFiscalDocs();
+  }, [tab, schoolId, loadFiscalDocs]);
+
+  async function refreshFiscalDoc(id: string) {
+    setRefreshingFiscalId(id);
+    try {
+      await fiscalApi.refresh(schoolId, id);
+      await loadFiscalDocs();
+    } catch (err: any) {
+      window.alert(err?.response?.data?.message || err?.message || 'Αποτυχία ανανέωσης');
+    } finally {
+      setRefreshingFiscalId(null);
+    }
+  }
 
   async function loadEventEnrollments(eventId: string) {
     setLoadingEnrollments(eventId);
@@ -487,6 +520,12 @@ export default function BillingPage() {
           >
             <CalendarDays className="h-4 w-4" /> Εκδηλώσεις
           </button>
+          <button
+            onClick={() => setTab('fiscal')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'fiscal' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            <FileText className="h-4 w-4" /> Παραστατικά
+          </button>
         </div>
       )}
 
@@ -513,6 +552,80 @@ export default function BillingPage() {
           savingFiscal={savingFiscal}
           fiscalSaved={fiscalSaved}
         />
+      ) : tab === 'fiscal' ? (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
+          <div>
+            <h2 className="text-base font-bold text-gray-900">Όλα τα φορολογικά παραστατικά</h2>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Αποδείξεις και τιμολόγια που εκδόθηκαν μέσω Elorus Fuse. Οι γονείς τα βλέπουν και στην εφαρμογή τους.
+            </p>
+          </div>
+          {fiscalDocsLoading ? (
+            <div className="text-center py-12 text-gray-400">Φόρτωση...</div>
+          ) : (
+            <div className="space-y-2">
+              {fiscalDocs.length === 0 ? (
+                <p className="text-sm text-gray-400 py-4">Δεν έχουν εκδοθεί ακόμα παραστατικά.</p>
+              ) : (
+                fiscalDocs.map((doc: any) => {
+                  const href = doc.verificationUrl || doc.qrUrl;
+                  const studentName = doc.student?.fullName || '—';
+                  const kind = doc.documentKind === 'service_invoice' ? 'Τιμολόγιο' : 'Απόδειξη';
+                  return (
+                    <div key={doc.id} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 px-4 py-3 rounded-xl border border-gray-100">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-semibold text-gray-900">{kind} {doc.series}-{doc.number}</span>
+                          <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
+                            doc.status === 'failed' ? 'bg-red-100 text-red-700'
+                              : doc.status === 'issued' ? 'bg-emerald-100 text-emerald-700'
+                                : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {doc.status === 'failed' ? 'Αποτυχία' : doc.status === 'issued' ? 'Εκδόθηκε' : 'Σε εξέλιξη'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5 truncate">
+                          {studentName} · {doc.description} · €{Number(doc.grossValue).toFixed(2)}
+                          {doc.mark ? ` · MARK ${doc.mark}` : ''}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => router.push(`/school/students/${doc.studentId}`)}
+                          className="text-xs font-medium text-gray-600 hover:text-gray-900"
+                          disabled={!doc.studentId}
+                        >
+                          Μαθητής
+                        </button>
+                        {href && (
+                          <a href={href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800">
+                            <ExternalLink className="h-3.5 w-3.5" /> Επαλήθευση
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => void refreshFiscalDoc(doc.id)}
+                          disabled={refreshingFiscalId === doc.id}
+                          className="text-xs font-medium text-gray-600 hover:text-gray-900 disabled:opacity-50"
+                        >
+                          {refreshingFiscalId === doc.id ? '...' : 'Ανανέωση'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => void loadFiscalDocs()}
+            className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
+          >
+            Ανανέωση λίστας
+          </button>
+        </div>
       ) : tab === 'events' ? (
         /* ---- Events tab ---- */
         <div className="space-y-3">
