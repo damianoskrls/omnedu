@@ -79,4 +79,10 @@ export class ElorusFuseController {
   refresh(@Param('schoolId') schoolId: string, @Param('id') id: string) {
     return this.fuse.refresh(schoolId, id);
   }
+
+  @Post('fiscal-documents/:id/resend')
+  @Roles('school_admin', 'super_admin')
+  resend(@Param('schoolId') schoolId: string, @Param('id') id: string) {
+    return this.fuse.resendToParents(schoolId, id);
+  }
 }

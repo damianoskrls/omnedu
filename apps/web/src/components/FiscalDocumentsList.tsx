@@ -1,6 +1,7 @@
 'use client';
 
-import { ExternalLink, RefreshCw } from 'lucide-react';
+import { useState } from 'react';
+import { ExternalLink, RefreshCw, Send } from 'lucide-react';
 import { fiscalApi } from '@/lib/api';
 
 type Props = {
@@ -37,6 +38,8 @@ export function FiscalDocumentsList({
   refreshingId,
   setRefreshingId,
 }: Props) {
+  const [resendingId, setResendingId] = useState<string | null>(null);
+
   if (!documents.length) {
     return (
       <p className="text-sm text-gray-400 py-2">Δεν έχουν εκδοθεί ακόμα φορολογικά παραστατικά για αυτόν τον μαθητή.</p>
@@ -56,6 +59,22 @@ export function FiscalDocumentsList({
       window.alert(Array.isArray(msg) ? msg.join(', ') : String(msg));
     } finally {
       setRefreshingId?.(null);
+    }
+  }
+
+  async function resend(id: string) {
+    setResendingId(id);
+    try {
+      await fiscalApi.resend(schoolId, id);
+      window.alert('Στάλθηκε ειδοποίηση στους γονείς.');
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Αποτυχία επαναποστολής';
+      window.alert(Array.isArray(msg) ? msg.join(', ') : String(msg));
+    } finally {
+      setResendingId(null);
     }
   }
 
@@ -96,6 +115,17 @@ export function FiscalDocumentsList({
                   <ExternalLink className="h-3.5 w-3.5" />
                   Επαλήθευση
                 </a>
+              )}
+              {doc.studentId && doc.status !== 'failed' && (
+                <button
+                  type="button"
+                  onClick={() => void resend(doc.id)}
+                  disabled={resendingId === doc.id}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-gray-900 disabled:opacity-50"
+                >
+                  <Send className={`h-3.5 w-3.5 ${resendingId === doc.id ? 'animate-pulse' : ''}`} />
+                  Επαναποστολή
+                </button>
               )}
               <button
                 type="button"

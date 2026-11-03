@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { FileText } from 'lucide-react';
+import { ExternalLink, FileText, RefreshCw } from 'lucide-react';
 import { PaymentDetailsLink } from '@/components/PaymentDetailsLink';
 
 const MONTHS = ['', 'Ιανουάριος', 'Φεβρουάριος', 'Μάρτιος', 'Απρίλιος', 'Μάιος', 'Ιούνιος', 'Ιούλιος', 'Αύγουστος', 'Σεπτέμβριος', 'Οκτώβριος', 'Νοέμβριος', 'Δεκέμβριος'];
@@ -18,6 +18,16 @@ export type PayMonthTarget = {
   notes?: string | null;
 };
 
+export type FiscalMonthTarget = {
+  year: number;
+  month: number;
+  chargeId?: string | null;
+  totalDue: number;
+  paidAmount: number;
+  description: string;
+  lines?: { label: string; amount: number }[];
+};
+
 function statusLabel(status: string, totalDue?: number) {
   if (status === 'paid' && Number(totalDue ?? 0) === 0) return { text: 'Καλύπτεται', className: 'bg-emerald-100 text-emerald-700' };
   if (status === 'paid') return { text: 'Εξοφλήθη', className: 'bg-green-100 text-green-700' };
@@ -28,6 +38,22 @@ function statusLabel(status: string, totalDue?: number) {
 
 function monthRemainder(totalDue: number, paidAmount: number) {
   return Math.max(0, Number(totalDue || 0) - Number(paidAmount || 0));
+}
+
+/** e.g. ΦΟΙΤΗΣΗ ΝΗΠΙΑΓΩΓΕΙΟ ΟΚΤΩΒΡΙΟΣ */
+export function monthFiscalDescription(month: {
+  month: number;
+  lines?: { label: string; amount: number }[];
+}): string {
+  const tuition = (month.lines || []).find((l) => Number(l.amount) > 0);
+  const base = String(tuition?.label || 'Φοίτηση')
+    .replace(/\([^)]*\)/g, '')
+    .replace(/[-–—]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLocaleUpperCase('el-GR');
+  const mon = (MONTHS[month.month] || '').toLocaleUpperCase('el-GR');
+  return `${base} ${mon}`.trim();
 }
 
 function MonthAmount({
@@ -77,6 +103,139 @@ function toPayTarget(month: any): PayMonthTarget {
   };
 }
 
+function toFiscalTarget(month: any): FiscalMonthTarget {
+  return {
+    year: Number(month.year),
+    month: Number(month.month),
+    chargeId: month.chargeId ?? null,
+    totalDue: Number(month.totalDue ?? 0),
+    paidAmount: Number(month.paidAmount ?? 0),
+    description: monthFiscalDescription(month),
+    lines: month.lines,
+  };
+}
+
+function canUndoMonth(month: any) {
+  return Boolean(month?.chargeId)
+    && Number(month?.paidAmount ?? 0) > 0.005
+    && (month.status === 'paid' || month.status === 'partial');
+}
+
+function MonthActionButtons({
+  canPay,
+  canFiscal,
+  canUndo,
+  saving,
+  onPay,
+  onFiscal,
+  onUndo,
+  fullWidthPay,
+}: {
+  canPay: boolean;
+  canFiscal: boolean;
+  canUndo: boolean;
+  saving: boolean;
+  onPay: () => void;
+  onFiscal: () => void;
+  onUndo: () => void;
+  fullWidthPay?: boolean;
+}) {
+  if (!canPay && !canFiscal && !canUndo) return null;
+  return (
+    <div className={`mt-2 flex flex-wrap gap-1.5 ${fullWidthPay ? '' : 'justify-end'}`}>
+      {canPay && (
+        <button
+          type="button"
+          disabled={saving}
+          onClick={onPay}
+          className={
+            fullWidthPay
+              ? 'flex-1 rounded-xl bg-[#77328D] py-2.5 text-sm font-semibold text-white disabled:opacity-50'
+              : 'rounded-lg bg-[#77328D] px-2.5 py-1.5 text-xs font-semibold text-white disabled:opacity-50'
+          }
+        >
+          Είσπραξη
+        </button>
+      )}
+      {canFiscal && (
+        <button
+          type="button"
+          disabled={saving}
+          onClick={onFiscal}
+          className={
+            fullWidthPay
+              ? 'flex-1 rounded-xl border border-indigo-200 bg-indigo-50 py-2.5 text-sm font-semibold text-indigo-700 disabled:opacity-50'
+              : 'rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 disabled:opacity-50'
+          }
+        >
+          Παραστατικό
+        </button>
+      )}
+      {canUndo && (
+        <button
+          type="button"
+          disabled={saving}
+          onClick={onUndo}
+          className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-400 hover:text-gray-600 disabled:opacity-50"
+        >
+          Αναίρεση
+        </button>
+      )}
+    </div>
+  );
+}
+
+function MonthFiscalLinks({
+  docs,
+  onResend,
+  resendingId,
+}: {
+  docs: any[];
+  onResend?: (id: string) => void | Promise<void>;
+  resendingId?: string | null;
+}) {
+  if (!docs.length) return null;
+  return (
+    <div className="mt-2 space-y-1.5 text-right">
+      {docs.map((doc) => {
+        const href = doc.verificationUrl || doc.qrUrl;
+        const label = `${doc.documentKind === 'service_invoice' ? 'ΤΙΜ' : 'ΑΠ'}-${doc.number}`;
+        const pending = doc.status === 'pending' || !href;
+        return (
+          <div key={doc.id} className="flex flex-wrap items-center justify-end gap-1.5">
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
+              <FileText className="h-3 w-3" />
+              {label} · €{Number(doc.grossValue).toFixed(2)}
+              {pending ? ' · σε εξέλιξη' : ''}
+            </span>
+            {href && (
+              <a
+                href={href}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-0.5 text-[11px] font-medium text-indigo-600 hover:text-indigo-800"
+              >
+                <ExternalLink className="h-3 w-3" /> Προβολή
+              </a>
+            )}
+            {onResend && doc.status !== 'failed' && (
+              <button
+                type="button"
+                disabled={resendingId === doc.id}
+                onClick={() => void onResend(doc.id)}
+                className="inline-flex items-center gap-0.5 text-[11px] font-medium text-gray-500 hover:text-gray-800 disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3 w-3 ${resendingId === doc.id ? 'animate-spin' : ''}`} />
+                Επαναποστολή
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function StudentStatement({
   statement,
   isAdmin,
@@ -85,10 +244,14 @@ export function StudentStatement({
   onUndoMonth,
   onPayExtra,
   receipts = [],
+  fiscalDocuments = [],
   onUploadReceipt,
   onDownloadReceipt,
   onDeleteReceipt,
   onRequestSystemReceipt,
+  onIssueFiscalMonth,
+  onResendFiscal,
+  resendingFiscalId,
 }: {
   statement: any;
   isAdmin: boolean;
@@ -97,10 +260,14 @@ export function StudentStatement({
   onUndoMonth: (chargeId: string) => void;
   onPayExtra: (extra: any) => void;
   receipts?: any[];
+  fiscalDocuments?: any[];
   onUploadReceipt?: (file: File, month: number, year: number, title: string) => Promise<void>;
   onDownloadReceipt?: (docId: string) => void;
   onDeleteReceipt?: (docId: string) => Promise<void>;
   onRequestSystemReceipt?: (month: number, year: number, notes?: string | null) => Promise<void>;
+  onIssueFiscalMonth?: (target: FiscalMonthTarget) => void;
+  onResendFiscal?: (id: string) => void | Promise<void>;
+  resendingFiscalId?: string | null;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [pendingUpload, setPendingUpload] = useState<{ month: number; year: number } | null>(null);
@@ -123,6 +290,13 @@ export function StudentStatement({
       if (Number.isNaN(when.getTime())) return false;
       return when.getFullYear() === year && when.getMonth() + 1 === month;
     });
+  }
+
+  function fiscalsForCharge(chargeId?: string | null) {
+    if (!chargeId) return [];
+    return (fiscalDocuments || []).filter(
+      (d) => d.monthlyChargeId === chargeId && d.status !== 'failed',
+    );
   }
 
   function triggerUpload(month: number, year: number) {
@@ -148,6 +322,7 @@ export function StudentStatement({
 
   const current = statement.current;
   const owed = Number(statement.pendingNow ?? 0);
+  void uploadingKey;
 
   return (
     <div className="space-y-4">
@@ -188,26 +363,26 @@ export function StudentStatement({
                   />
                 </div>
               )}
-              <ReceiptBadge
-                receipt={receiptFor(current.month, current.year)}
-                uploading={uploadingKey === monthKey(current.month, current.year)}
-                showUpload={isAdmin && (current.status === 'paid' || current.status === 'partial')}
-                onUpload={() => triggerUpload(current.month, current.year)}
-                onDownload={onDownloadReceipt}
-                onDelete={onDeleteReceipt}
+              <MonthFiscalLinks
+                docs={fiscalsForCharge(current.chargeId)}
+                onResend={isAdmin ? onResendFiscal : undefined}
+                resendingId={resendingFiscalId}
               />
             </div>
           </div>
           <LineList lines={current.lines} />
           <ExtraList extras={current.extras} isAdmin={isAdmin} saving={saving} onPayExtra={onPayExtra} />
-          {isAdmin && current.status !== 'paid' && (
-            <button
-              onClick={() => onPayMonth(toPayTarget(current))}
-              disabled={saving}
-              className="mt-4 w-full rounded-xl bg-[#77328D] py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-            >
-              Πληρωμή
-            </button>
+          {isAdmin && (
+            <MonthActionButtons
+              canPay={current.status !== 'paid'}
+              canFiscal={Boolean(onIssueFiscalMonth)}
+              canUndo={canUndoMonth(current)}
+              saving={saving}
+              fullWidthPay
+              onPay={() => onPayMonth(toPayTarget(current))}
+              onFiscal={() => onIssueFiscalMonth?.(toFiscalTarget(current))}
+              onUndo={() => onUndoMonth(current.chargeId)}
+            />
           )}
         </div>
       )}
@@ -241,7 +416,7 @@ export function StudentStatement({
               disabled={saving}
               className="rounded-lg border border-green-200 px-3 py-2 text-xs font-semibold text-green-700 hover:bg-green-50"
             >
-              Πληρωμή
+              Είσπραξη
             </button>
           )}
         </div>
@@ -257,6 +432,7 @@ export function StudentStatement({
             const badge = statusLabel(month.status, Number(month.totalDue));
             const quiet = month.status === 'upcoming';
             const canPay = isAdmin && month.status !== 'paid' && Number(month.totalDue) >= 0;
+            const canFiscal = isAdmin && Boolean(onIssueFiscalMonth) && month.status !== 'upcoming';
             return (
               <div key={`${month.year}-${month.month}`} className={`px-5 py-4 ${quiet ? 'opacity-80' : ''}`}>
                 <div className="flex items-start gap-3">
@@ -268,7 +444,7 @@ export function StudentStatement({
                     <LineList lines={month.lines} compact />
                     <ExtraList extras={month.extras} isAdmin={isAdmin} saving={saving} onPayExtra={onPayExtra} />
                   </div>
-                  <div className="text-right shrink-0">
+                  <div className="text-right shrink-0 min-w-[9.5rem]">
                     <MonthAmount
                       status={month.status}
                       totalDue={Number(month.totalDue)}
@@ -289,26 +465,19 @@ export function StudentStatement({
                         />
                       </div>
                     )}
-                    {canPay && (
-                      <button
-                        type="button"
-                        disabled={saving}
-                        onClick={() => onPayMonth(toPayTarget(month))}
-                        className="block ml-auto mt-2 text-xs font-semibold text-[#77328D] disabled:opacity-50"
-                      >
-                        Πληρωμή
-                      </button>
-                    )}
-                    {isAdmin && month.chargeId && month.status === 'paid' && Number(month.totalDue) > 0 && (
-                      <button onClick={() => onUndoMonth(month.chargeId)} className="block ml-auto mt-2 text-xs text-gray-400">Αναίρεση</button>
-                    )}
-                    <ReceiptBadge
-                      receipt={receiptFor(month.month, month.year)}
-                      uploading={uploadingKey === monthKey(month.month, month.year)}
-                      showUpload={isAdmin && (month.status === 'paid' || month.status === 'partial')}
-                      onUpload={() => triggerUpload(month.month, month.year)}
-                      onDownload={onDownloadReceipt}
-                      onDelete={onDeleteReceipt}
+                    <MonthActionButtons
+                      canPay={canPay}
+                      canFiscal={canFiscal}
+                      canUndo={isAdmin && canUndoMonth(month)}
+                      saving={saving}
+                      onPay={() => onPayMonth(toPayTarget(month))}
+                      onFiscal={() => onIssueFiscalMonth?.(toFiscalTarget(month))}
+                      onUndo={() => onUndoMonth(month.chargeId)}
+                    />
+                    <MonthFiscalLinks
+                      docs={fiscalsForCharge(month.chargeId)}
+                      onResend={isAdmin ? onResendFiscal : undefined}
+                      resendingId={resendingFiscalId}
                     />
                   </div>
                 </div>
@@ -334,60 +503,6 @@ function LineList({ lines, compact }: { lines?: { label: string; amount: number 
         </li>
       ))}
     </ul>
-  );
-}
-
-function ReceiptBadge({ receipt, uploading, showUpload, onUpload, onDownload, onDelete }: {
-  receipt?: any;
-  uploading: boolean;
-  showUpload: boolean;
-  onUpload: () => void;
-  onDownload?: (docId: string) => void;
-  onDelete?: (docId: string) => Promise<void>;
-}) {
-  const [deleting, setDeleting] = useState(false);
-
-  if (uploading) {
-    return <p className="mt-1 text-xs text-gray-400 text-right">Ανέβασμα...</p>;
-  }
-  if (receipt) {
-    return (
-      <div className="mt-1 flex items-center justify-end gap-1">
-        <button
-          type="button"
-          onClick={() => onDownload?.(receipt.id)}
-          className="flex items-center gap-1 text-xs text-emerald-700 font-medium hover:underline"
-        >
-          <FileText className="h-3 w-3" />
-          Απόδειξη ✓
-        </button>
-        {onDelete && (
-          <button
-            type="button"
-            disabled={deleting}
-            onClick={async () => {
-              setDeleting(true);
-              try { await onDelete(receipt.id); } finally { setDeleting(false); }
-            }}
-            className="text-xs text-gray-400 hover:text-red-500 disabled:opacity-50 ml-1"
-            title="Διαγραφή απόδειξης"
-          >
-            ×
-          </button>
-        )}
-      </div>
-    );
-  }
-  if (!showUpload) return null;
-  return (
-    <button
-      type="button"
-      onClick={onUpload}
-      className="mt-1 flex items-center justify-end gap-1 text-xs text-gray-400 hover:text-[#77328D] ml-auto"
-    >
-      <FileText className="h-3 w-3" />
-      Ανέβασε απόδειξη
-    </button>
   );
 }
 
@@ -423,7 +538,7 @@ function ExtraList({
               )}
             </span>
             {isAdmin && extra.status !== 'paid' && (
-              <button onClick={() => onPayExtra(extra)} disabled={saving} className="text-xs font-semibold text-green-700">Πληρωμή</button>
+              <button onClick={() => onPayExtra(extra)} disabled={saving} className="text-xs font-semibold text-green-700">Είσπραξη</button>
             )}
           </div>
         );

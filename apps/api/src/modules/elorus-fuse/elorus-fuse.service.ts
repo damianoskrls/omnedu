@@ -457,7 +457,20 @@ export class ElorusFuseService {
     });
   }
 
-  private async notifyParentsOfIssue(schoolId: string, doc: {
+  async resendToParents(schoolId: string, id: string) {
+    const doc = await this.prisma.fiscalDocument.findFirst({
+      where: { id, schoolId },
+      include: { student: { select: { id: true, fullName: true } } },
+    });
+    if (!doc) throw new NotFoundException('Fiscal document not found');
+    if (!doc.studentId) {
+      throw new BadRequestException('Το παραστατικό δεν συνδέεται με μαθητή — δεν υπάρχει γονέας για αποστολή');
+    }
+    await this.notifyParentsOfIssue(schoolId, doc);
+    return { ok: true, id: doc.id };
+  }
+
+  async notifyParentsOfIssue(schoolId: string, doc: {
     id: string;
     studentId: string | null;
     documentKind: string;

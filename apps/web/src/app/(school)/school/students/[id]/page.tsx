@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { studentsApi, billingApi, classesApi, activitiesApi, extraServicesApi, medicationRequestsApi, studentFormsApi, broadcastsApi, schoolEventsApi, questionnairesApi, parentsApi, attendanceApi, fiscalApi } from '@/lib/api';
-import { StudentStatement, type PayMonthTarget } from './student-statement';
+import { StudentStatement, monthFiscalDescription, type FiscalMonthTarget, type PayMonthTarget } from './student-statement';
 import { buildStudentQuoteInput, chargeMatchesQuote, currentMonthKey, findStationeryCharge, isOpenMonth, quoteStudentMonth, schoolYearMonths, schoolYearOf } from '@/lib/month-quote';
 import { noteWithoutPayment, payerOptions, paymentNote, PaymentInfo, readPaymentRecord } from '@/lib/payment-note';
 import { createReceiptFile } from '@/lib/receipt-pdf';
@@ -137,6 +137,7 @@ export default function StudentProfilePage() {
   const [fiscalIssueOpen, setFiscalIssueOpen] = useState(false);
   const [fiscalPrefill, setFiscalPrefill] = useState<FiscalIssuePrefill | null>(null);
   const [refreshingFiscalId, setRefreshingFiscalId] = useState<string | null>(null);
+  const [resendingFiscalId, setResendingFiscalId] = useState<string | null>(null);
   const [oneTimeCharges, setOneTimeCharges] = useState<any[]>([]);
   const [chargesLoading, setChargesLoading] = useState(false);
   const [subsidies, setSubsidies] = useState<any[]>([]);
@@ -2199,10 +2200,48 @@ export default function StudentProfilePage() {
                   const docs: any = await studentsApi.getDocuments(schoolId, id).catch(() => []);
                   setStudentReceipts(Array.isArray(docs) ? (docs as any[]).filter((d: any) => d.category === 'receipt') : []);
                 }}
+                fiscalDocuments={fiscalDocuments}
                 onPayMonth={(target) => { void payMonthTarget(target); }}
                 onUndoMonth={(chargeId) => {
                   billingApi.updateCharge(schoolId, chargeId, { paidAmount: 0, status: 'unpaid' }).then(loadBillingData);
                 }}
+                onIssueFiscalMonth={(target: FiscalMonthTarget) => {
+                  const paid = Number(target.paidAmount || 0);
+                  const due = Number(target.totalDue || 0);
+                  const suggested = paid > 0.005 ? paid : due;
+                  setFiscalPrefill({
+                    studentId: id,
+                    studentName: student?.fullName,
+                    studentAddress: student?.address || null,
+                    parents: (student?.parents || []).map((p: any) => ({
+                      userId: p.userId || p.user?.id,
+                      fullName: p.user?.fullName || '',
+                      vatNumber: p.user?.vatNumber || null,
+                      billingStreet: p.user?.billingStreet || null,
+                      billingNumber: p.user?.billingNumber || null,
+                      billingPostalCode: p.user?.billingPostalCode || null,
+                      billingCity: p.user?.billingCity || null,
+                      isPrimary: Boolean(p.isPrimary),
+                      relation: p.relation || null,
+                    })).filter((p: any) => p.userId && p.fullName),
+                    monthlyChargeId: target.chargeId || undefined,
+                    grossAmount: suggested > 0 ? suggested : undefined,
+                    description: target.description || monthFiscalDescription(target),
+                  });
+                  setFiscalIssueOpen(true);
+                }}
+                onResendFiscal={async (docId) => {
+                  setResendingFiscalId(docId);
+                  try {
+                    await fiscalApi.resend(schoolId, docId);
+                    window.alert('Στάλθηκε ειδοποίηση στους γονείς.');
+                  } catch (err: any) {
+                    window.alert(err?.response?.data?.message || err?.message || 'Αποτυχία επαναποστολής');
+                  } finally {
+                    setResendingFiscalId(null);
+                  }
+                }}
+                resendingFiscalId={resendingFiscalId}
                 onPayExtra={(extra) => {
                   if (extra.kind === 'event') {
                     const enrollment = (student.eventEnrollments ?? []).find((row: any) => row.id === extra.id);
@@ -2226,7 +2265,7 @@ export default function StudentProfilePage() {
                   <div>
                     <h3 className="font-semibold text-gray-900">Φορολογικά παραστατικά (Elorus Fuse)</h3>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      Έκδοση απόδειξης ή τιμολογίου στο myDATA. Το ποσό παραστατικού είναι ανεξάρτητο από την πληρωμή (π.χ. πληρωμή €400, παραστατικό €100).
+                      Έκδοση απόδειξης ή τιμολογίου στο myDATA. Το ποσό παραστατικού είναι ανεξάρτητο από την πληρωμή (π.χ. πληρωμή €400, παραστατικό €100). Από μήνα προτείνεται περιγραφή τύπου «ΦΟΙΤΗΣΗ … ΟΚΤΩΒΡΙΟΣ».
                     </p>
                   </div>
                   <button
@@ -2795,17 +2834,54 @@ export default function StudentProfilePage() {
                                 {isAdmin && !isFuture && charge && (
                                   <div className="flex items-center gap-1 shrink-0">
                                     {charge.status !== 'paid' && (
-                                      <>
-                                        <button
-                                          onClick={() => recordMonthPayment(charge, shownTotal, `${MONTH_FULL[m]} ${y}`)}
-                                          className="p-1.5 rounded-lg hover:bg-green-50 text-gray-400 hover:text-green-600"
-                                          title="Εξόφληση"
-                                        >
-                                          <Check className="h-3.5 w-3.5" />
-                                        </button>
-                                      </>
+                                      <button
+                                        onClick={() => recordMonthPayment(charge, shownTotal, `${MONTH_FULL[m]} ${y}`)}
+                                        className="px-2 py-1 rounded-lg bg-[#77328D] text-white text-[11px] font-semibold hover:bg-[#642678]"
+                                        title="Είσπραξη"
+                                      >
+                                        Είσπραξη
+                                      </button>
                                     )}
-                                    {charge.status === 'paid' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const paid = Number(charge.paidAmount || 0);
+                                        const due = Number(shownTotal || 0);
+                                        const suggested = paid > 0.005 ? paid : due;
+                                        const desc = monthFiscalDescription({
+                                          month: m,
+                                          lines: (quoteFor(m, y).lines || []).map((l: any) => ({
+                                            label: String(l.label || ''),
+                                            amount: Number(l.amount || 0),
+                                          })),
+                                        });
+                                        setFiscalPrefill({
+                                          studentId: id,
+                                          studentName: student?.fullName,
+                                          studentAddress: student?.address || null,
+                                          parents: (student?.parents || []).map((p: any) => ({
+                                            userId: p.userId || p.user?.id,
+                                            fullName: p.user?.fullName || '',
+                                            vatNumber: p.user?.vatNumber || null,
+                                            billingStreet: p.user?.billingStreet || null,
+                                            billingNumber: p.user?.billingNumber || null,
+                                            billingPostalCode: p.user?.billingPostalCode || null,
+                                            billingCity: p.user?.billingCity || null,
+                                            isPrimary: Boolean(p.isPrimary),
+                                            relation: p.relation || null,
+                                          })).filter((p: any) => p.userId && p.fullName),
+                                          monthlyChargeId: charge.id,
+                                          grossAmount: suggested > 0 ? suggested : undefined,
+                                          description: desc,
+                                        });
+                                        setFiscalIssueOpen(true);
+                                      }}
+                                      className="px-2 py-1 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-[11px] font-semibold"
+                                      title="Παραστατικό"
+                                    >
+                                      Παραστατικό
+                                    </button>
+                                    {(charge.status === 'paid' || charge.status === 'partial') && Number(charge.paidAmount || 0) > 0.005 && (
                                       <button
                                         onClick={() => billingApi.updateCharge(schoolId, charge.id, { paidAmount: 0, status: 'unpaid' }).then(loadBillingData)}
                                         className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-300 hover:text-gray-500"
