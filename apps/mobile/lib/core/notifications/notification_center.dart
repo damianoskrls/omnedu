@@ -301,6 +301,32 @@ bool _isRegulation(Map<String, dynamic> notice, Map<String, dynamic> data) {
   return type == 'regulation' || screen == 'regulations' || title.contains('κανονισμ');
 }
 
+Map<String, dynamic> _noticeDataMap(Map<String, dynamic> notice) {
+  final raw = notice['data'];
+  if (raw is Map) return Map<String, dynamic>.from(raw);
+  if (raw is String && raw.trim().isNotEmpty) {
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    } catch (_) {}
+  }
+  return <String, dynamic>{};
+}
+
+bool _looksLikeFiscalNotice(Map<String, dynamic> notice, [Map<String, dynamic>? data]) {
+  final payload = data ?? _noticeDataMap(notice);
+  final type = (notice['type'] ?? payload['type'])?.toString() ?? '';
+  if (type == 'fiscal_document') return true;
+  if (payload['fiscalDocumentId']?.toString().trim().isNotEmpty == true) return true;
+  final title = (notice['title'] ?? '').toString();
+  final upper = title.toUpperCase();
+  if (upper.contains('ΑΠ-') || upper.contains('ΤΙΜ-') || title.contains('Απόδειξη ΑΠ') || title.contains('Τιμολόγιο')) {
+    return true;
+  }
+  final screen = payload['screen']?.toString() ?? '';
+  return screen == 'receipts' && (title.contains('Απόδειξη') || title.contains('Τιμολόγιο'));
+}
+
 String _noticeBody(Map<String, dynamic> notice) {
   final raw = notice['data'];
   final data = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
@@ -381,11 +407,11 @@ Future<void> openNotification(BuildContext context, WidgetRef ref, Map<String, d
     return;
   }
 
-  if (type == 'receipt' || type == 'fiscal_document') {
+  if (type == 'receipt' || type == 'fiscal_document' || _looksLikeFiscalNotice(notice, data)) {
     ref.invalidate(myReceiptsProvider(schoolId));
-    final openUrl = (data['verificationUrl'] ?? data['qrUrl'])?.toString().trim() ?? '';
-    final fiscalId = data['fiscalDocumentId']?.toString() ?? '';
-    if (type == 'fiscal_document' && (openUrl.isNotEmpty || fiscalId.isNotEmpty)) {
+    // Always open detail with download actions for Elorus ΑΠ/ΤΙΜ — ReceiptsScreen alone
+    // was easy to miss and older builds only showed «Κλείσιμο».
+    if (_looksLikeFiscalNotice(notice, data) || type == 'fiscal_document') {
       await Navigator.push(
         context,
         MaterialPageRoute(
@@ -612,7 +638,9 @@ class InboxScreen extends ConsumerWidget {
     if (type == 'message') return Icons.chat_bubble_rounded;
     if (type == 'daily_report') return Icons.menu_book_rounded;
     if (type == 'payment') return Icons.payments_rounded;
-    if (type == 'receipt' || type == 'fiscal_document') return Icons.receipt_long_rounded;
+    if (type == 'receipt' || type == 'fiscal_document' || _looksLikeFiscalNotice(notice, data)) {
+      return Icons.receipt_long_rounded;
+    }
     if (type == 'celebration') return Icons.celebration_rounded;
     if (type == 'school_event' || type == 'event_post') return Icons.photo_library_rounded;
     if (type == 'bus_closure') return Icons.directions_bus_rounded;
@@ -740,19 +768,51 @@ class _NoticeDetailScreenState extends ConsumerState<NoticeDetailScreen> {
   Future<void> _openFiscal(Map<String, dynamic> data) async {
     final schoolId = widget.schoolId ?? ref.read(authProvider).user?.schoolId ?? '';
     var url = (data['verificationUrl'] ?? data['qrUrl'])?.toString().trim() ?? '';
-    final fiscalId = data['fiscalDocumentId']?.toString() ?? '';
+    var fiscalId = data['fiscalDocumentId']?.toString() ?? '';
     setState(() => _openingFiscal = true);
     try {
-      if (url.isEmpty && fiscalId.isNotEmpty && schoolId.isNotEmpty) {
-        final resp = await ref.read(dioProvider).get('/schools/$schoolId/fiscal-documents/mine/$fiscalId');
-        final row = resp.data is Map ? Map<String, dynamic>.from(resp.data as Map) : <String, dynamic>{};
-        url = (row['verificationUrl'] ?? row['qrUrl'] ?? row['fileUrl'])?.toString().trim() ?? '';
+      if (schoolId.isNotEmpty) {
+        // Prefer live doc URL: notification payload may predate Fuse verification link.
+        if (fiscalId.isNotEmpty) {
+          try {
+            final refreshed = await ref.read(dioProvider).post('/schools/$schoolId/fiscal-documents/mine/$fiscalId/refresh');
+            final row = refreshed.data is Map ? Map<String, dynamic>.from(refreshed.data as Map) : <String, dynamic>{};
+            url = (row['verificationUrl'] ?? row['qrUrl'] ?? row['fileUrl'])?.toString().trim() ?? url;
+          } catch (_) {
+            try {
+              final resp = await ref.read(dioProvider).get('/schools/$schoolId/fiscal-documents/mine/$fiscalId');
+              final row = resp.data is Map ? Map<String, dynamic>.from(resp.data as Map) : <String, dynamic>{};
+              url = (row['verificationUrl'] ?? row['qrUrl'] ?? row['fileUrl'])?.toString().trim() ?? url;
+            } catch (_) {}
+          }
+        }
+        if (url.isEmpty) {
+          // Match by ΑΠ-n / ΤΙΜ-n from title when id missing from older notices.
+          final title = widget.notice['title']?.toString() ?? '';
+          final match = RegExp(r'(ΑΠ|ΤΙΜ)-(\d+)', caseSensitive: false).firstMatch(title);
+          if (match != null) {
+            try {
+              final listResp = await ref.read(dioProvider).get('/schools/$schoolId/fiscal-documents/mine');
+              final rows = listResp.data is List ? listResp.data as List : const [];
+              for (final row in rows) {
+                if (row is! Map) continue;
+                final series = row['series']?.toString() ?? '';
+                final number = row['number']?.toString() ?? '';
+                if (series == match.group(1) && number == match.group(2)) {
+                  fiscalId = row['id']?.toString() ?? fiscalId;
+                  url = (row['verificationUrl'] ?? row['qrUrl'] ?? row['fileUrl'])?.toString().trim() ?? '';
+                  break;
+                }
+              }
+            } catch (_) {}
+          }
+        }
       }
       if (url.isEmpty) {
         if (!mounted) return;
         if (schoolId.isNotEmpty) {
           ref.invalidate(myReceiptsProvider(schoolId));
-          await Navigator.push(context, MaterialPageRoute(builder: (_) => ReceiptsScreen(schoolId: schoolId)));
+          await Navigator.push(context, MaterialPageRoute(builder: (_) => BillingScreen(schoolId: schoolId)));
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Δεν υπάρχει σύνδεσμος παραστατικού ακόμα.')),
@@ -820,17 +880,13 @@ class _NoticeDetailScreenState extends ConsumerState<NoticeDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final notice = widget.notice;
-    final raw = notice['data'];
-    final data = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+    final data = _noticeDataMap(notice);
     final title = notice['title']?.toString().trim() ?? '';
     final body = (notice['body']?.toString().trim().isNotEmpty == true ? notice['body']?.toString() : data['body']?.toString())?.trim() ?? '';
     final imageUrl = data['imageUrl']?.toString() ?? '';
     final pdfs = _pdfs(data);
     final when = _noticeWhen(notice);
-    final type = notice['type']?.toString() ?? data['type']?.toString() ?? '';
-    final isFiscal = type == 'fiscal_document'
-        || (data['fiscalDocumentId']?.toString().isNotEmpty == true)
-        || (data['screen']?.toString() == 'receipts' && title.contains('Απόδειξη ΑΠ'));
+    final isFiscal = _looksLikeFiscalNotice(notice, data);
     final schoolId = widget.schoolId ?? ref.read(authProvider).user?.schoolId ?? '';
     return Scaffold(
       backgroundColor: const Color(0xFFF6F3FA),
@@ -951,9 +1007,9 @@ class _NoticeDetailScreenState extends ConsumerState<NoticeDetailScreen> {
                       child: OutlinedButton(
                         onPressed: () {
                           ref.invalidate(myReceiptsProvider(schoolId));
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => ReceiptsScreen(schoolId: schoolId)));
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => BillingScreen(schoolId: schoolId)));
                         },
-                        child: const Text('Όλες οι αποδείξεις', style: TextStyle(fontWeight: FontWeight.w700)),
+                        child: const Text('Άνοιγμα στα Οικονομικά', style: TextStyle(fontWeight: FontWeight.w700)),
                       ),
                     ),
                   const SizedBox(height: 8),
