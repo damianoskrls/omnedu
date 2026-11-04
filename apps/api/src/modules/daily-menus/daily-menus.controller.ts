@@ -46,6 +46,12 @@ export class DailyMenusController {
     return this.svc.copyMonth(schoolId, body);
   }
 
+  @Post('emergency-change')
+  @Roles('school_admin', 'owner')
+  emergencyChange(@Param('schoolId') schoolId: string, @Body() body: any) {
+    return this.svc.emergencyChange(schoolId, body);
+  }
+
   @Get('month-notes')
   getMonthNotes(
     @Param('schoolId') schoolId: string,

@@ -28,6 +28,7 @@ const parentPushEvents = new Set([
   'medication_approved',
   'bus_closure',
   'receipt',
+  'menu_change',
 ]);
 
 interface BroadcastPdf {

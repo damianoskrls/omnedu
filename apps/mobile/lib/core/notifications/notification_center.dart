@@ -552,6 +552,16 @@ Future<void> openNotification(BuildContext context, WidgetRef ref, Map<String, d
     return;
   }
 
+  if (type == 'menu_change' || data['screen']?.toString() == 'menu') {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => NoticeDetailScreen(notice: notice, schoolId: schoolId),
+      ),
+    );
+    return;
+  }
+
   await Navigator.push(context, MaterialPageRoute(builder: (_) => NoticeDetailScreen(notice: notice, schoolId: schoolId)));
 }
 
@@ -613,6 +623,7 @@ class InboxScreen extends ConsumerWidget {
     if (type == 'medication') return Icons.medication_rounded;
     if (type == 'thematic') return Icons.auto_stories_rounded;
     if (type == 'assignment') return Icons.assignment_rounded;
+    if (type == 'menu_change') return Icons.restaurant_menu_rounded;
     if (type == 'parent_meeting' || type == 'parent_meeting_request' || type == 'parent_meeting_accepted') {
       return Icons.event_available_rounded;
     }

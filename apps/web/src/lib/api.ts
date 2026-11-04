@@ -424,6 +424,20 @@ export const dailyMenusApi = {
   bulk: (schoolId: string, data: any) => api.post(`/schools/${schoolId}/daily-menus/bulk`, data),
   copyMonth: (schoolId: string, data: { from: string; to: string; audienceType?: string; audienceIds?: string[] }) =>
     api.post(`/schools/${schoolId}/daily-menus/copy-month`, data),
+  // Called by: school/menu/page.tsx emergency change modal. Notifies parents (menu_change push).
+  // User: «εκτακτη αλλαγη στο διατροφολογιο ... ειδοποιηση στους γονεις»
+  emergencyChange: (
+    schoolId: string,
+    data: {
+      mode: 'replace' | 'swap';
+      meal: 'midMorning' | 'lunch';
+      date: string;
+      newValue?: string;
+      swapWithDate?: string;
+      audienceType?: string;
+      audienceIds?: string[];
+    },
+  ) => api.post(`/schools/${schoolId}/daily-menus/emergency-change`, data),
   // Called by: school/menu/page.tsx editable month notes. Schema: daily_menu_month_notes.
   // User: «θα πρεπει να μπορει να κανει και edit τις σημειωσεις γτ κατα το ανεβασμα εχουν λαθει»
   getMonthNotes: (schoolId: string, month: string) =>
