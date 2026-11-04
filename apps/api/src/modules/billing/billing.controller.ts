@@ -220,6 +220,21 @@ export class BillingController {
     return this.billing.getStats(schoolId);
   }
 
+  @Get('debtors')
+  @Roles('school_admin')
+  debtors(
+    @Param('schoolId') schoolId: string,
+    @Query('scope') scope?: string,
+    @Query('month') month?: string,
+    @Query('year') year?: string,
+  ) {
+    return this.billing.getDebtors(schoolId, {
+      scope: scope === 'all' ? 'all' : 'month',
+      month: month ? parseInt(month, 10) : undefined,
+      year: year ? parseInt(year, 10) : undefined,
+    });
+  }
+
   @Get('charges/mine')
   myCharges(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
     return this.billing.getMyCharges(user.sub, schoolId);

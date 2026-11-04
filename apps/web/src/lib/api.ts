@@ -282,6 +282,8 @@ export const billingApi = {
   myInvoices: (schoolId: string) => api.get(`/schools/${schoolId}/billing/invoices/mine`),
   allInvoices: (schoolId: string) => api.get(`/schools/${schoolId}/billing/invoices`),
   stats: (schoolId: string) => api.get(`/schools/${schoolId}/billing/stats`),
+  getDebtors: (schoolId: string, params?: { scope?: 'month' | 'all'; month?: number; year?: number }) =>
+    api.get(`/schools/${schoolId}/billing/debtors`, { params }),
   create: (schoolId: string, data: any) => api.post(`/schools/${schoolId}/billing/invoices`, data),
   // Level fees
   getLevelFees: (schoolId: string) => api.get(`/schools/${schoolId}/billing/level-fees`),

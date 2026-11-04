@@ -155,7 +155,25 @@ export class ElorusFuseService {
         ...(studentId ? { studentId } : {}),
       },
       include: {
-        student: { select: { id: true, fullName: true } },
+        student: {
+          select: {
+            id: true,
+            fullName: true,
+            enrollments: {
+              where: { academicYear: { isCurrent: true } },
+              include: {
+                class: {
+                  select: {
+                    id: true,
+                    name: true,
+                    level: { select: { id: true, name: true } },
+                  },
+                },
+              },
+              take: 1,
+            },
+          },
+        },
       },
       orderBy: [{ issueDate: 'desc' }, { createdAt: 'desc' }],
     });
