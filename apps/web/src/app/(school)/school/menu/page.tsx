@@ -360,7 +360,7 @@ export default function MenuPage() {
     setPageError('');
     setEmDone('');
     try {
-      await dailyMenusApi.emergencyChange(schoolId, {
+      const result = await dailyMenusApi.emergencyChange(schoolId, {
         mode: emMode,
         meal: emMeal,
         date: emDate,
@@ -368,13 +368,19 @@ export default function MenuPage() {
         swapWithDate: emMode === 'swap' ? emSwapDate : undefined,
         audienceType: audience.audienceType,
         audienceIds: audience.audienceIds,
-      });
-      setEmDone(emMode === 'swap' ? 'Η ανταλλαγή αποθηκεύτηκε και ειδοποιήθηκαν οι γονείς.' : 'Η αλλαγή αποθηκεύτηκε και ειδοποιήθηκαν οι γονείς.');
+      }) as { notified?: { parents?: number } };
+      const parentCount = Number(result?.notified?.parents ?? 0);
+      const base = emMode === 'swap' ? 'Η ανταλλαγή αποθηκεύτηκε' : 'Η αλλαγή αποθηκεύτηκε';
+      setEmDone(
+        parentCount > 0
+          ? `${base} · ειδοποίηση σε ${parentCount} γονείς.`
+          : `${base} · δεν βρέθηκαν γονείς για ειδοποίηση (έλεγξε το κοινό του προγράμματος).`,
+      );
       await loadMenus();
       setTimeout(() => {
         setEmergencyOpen(false);
         setEmDone('');
-      }, 1600);
+      }, 2200);
     } catch (err) {
       setPageError(errorText(err));
     } finally {

@@ -295,14 +295,14 @@ export class DailyMenusService implements OnModuleInit {
       const bodyText = previous === '—'
         ? `${mealLabel} ${dateLabel}: ${newValue}.`
         : `${mealLabel} ${dateLabel}: αντί για «${previous}» → «${newValue}».`;
-      await this.notifyMenuChange(schoolId, audience.audienceType, audience.audienceIds, {
+      const notified = await this.notifyMenuChange(schoolId, audience.audienceType, audience.audienceIds, {
         title: 'Έκτακτη αλλαγή διατροφολόγιου',
         body: bodyText,
         date,
         meal,
         mode,
       });
-      return { mode, meal, date, previous, next: newValue, days: [updated] };
+      return { mode, meal, date, previous, next: newValue, days: [updated], notified };
     }
 
     const swapWith = String(body.swapWithDate || this.nextWeekday(date)).slice(0, 10);
@@ -340,7 +340,7 @@ export class DailyMenusService implements OnModuleInit {
     const bodyText =
       `Ανταλλαγή ${mealLabel.toLowerCase()}: ${this.formatGreekDate(date)} («${valueA || '—'}») ↔ ` +
       `${this.formatGreekDate(swapWith)} («${valueB || '—'}»).`;
-    await this.notifyMenuChange(schoolId, audience.audienceType, audience.audienceIds, {
+    const notified = await this.notifyMenuChange(schoolId, audience.audienceType, audience.audienceIds, {
       title: 'Έκτακτη αλλαγή διατροφολόγιου',
       body: bodyText,
       date,
@@ -356,6 +356,7 @@ export class DailyMenusService implements OnModuleInit {
       previous: valueA || '—',
       next: valueB || '—',
       days: [updatedA, updatedB],
+      notified,
     };
   }
 
@@ -390,7 +391,11 @@ export class DailyMenusService implements OnModuleInit {
     },
   ) {
     const userIds = await this.menuRecipientIds(schoolId, audienceType, audienceIdsJson);
-    if (!userIds.length) return;
+    if (!userIds.length) {
+      this.logger.warn(`Menu change notify: no parents for school=${schoolId} audience=${audienceType}`);
+      return { parents: 0 };
+    }
+    // Same push path as fiscal/receipt (parentPushEvents includes menu_change).
     await this.notifications.notifyUsers(schoolId, userIds, {
       event: 'menu_change',
       type: 'menu_change',
@@ -404,6 +409,8 @@ export class DailyMenusService implements OnModuleInit {
         ...(payload.swapWithDate ? { swapWithDate: payload.swapWithDate } : {}),
       },
     });
+    this.logger.log(`Menu change notified ${userIds.length} parents school=${schoolId}`);
+    return { parents: userIds.length };
   }
 
   private async menuRecipientIds(schoolId: string, audienceType: string, audienceIdsJson: string) {
@@ -421,18 +428,33 @@ export class DailyMenusService implements OnModuleInit {
       });
       return members.map((member) => member.userId);
     }
+    // Prefer parents linked via StudentParent. Also include school members with role parent
+    // who are linked to matching students — covers edge cases where membership is the source of truth.
     const parents = await this.prisma.studentParent.findMany({
       where: {
         student: {
           schoolId,
           isActive: true,
-          ...(audienceType === 'class' ? { enrollments: { some: { classId: { in: ids } } } } : {}),
-          ...(audienceType === 'level' ? { enrollments: { some: { class: { levelId: { in: ids } } } } } : {}),
+          ...(audienceType === 'class' && ids.length
+            ? { enrollments: { some: { classId: { in: ids } } } }
+            : {}),
+          ...(audienceType === 'level' && ids.length
+            ? { enrollments: { some: { class: { levelId: { in: ids } } } } }
+            : {}),
         },
       },
       select: { userId: true },
     });
-    return [...new Set(parents.map((parent) => parent.userId))];
+    const userIds = [...new Set(parents.map((parent) => parent.userId).filter(Boolean))];
+    if (!userIds.length && audienceType === 'all') {
+      // Fallback: every active parent member of the school.
+      const members = await this.prisma.schoolMember.findMany({
+        where: { schoolId, role: 'parent', isActive: true },
+        select: { userId: true },
+      });
+      return [...new Set(members.map((m) => m.userId))];
+    }
+    return userIds;
   }
 
   async clearMonth(schoolId: string, month: string, audienceType?: string, audienceIds?: unknown) {
