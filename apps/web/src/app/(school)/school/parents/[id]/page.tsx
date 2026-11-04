@@ -85,6 +85,27 @@ export default function ParentDetailPage() {
             <dt className="text-xs font-bold uppercase tracking-wide text-[#a89890]">Email</dt>
             <dd className="break-all text-sm font-semibold text-[#2f2a28]">{parent.email || '—'}</dd>
           </div>
+          <div>
+            <dt className="text-xs font-bold uppercase tracking-wide text-[#a89890]">Επάγγελμα</dt>
+            <dd className="text-sm font-semibold text-[#2f2a28]">{parent.profession || '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-bold uppercase tracking-wide text-[#a89890]">ΑΦΜ</dt>
+            <dd className="text-sm font-semibold text-[#2f2a28]">{parent.vatNumber || '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-bold uppercase tracking-wide text-[#a89890]">ΔΟΥ</dt>
+            <dd className="text-sm font-semibold text-[#2f2a28]">{parent.taxOffice || '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-bold uppercase tracking-wide text-[#a89890]">Διεύθυνση</dt>
+            <dd className="text-sm font-semibold text-[#2f2a28]">
+              {[
+                [parent.billingStreet, parent.billingNumber].filter(Boolean).join(' '),
+                [parent.billingPostalCode, parent.billingCity].filter(Boolean).join(' '),
+              ].filter(Boolean).join(', ') || '—'}
+            </dd>
+          </div>
         </dl>
       </div>
 
