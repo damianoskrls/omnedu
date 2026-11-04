@@ -37,6 +37,20 @@ final myReceiptsProvider = FutureProvider.family<List<dynamic>, String>((ref, sc
     if (row is! Map) continue;
     final map = Map<String, dynamic>.from(row);
     map['kind'] = map['kind'] ?? 'receipt';
+    final studentName = (map['studentName'] ?? '').toString().trim();
+    final uploaded = DateTime.tryParse(map['uploadedAt']?.toString() ?? '');
+    if (uploaded != null) {
+      final local = uploaded.toLocal();
+      map['academicYear'] ??= '${local.year}-${local.month.toString().padLeft(2, '0')}';
+      final monthName = _monthNames[local.month];
+      map['dashboardTitle'] = studentName.isNotEmpty
+          ? 'Παραστατικό μαθητή $studentName για μήνα $monthName'
+          : 'Παραστατικό για μήνα $monthName';
+    } else {
+      map['dashboardTitle'] = studentName.isNotEmpty
+          ? 'Παραστατικό μαθητή $studentName'
+          : (map['title']?.toString() ?? 'Απόδειξη');
+    }
     merged.add(map);
   }
   for (final row in fiscal) {
@@ -61,7 +75,22 @@ final myReceiptsProvider = FutureProvider.family<List<dynamic>, String>((ref, sc
       if ((map['mark'] ?? '').toString().isNotEmpty) 'MARK ${map['mark']}',
     ].where((part) => part.toString().trim().isNotEmpty).join(' · ');
     final issue = (map['issueDate'] ?? map['uploadedAt'] ?? '').toString();
-    map['academicYear'] = issue.length >= 4 ? issue.substring(0, 4) : null;
+    final issueDate = DateTime.tryParse(issue);
+    if (issueDate != null) {
+      final local = issueDate.toLocal();
+      map['academicYear'] = '${local.year}-${local.month.toString().padLeft(2, '0')}';
+      final studentName = (map['studentName'] ?? '').toString().trim();
+      final monthName = _monthNames[local.month];
+      map['dashboardTitle'] = studentName.isNotEmpty
+          ? 'Παραστατικό μαθητή $studentName για μήνα $monthName'
+          : 'Παραστατικό για μήνα $monthName';
+    } else {
+      map['academicYear'] = issue.length >= 4 ? issue.substring(0, 4) : null;
+      final studentName = (map['studentName'] ?? '').toString().trim();
+      map['dashboardTitle'] = studentName.isNotEmpty
+          ? 'Παραστατικό μαθητή $studentName'
+          : (map['title']?.toString() ?? 'Παραστατικό');
+    }
     merged.add(map);
   }
   if (fiscalError != null && fiscal.isEmpty) {
@@ -110,7 +139,15 @@ class ParentReceipts extends ConsumerWidget {
   final String schoolId;
   final String? studentId;
   final bool showHeading;
-  const ParentReceipts({super.key, required this.schoolId, this.studentId, this.showHeading = true});
+  /// Dashboard mode: human titles, no amounts, group by year.
+  final bool dashboardMode;
+  const ParentReceipts({
+    super.key,
+    required this.schoolId,
+    this.studentId,
+    this.showHeading = true,
+    this.dashboardMode = false,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -141,6 +178,35 @@ class ParentReceipts extends ConsumerWidget {
         }).map((row) => Map<String, dynamic>.from(row as Map)).toList();
         final fiscal = mine.where((r) => r['kind']?.toString() == 'fiscal' || r['kind']?.toString() == 'fiscal_error').toList();
         final classic = mine.where((r) => r['kind']?.toString() != 'fiscal' && r['kind']?.toString() != 'fiscal_error').toList();
+        if (dashboardMode) {
+          final docs = [...fiscal, ...classic];
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (showHeading) ...[
+                const Text('Παραστατικά', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
+                const SizedBox(height: 4),
+                const Text(
+                  'Κατέβασε τα παραστατικά της τρέχουσας χρονιάς.',
+                  style: TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (docs.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(child: Text('Δεν υπάρχουν παραστατικά ακόμα.', style: TextStyle(color: Color(0xFF9CA3AF)))),
+                )
+              else
+                _ReceiptsByYear(
+                  receipts: docs,
+                  schoolId: schoolId,
+                  hideAmount: true,
+                  useDashboardTitle: true,
+                ),
+            ],
+          );
+        }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -210,7 +276,15 @@ class _ReceiptsByYear extends StatelessWidget {
   final List<Map<String, dynamic>> receipts;
   final String schoolId;
   final void Function(Map<String, dynamic> receipt)? onDownload;
-  const _ReceiptsByYear({required this.receipts, required this.schoolId, this.onDownload});
+  final bool hideAmount;
+  final bool useDashboardTitle;
+  const _ReceiptsByYear({
+    required this.receipts,
+    required this.schoolId,
+    this.onDownload,
+    this.hideAmount = false,
+    this.useDashboardTitle = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -238,6 +312,8 @@ class _ReceiptsByYear extends StatelessWidget {
                     schoolId: schoolId,
                     onDownload: onDownload,
                     nested: true,
+                    hideAmount: hideAmount,
+                    useDashboardTitle: useDashboardTitle,
                   ),
               ],
             ),
@@ -343,12 +419,16 @@ class _ReceiptCard extends ConsumerStatefulWidget {
   final Map<String, dynamic> receipt;
   final String schoolId;
   final bool nested;
+  final bool hideAmount;
+  final bool useDashboardTitle;
   final void Function(Map<String, dynamic> receipt)? onDownload;
   const _ReceiptCard({
     required this.receipt,
     required this.schoolId,
     this.onDownload,
     this.nested = false,
+    this.hideAmount = false,
+    this.useDashboardTitle = false,
   });
 
   @override
@@ -488,16 +568,21 @@ class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
     }
     final isFiscal = _isFiscal;
     final pending = _fiscalPending;
-    final title = receipt['title']?.toString().trim().isNotEmpty == true
-        ? receipt['title'].toString()
-        : (isFiscal ? 'Παραστατικό' : 'Απόδειξη');
+    final dashTitle = receipt['dashboardTitle']?.toString().trim() ?? '';
+    final title = widget.useDashboardTitle && dashTitle.isNotEmpty
+        ? dashTitle
+        : (receipt['title']?.toString().trim().isNotEmpty == true
+            ? receipt['title'].toString()
+            : (isFiscal ? 'Παραστατικό' : 'Απόδειξη'));
     final child = receipt['studentName']?.toString() ?? '';
     final when = _receiptDate(receipt['uploadedAt']?.toString());
     final notes = receipt['notes']?.toString() ?? '';
     final monthLabel = _monthLabel(receipt['academicYear']?.toString());
-    final amountLabel = (receipt['amountLabel']?.toString().trim().isNotEmpty == true)
-        ? receipt['amountLabel'].toString()
-        : (isFiscal ? _formatEuro(receipt['grossValue']) : '');
+    final amountLabel = widget.hideAmount
+        ? ''
+        : ((receipt['amountLabel']?.toString().trim().isNotEmpty == true)
+            ? receipt['amountLabel'].toString()
+            : (isFiscal ? _formatEuro(receipt['grossValue']) : ''));
     final busy = _downloading || _refreshing;
     return Container(
       margin: EdgeInsets.only(bottom: widget.nested ? 8 : 10),
@@ -527,7 +612,7 @@ class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
                 ),
             ],
           ),
-          if (isFiscal) ...[
+          if (!widget.useDashboardTitle && isFiscal) ...[
             const SizedBox(height: 2),
             Text(
               pending ? 'Φορολογικό παραστατικό · Σε επεξεργασία' : 'Φορολογικό παραστατικό (Elorus)',
@@ -538,17 +623,24 @@ class _ReceiptCardState extends ConsumerState<_ReceiptCard> {
               ),
             ),
           ],
-          if (monthLabel.isNotEmpty) ...[
+          if (!widget.useDashboardTitle && monthLabel.isNotEmpty) ...[
             const SizedBox(height: 2),
             Text(monthLabel, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF77328D))),
           ],
-          if (child.isNotEmpty) ...[
+          if (!widget.useDashboardTitle && child.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(child, style: const TextStyle(color: Color(0xFF374151), fontWeight: FontWeight.w600)),
           ],
-          if (when.isNotEmpty || notes.isNotEmpty) ...[
+          if (when.isNotEmpty || (!widget.useDashboardTitle && notes.isNotEmpty)) ...[
             const SizedBox(height: 4),
-            Text([when, notes].where((part) => part.isNotEmpty).join(' · '), style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280))),
+            Text(
+              [when, if (!widget.useDashboardTitle) notes].where((part) => part.isNotEmpty).join(' · '),
+              style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+            ),
+          ],
+          if (pending && widget.useDashboardTitle) ...[
+            const SizedBox(height: 4),
+            const Text('Σε επεξεργασία', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFD97706))),
           ],
           const SizedBox(height: 10),
           SizedBox(

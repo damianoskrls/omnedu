@@ -552,7 +552,7 @@ export default function BillingPage() {
             onClick={() => setTab('debtors')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'debtors' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
           >
-            <Users className="h-4 w-4" /> Χρεώστες
+            <Users className="h-4 w-4" /> Εκκρεμότητες
             {(stats?.studentsOwingThisMonth ?? 0) > 0 && (
               <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
                 {stats.studentsOwingThisMonth}
@@ -789,7 +789,7 @@ export default function BillingPage() {
                   <div className="text-xs text-amber-600 mb-1 font-medium">Εκκρεμούν</div>
                   <div className="text-2xl font-bold text-amber-700">{fmt(Math.max(0, stats.sy.totalDue - stats.sy.totalPaid))}</div>
                   <div className="text-xs text-amber-500 mt-0.5 underline-offset-2 hover:underline">
-                    {stats.studentsOwingThisMonth} μαθητές αυτόν τον μήνα · δες χρεώστες
+                    {stats.studentsOwingThisMonth} μαθητές αυτόν τον μήνα · δες εκκρεμότητες
                   </div>
                 </button>
                 <div className="bg-gray-50 rounded-xl p-4">

@@ -366,6 +366,191 @@ export class BillingService implements OnModuleInit {
     return results;
   }
 
+  /**
+   * Parent economics dashboard: current-month quote lines, SY month statuses,
+   * family totals, due day, and event payment snapshot.
+   */
+  async getMyOverview(parentUserId: string, schoolId: string, now = new Date()) {
+    await this.students.ensureParentChildren(parentUserId, schoolId);
+    const athens = this.athensMonthStart(now);
+    const currentMonth = athens.getUTCMonth() + 1;
+    const currentYear = athens.getUTCFullYear();
+    const sy = schoolYearBounds(athens);
+
+    const [children, school, schoolPolicy] = await Promise.all([
+      this.prisma.student.findMany({
+        where: { schoolId, isActive: true, parents: { some: { userId: parentUserId } } },
+        select: { id: true, fullName: true, avatarUrl: true },
+        orderBy: { fullName: 'asc' },
+      }),
+      this.prisma.school.findUnique({
+        where: { id: schoolId },
+        select: { billingDueDay: true },
+      }),
+      this.loadSchoolSiblingPolicy(schoolId),
+    ]);
+
+    let monthDue = 0;
+    let monthPaid = 0;
+    let ytdDue = 0;
+    let ytdPaid = 0;
+    const eventsFlat: {
+      enrollmentId: string;
+      studentId: string;
+      studentName: string;
+      eventId: string;
+      title: string;
+      eventType: string | null;
+      eventDate: string | null;
+      cost: number;
+      status: string;
+    }[] = [];
+
+    const childRows = [];
+    for (const child of children) {
+      await this.ensureStudentLedger(schoolId, child.id, athens);
+      const loaded = await this.loadBillingStudent(schoolId, child.id);
+      if (!loaded) continue;
+
+      const [charges, oneTime] = await Promise.all([
+        this.prisma.monthlyCharge.findMany({
+          where: {
+            schoolId,
+            studentId: child.id,
+            OR: sy.months.map(({ month: m, year: y }) => ({ month: m, year: y })),
+          },
+        }),
+        this.prisma.oneTimeCharge.findMany({
+          where: { schoolId, studentId: child.id },
+        }),
+      ]);
+
+      const months = sy.months
+        .filter(({ month: m, year: y }) => isOpenMonth(m, y, athens) || (m === currentMonth && y === currentYear))
+        .map(({ month: m, year: y }) => {
+          const charge = charges.find((row) => row.month === m && row.year === y);
+          const open = isOpenMonth(m, y, athens);
+          const quote = this.quoteLoadedStudent(loaded, m, y, schoolPolicy);
+          const useStored = charge && charge.status === 'paid';
+          const totalDue = useStored ? Number(charge.totalDue) : (charge ? Number(charge.totalDue) : quote.totalDue);
+          const paidAmount = charge ? Number(charge.paidAmount) : 0;
+          const remaining = Math.max(0, Math.round((totalDue - paidAmount) * 100) / 100);
+          const status = charge
+            ? charge.status
+            : open
+              ? (totalDue <= 0 ? 'paid' : 'unpaid')
+              : 'upcoming';
+          return {
+            month: m,
+            year: y,
+            status,
+            totalDue,
+            paidAmount,
+            remaining,
+            isCurrent: m === currentMonth && y === currentYear,
+          };
+        });
+
+      const currentSlot = months.find((m) => m.isCurrent);
+      const quoteNow = this.quoteLoadedStudent(loaded, currentMonth, currentYear, schoolPolicy);
+      const currentCharge = charges.find((c) => c.month === currentMonth && c.year === currentYear);
+      const currentUseStored = currentCharge && currentCharge.status === 'paid';
+      const currentLines = currentUseStored
+        ? [
+            ...(Number(currentCharge.schoolFee) > 0 ? [{ label: 'Φοίτηση', amount: Number(currentCharge.schoolFee) }] : []),
+            ...(Number(currentCharge.busFee) > 0 ? [{ label: 'Σχολικό', amount: Number(currentCharge.busFee) }] : []),
+            ...(Number(currentCharge.activityFees) > 0 ? [{ label: 'Δραστηριότητες', amount: Number(currentCharge.activityFees) }] : []),
+            ...(Number(currentCharge.subsidyTotal) > 0 ? [{ label: 'Voucher / επιδότηση', amount: -Number(currentCharge.subsidyTotal) }] : []),
+          ]
+        : quoteNow.lines;
+      const currentTotalDue = currentCharge ? Number(currentCharge.totalDue) : quoteNow.totalDue;
+      const currentPaid = currentCharge ? Number(currentCharge.paidAmount) : 0;
+      const currentStatus = currentCharge
+        ? currentCharge.status
+        : currentTotalDue <= 0
+          ? 'paid'
+          : 'unpaid';
+
+      monthDue += currentTotalDue;
+      monthPaid += currentPaid;
+      for (const slot of months) {
+        ytdDue += slot.totalDue;
+        ytdPaid += slot.paidAmount;
+      }
+      for (const ot of oneTime) {
+        const amt = Number(ot.amount);
+        const paid = Number(ot.paidAmount);
+        ytdDue += amt;
+        ytdPaid += ot.status === 'paid' ? amt : paid;
+      }
+
+      for (const enr of loaded.eventEnrollments ?? []) {
+        const cost = Number(enr.event?.costPerChild ?? 0);
+        if (cost <= 0) continue;
+        const evDate = enr.event?.eventDate
+          ? (enr.event.eventDate instanceof Date
+            ? enr.event.eventDate.toISOString().slice(0, 10)
+            : String(enr.event.eventDate).slice(0, 10))
+          : null;
+        eventsFlat.push({
+          enrollmentId: enr.id,
+          studentId: child.id,
+          studentName: child.fullName,
+          eventId: enr.eventId,
+          title: enr.event?.title ?? 'Εκδήλωση',
+          eventType: enr.event?.eventType ?? null,
+          eventDate: evDate,
+          cost,
+          status: enr.status,
+        });
+        ytdDue += cost;
+        if (enr.status === 'paid') ytdPaid += cost;
+      }
+
+      childRows.push({
+        student: { id: child.id, fullName: child.fullName, avatarUrl: child.avatarUrl },
+        current: {
+          month: currentMonth,
+          year: currentYear,
+          totalDue: currentTotalDue,
+          paidAmount: currentPaid,
+          remaining: Math.max(0, Math.round((currentTotalDue - currentPaid) * 100) / 100),
+          status: currentStatus,
+          lines: currentLines,
+        },
+        months,
+      });
+    }
+
+    eventsFlat.sort((a, b) => {
+      const ap = a.status === 'paid' ? 1 : 0;
+      const bp = b.status === 'paid' ? 1 : 0;
+      if (ap !== bp) return ap - bp;
+      return (b.eventDate ?? '').localeCompare(a.eventDate ?? '');
+    });
+
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const monthOwed = Math.max(0, round2(monthDue - monthPaid));
+    const ytdOwed = Math.max(0, round2(ytdDue - ytdPaid));
+
+    return {
+      billingDueDay: school?.billingDueDay ?? 10,
+      schoolYear: sy.label,
+      currentMonth,
+      currentYear,
+      summary: {
+        monthDue: round2(monthDue),
+        monthPaid: round2(monthPaid),
+        monthOwed,
+        ytdPaid: round2(ytdPaid),
+        ytdDue: round2(ytdDue),
+        ytdOwed,
+      },
+      children: childRows,
+      events: eventsFlat,
+    };
+  }
+
   async generateMonthlyCharges(schoolId: string, month: number, year: number) {
     const [students, schoolPolicy] = await Promise.all([
       this.prisma.student.findMany({
