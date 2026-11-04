@@ -2,7 +2,7 @@ name: omnedu
 description: omnedu — School management app for Parents & Teachers
 publish_to: none
 # Bump: fiscal notice download + menu_change push + month cards + payment history.
-version: 1.0.40+1793792641
+version: 1.0.41+202611041301
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
