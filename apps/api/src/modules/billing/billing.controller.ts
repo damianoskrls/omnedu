@@ -240,6 +240,11 @@ export class BillingController {
     return this.billing.getMyCharges(user.sub, schoolId);
   }
 
+  @Get('mine/overview')
+  myOverview(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
+    return this.billing.getMyOverview(user.sub, schoolId);
+  }
+
   @Get('receipts/mine')
   myReceipts(@Param('schoolId') schoolId: string, @CurrentUser() user: JwtPayload) {
     return this.billing.myReceipts(user.sub, schoolId);
