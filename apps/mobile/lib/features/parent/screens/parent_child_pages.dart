@@ -1056,7 +1056,7 @@ class TeachersScreen extends ConsumerWidget {
 class _TeacherList extends StatelessWidget {
   final String schoolId;
   final List<_ClassTeacher> teachers;
-  final ValueChanged<_ClassTeacher> onMessage;
+  final Future<void> Function(_ClassTeacher teacher) onMessage;
   const _TeacherList({required this.schoolId, required this.teachers, required this.onMessage});
 
   @override
@@ -1080,7 +1080,7 @@ class _TeacherList extends StatelessWidget {
                 builder: (_) => _TeacherProfileScreen(
                   schoolId: schoolId,
                   teacher: teacher,
-                  onMessage: () => onMessage(teacher),
+                  onMessageTeacher: () => onMessage(teacher),
                 ),
               ),
             ),
@@ -1154,6 +1154,96 @@ final teacherStaffProfileProvider = FutureProvider.family<Map<String, dynamic>?,
   },
 );
 
+/// Parent messaging policy from conversations/contacts (school admin toggles).
+final parentMessagingPolicyProvider = FutureProvider.family<({bool parentToTeacher, bool teacherToParent}), String>((ref, schoolId) async {
+  final dio = ref.read(dioProvider);
+  try {
+    final resp = await dio.get('/schools/$schoolId/conversations/contacts');
+    final data = resp.data is Map ? Map<String, dynamic>.from(resp.data as Map) : <String, dynamic>{};
+    final messaging = data['messaging'] is Map ? Map<String, dynamic>.from(data['messaging'] as Map) : <String, dynamic>{};
+    return (
+      parentToTeacher: messaging['parentToTeacher'] != false,
+      teacherToParent: messaging['teacherToParent'] != false,
+    );
+  } catch (_) {
+    return (parentToTeacher: true, teacherToParent: true);
+  }
+});
+
+String _schoolDisplayName(WidgetRef ref, String schoolId) {
+  final user = ref.read(authProvider).user;
+  for (final membership in user?.memberships ?? const []) {
+    if (membership.schoolId == schoolId && membership.schoolName.trim().isNotEmpty) {
+      return membership.schoolName.trim();
+    }
+  }
+  return 'Ονειροχώρα';
+}
+
+String _askSchoolAboutTeacherLabel(String schoolName) =>
+    'Στείλε μήνυμα στην $schoolName αν θες να ρωτήσεις κάτι τον εκπαιδευτικό';
+
+Future<void> _openSchoolAdminChat(BuildContext context, WidgetRef ref, {required String schoolId}) async {
+  final parentId = ref.read(authProvider).user?.id;
+  if (parentId == null) return;
+  final schoolName = _schoolDisplayName(ref, schoolId);
+  try {
+    final created = await openScopedConversation(
+      ref,
+      schoolId: schoolId,
+      kind: 'admin',
+    );
+    final id = created?['id'] as String?;
+    if (id == null || !context.mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          schoolId: schoolId,
+          convId: id,
+          title: schoolName,
+          subtitle: 'Διαχείριση',
+          currentUserId: parentId,
+          startedByMe: conversationStartedByMe(created, parentId),
+        ),
+      ),
+    );
+  } catch (error) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(apiErrorText(error))));
+    }
+  }
+}
+
+({VoidCallback? onMessage, String? messageLabel}) _teacherMessageAction({
+  required BuildContext sheetOrPageContext,
+  required BuildContext hostContext,
+  required WidgetRef ref,
+  required String schoolId,
+  required bool parentToTeacher,
+  required Future<void> Function()? onMessageTeacher,
+  bool popSheetFirst = false,
+}) {
+  final schoolName = _schoolDisplayName(ref, schoolId);
+  if (parentToTeacher) {
+    if (onMessageTeacher == null) return (onMessage: null, messageLabel: null);
+    return (
+      onMessage: () {
+        if (popSheetFirst) Navigator.pop(sheetOrPageContext);
+        onMessageTeacher();
+      },
+      messageLabel: 'Στείλε μήνυμα',
+    );
+  }
+  return (
+    onMessage: () {
+      if (popSheetFirst) Navigator.pop(sheetOrPageContext);
+      _openSchoolAdminChat(hostContext, ref, schoolId: schoolId);
+    },
+    messageLabel: _askSchoolAboutTeacherLabel(schoolName),
+  );
+}
+
 /// Parent-facing teacher card: photo, bio, studies in a bottom sheet.
 Future<void> showTeacherProfileSheet(
   BuildContext context, {
@@ -1170,30 +1260,44 @@ Future<void> showTeacherProfileSheet(
     backgroundColor: Colors.transparent,
     builder: (_) => _TeacherProfileSheet(
       schoolId: schoolId,
+      hostContext: context,
       teacher: _ClassTeacher(
         id: teacherId,
         name: teacherName,
         avatarUrl: avatarUrl,
         className: className,
       ),
-      onMessage: onMessage,
+      onMessageTeacher: onMessage,
     ),
   );
 }
 
 class _TeacherProfileSheet extends ConsumerWidget {
   final String schoolId;
+  final BuildContext hostContext;
   final _ClassTeacher teacher;
-  final Future<void> Function()? onMessage;
+  final Future<void> Function()? onMessageTeacher;
   const _TeacherProfileSheet({
     required this.schoolId,
+    required this.hostContext,
     required this.teacher,
-    this.onMessage,
+    this.onMessageTeacher,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profileAsync = ref.watch(teacherStaffProfileProvider((schoolId: schoolId, userId: teacher.id)));
+    final messagingAsync = ref.watch(parentMessagingPolicyProvider(schoolId));
+    final parentToTeacher = messagingAsync.valueOrNull?.parentToTeacher ?? true;
+    final action = _teacherMessageAction(
+      sheetOrPageContext: context,
+      hostContext: hostContext,
+      ref: ref,
+      schoolId: schoolId,
+      parentToTeacher: parentToTeacher,
+      onMessageTeacher: onMessageTeacher,
+      popSheetFirst: true,
+    );
     final height = MediaQuery.sizeOf(context).height * 0.86;
     return Container(
       height: height,
@@ -1227,23 +1331,15 @@ class _TeacherProfileSheet extends ConsumerWidget {
               error: (_, __) => _TeacherProfileBody(
                 teacher: teacher,
                 profile: null,
-                onMessage: onMessage == null
-                    ? null
-                    : () {
-                        Navigator.pop(context);
-                        onMessage!();
-                      },
+                onMessage: action.onMessage,
+                messageLabel: action.messageLabel,
                 sheetMode: true,
               ),
               data: (profile) => _TeacherProfileBody(
                 teacher: teacher,
                 profile: profile,
-                onMessage: onMessage == null
-                    ? null
-                    : () {
-                        Navigator.pop(context);
-                        onMessage!();
-                      },
+                onMessage: action.onMessage,
+                messageLabel: action.messageLabel,
                 sheetMode: true,
               ),
             ),
@@ -1257,12 +1353,22 @@ class _TeacherProfileSheet extends ConsumerWidget {
 class _TeacherProfileScreen extends ConsumerWidget {
   final String schoolId;
   final _ClassTeacher teacher;
-  final VoidCallback onMessage;
-  const _TeacherProfileScreen({required this.schoolId, required this.teacher, required this.onMessage});
+  final Future<void> Function() onMessageTeacher;
+  const _TeacherProfileScreen({required this.schoolId, required this.teacher, required this.onMessageTeacher});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profileAsync = ref.watch(teacherStaffProfileProvider((schoolId: schoolId, userId: teacher.id)));
+    final messagingAsync = ref.watch(parentMessagingPolicyProvider(schoolId));
+    final parentToTeacher = messagingAsync.valueOrNull?.parentToTeacher ?? true;
+    final action = _teacherMessageAction(
+      sheetOrPageContext: context,
+      hostContext: context,
+      ref: ref,
+      schoolId: schoolId,
+      parentToTeacher: parentToTeacher,
+      onMessageTeacher: onMessageTeacher,
+    );
 
     return Scaffold(
       backgroundColor: const Color(0xFFF6F3FA),
@@ -1272,8 +1378,18 @@ class _TeacherProfileScreen extends ConsumerWidget {
       ),
       body: profileAsync.when(
         loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFF77328D))),
-        error: (_, __) => _TeacherProfileBody(teacher: teacher, profile: null, onMessage: onMessage),
-        data: (profile) => _TeacherProfileBody(teacher: teacher, profile: profile, onMessage: onMessage),
+        error: (_, __) => _TeacherProfileBody(
+          teacher: teacher,
+          profile: null,
+          onMessage: action.onMessage,
+          messageLabel: action.messageLabel,
+        ),
+        data: (profile) => _TeacherProfileBody(
+          teacher: teacher,
+          profile: profile,
+          onMessage: action.onMessage,
+          messageLabel: action.messageLabel,
+        ),
       ),
     );
   }
@@ -1283,11 +1399,13 @@ class _TeacherProfileBody extends StatelessWidget {
   final _ClassTeacher teacher;
   final Map<String, dynamic>? profile;
   final VoidCallback? onMessage;
+  final String? messageLabel;
   final bool sheetMode;
   const _TeacherProfileBody({
     required this.teacher,
     required this.profile,
     this.onMessage,
+    this.messageLabel,
     this.sheetMode = false,
   });
 
@@ -1389,10 +1507,19 @@ class _TeacherProfileBody extends StatelessWidget {
             child: FilledButton.icon(
               onPressed: onMessage,
               icon: const Icon(Icons.chat_bubble_outline_rounded),
-              label: const Text('Στείλε μήνυμα'),
+              label: Text(
+                messageLabel ?? 'Στείλε μήνυμα',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: (messageLabel?.length ?? 0) > 28 ? 13 : 15,
+                  height: 1.25,
+                ),
+              ),
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF77328D),
                 foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 minimumSize: const Size.fromHeight(50),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               ),
