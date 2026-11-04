@@ -94,7 +94,16 @@ export class StudentsController {
     @Param('schoolId') schoolId: string,
     @Param('id') id: string,
     @Param('parentId') parentId: string,
-    @Body() body: { fullName?: string; phone?: string; relation?: string; isPrimary?: boolean },
+    @Body() body: {
+      fullName?: string; phone?: string; relation?: string; isPrimary?: boolean;
+      vatNumber?: string | null;
+      profession?: string | null;
+      taxOffice?: string | null;
+      billingStreet?: string | null;
+      billingNumber?: string | null;
+      billingPostalCode?: string | null;
+      billingCity?: string | null;
+    },
   ) {
     return this.students.updateParent(id, schoolId, parentId, body);
   }

@@ -137,6 +137,10 @@ model User {
   avatarUrl    String?  @map("avatar_url")
   /// AFM for fiscal documents (parent as customer on school receipts/invoices).
   vatNumber    String?  @map("vat_number")
+  /// Profession / επάγγελμα for fiscal counterparty.
+  profession   String?
+  /// Tax office / ΔΟΥ for fiscal counterparty.
+  taxOffice    String?  @map("tax_office")
   /// Optional billing address lines for Fuse counterparty.
   billingStreet     String? @map("billing_street")
   billingNumber     String? @map("billing_number")
@@ -897,6 +901,8 @@ model FiscalDocument {
   cpNumber             String?   @map("cp_number")
   cpPostalCode         String?   @map("cp_postal_code")
   cpCity               String?   @map("cp_city")
+  cpProfession         String?   @map("cp_profession")
+  cpTaxOffice          String?   @map("cp_tax_office")
   fuseUid              String?   @map("fuse_uid")
   mark                 String?
   authenticationCode   String?   @map("authentication_code")

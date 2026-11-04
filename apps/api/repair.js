@@ -46,10 +46,14 @@ const repairs = [
   `ALTER TABLE "student_services" ADD COLUMN IF NOT EXISTS "dropoff_route_id" TEXT`,
   // Parent/customer AFM for fiscal counterparty
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "vat_number" TEXT`,
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "profession" TEXT`,
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "tax_office" TEXT`,
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "billing_street" TEXT`,
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "billing_number" TEXT`,
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "billing_postal_code" TEXT`,
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "billing_city" TEXT`,
+  `ALTER TABLE "fiscal_documents" ADD COLUMN IF NOT EXISTS "cp_profession" TEXT`,
+  `ALTER TABLE "fiscal_documents" ADD COLUMN IF NOT EXISTS "cp_tax_office" TEXT`,
   // Elorus Fuse / myDATA fiscal
   `ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "vat_number" TEXT`,
   `ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "fiscal_retail_series" TEXT`,
@@ -97,6 +101,8 @@ const repairs = [
     "cp_number" TEXT,
     "cp_postal_code" TEXT,
     "cp_city" TEXT,
+    "cp_profession" TEXT,
+    "cp_tax_office" TEXT,
     "fuse_uid" TEXT,
     "mark" TEXT,
     "authentication_code" TEXT,

@@ -37,6 +37,8 @@ export type IssueFiscalDocumentDto = {
     number?: string;
     postalCode?: string;
     city?: string;
+    profession?: string;
+    taxOffice?: string;
   };
 };
 
@@ -380,6 +382,8 @@ export class ElorusFuseService {
         cpNumber: counterparty?.number || null,
         cpPostalCode: counterparty?.postalCode || null,
         cpCity: counterparty?.city || null,
+        cpProfession: counterparty?.profession || null,
+        cpTaxOffice: counterparty?.taxOffice || null,
         status: 'pending',
       },
     });
