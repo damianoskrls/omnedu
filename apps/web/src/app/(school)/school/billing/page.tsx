@@ -789,7 +789,7 @@ export default function BillingPage() {
                   <div className="text-xs text-amber-600 mb-1 font-medium">Εκκρεμούν</div>
                   <div className="text-2xl font-bold text-amber-700">{fmt(Math.max(0, stats.sy.totalDue - stats.sy.totalPaid))}</div>
                   <div className="text-xs text-amber-500 mt-0.5 underline-offset-2 hover:underline">
-                    {stats.studentsOwingThisMonth} μαθητές αυτόν τον μήνα · δες χρεώστες
+                    {stats.studentsOwingThisMonth} μαθητές αυτόν τον μήνα · δες εκκρεμότητες
                   </div>
                 </button>
                 <div className="bg-gray-50 rounded-xl p-4">
