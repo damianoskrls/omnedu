@@ -1138,7 +1138,7 @@ Widget _teacherLetter(String name) {
   );
 }
 
-final _teacherStaffProfileProvider = FutureProvider.family<Map<String, dynamic>?, ({String schoolId, String userId})>(
+final teacherStaffProfileProvider = FutureProvider.family<Map<String, dynamic>?, ({String schoolId, String userId})>(
   (ref, key) async {
     final dio = ref.read(dioProvider);
     final resp = await dio.get('/schools/${key.schoolId}/staff');
@@ -1154,6 +1154,106 @@ final _teacherStaffProfileProvider = FutureProvider.family<Map<String, dynamic>?
   },
 );
 
+/// Parent-facing teacher card: photo, bio, studies in a bottom sheet.
+Future<void> showTeacherProfileSheet(
+  BuildContext context, {
+  required String schoolId,
+  required String teacherId,
+  required String teacherName,
+  String? avatarUrl,
+  String className = '',
+  Future<void> Function()? onMessage,
+}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _TeacherProfileSheet(
+      schoolId: schoolId,
+      teacher: _ClassTeacher(
+        id: teacherId,
+        name: teacherName,
+        avatarUrl: avatarUrl,
+        className: className,
+      ),
+      onMessage: onMessage,
+    ),
+  );
+}
+
+class _TeacherProfileSheet extends ConsumerWidget {
+  final String schoolId;
+  final _ClassTeacher teacher;
+  final Future<void> Function()? onMessage;
+  const _TeacherProfileSheet({
+    required this.schoolId,
+    required this.teacher,
+    this.onMessage,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profileAsync = ref.watch(teacherStaffProfileProvider((schoolId: schoolId, userId: teacher.id)));
+    final height = MediaQuery.sizeOf(context).height * 0.86;
+    return Container(
+      height: height,
+      decoration: const BoxDecoration(
+        color: Color(0xFFF6F3FA),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 10),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(color: const Color(0xFFD1D5DB), borderRadius: BorderRadius.circular(999)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 8, 4),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text('Εκπαιδευτικός', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
+                ),
+                IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded)),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: profileAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFF77328D))),
+              error: (_, __) => _TeacherProfileBody(
+                teacher: teacher,
+                profile: null,
+                onMessage: onMessage == null
+                    ? null
+                    : () {
+                        Navigator.pop(context);
+                        onMessage!();
+                      },
+                sheetMode: true,
+              ),
+              data: (profile) => _TeacherProfileBody(
+                teacher: teacher,
+                profile: profile,
+                onMessage: onMessage == null
+                    ? null
+                    : () {
+                        Navigator.pop(context);
+                        onMessage!();
+                      },
+                sheetMode: true,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _TeacherProfileScreen extends ConsumerWidget {
   final String schoolId;
   final _ClassTeacher teacher;
@@ -1162,7 +1262,7 @@ class _TeacherProfileScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final profileAsync = ref.watch(_teacherStaffProfileProvider((schoolId: schoolId, userId: teacher.id)));
+    final profileAsync = ref.watch(teacherStaffProfileProvider((schoolId: schoolId, userId: teacher.id)));
 
     return Scaffold(
       backgroundColor: const Color(0xFFF6F3FA),
@@ -1182,29 +1282,45 @@ class _TeacherProfileScreen extends ConsumerWidget {
 class _TeacherProfileBody extends StatelessWidget {
   final _ClassTeacher teacher;
   final Map<String, dynamic>? profile;
-  final VoidCallback onMessage;
-  const _TeacherProfileBody({required this.teacher, required this.profile, required this.onMessage});
+  final VoidCallback? onMessage;
+  final bool sheetMode;
+  const _TeacherProfileBody({
+    required this.teacher,
+    required this.profile,
+    this.onMessage,
+    this.sheetMode = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final tp = profile?['teacherProfile'] as Map<String, dynamic>?;
+    final user = profile?['user'] as Map<String, dynamic>?;
     final bio = tp?['bio'] as String? ?? '';
     final specialization = tp?['specialization'] as String? ?? '';
+    final photo = (teacher.avatarUrl != null && teacher.avatarUrl!.isNotEmpty)
+        ? teacher.avatarUrl
+        : user?['avatarUrl']?.toString();
     final rawEdu = tp?['education'];
     final education = rawEdu is List ? rawEdu.whereType<Map>().toList() : <Map>[];
+    final photoSize = sheetMode ? 104.0 : 80.0;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
+      padding: EdgeInsets.fromLTRB(16, sheetMode ? 12 : 24, 16, 32),
       children: [
         Center(
           child: Column(
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(40),
-                child: teacher.avatarUrl != null && teacher.avatarUrl!.isNotEmpty
-                    ? AppImage(teacher.avatarUrl!, width: 80, height: 80, fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => _bigLetter(teacher.name))
-                    : _bigLetter(teacher.name),
+                borderRadius: BorderRadius.circular(photoSize / 2),
+                child: photo != null && photo.isNotEmpty
+                    ? AppImage(
+                        photo,
+                        width: photoSize,
+                        height: photoSize,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _bigLetter(teacher.name, size: photoSize),
+                      )
+                    : _bigLetter(teacher.name, size: photoSize),
               ),
               const SizedBox(height: 12),
               Text(teacher.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20, color: Color(0xFF2C2422))),
@@ -1257,29 +1373,40 @@ class _TeacherProfileBody extends StatelessWidget {
             }).toList(),
           ),
         ),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: onMessage,
-            icon: const Icon(Icons.chat_bubble_outline_rounded),
-            label: const Text('Στείλε μήνυμα'),
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF77328D),
-              foregroundColor: Colors.white,
-              minimumSize: const Size.fromHeight(50),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        if (bio.isEmpty && education.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 12),
+            child: Text(
+              'Δεν έχουν συμπληρωθεί ακόμα βιογραφικό ή σπουδές.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Color(0xFF9CA3AF)),
             ),
           ),
-        ),
+        if (onMessage != null) ...[
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: onMessage,
+              icon: const Icon(Icons.chat_bubble_outline_rounded),
+              label: const Text('Στείλε μήνυμα'),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF77328D),
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(50),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
 
-  Widget _bigLetter(String name) {
+  Widget _bigLetter(String name, {double size = 80}) {
     return Container(
-      width: 80,
-      height: 80,
+      width: size,
+      height: size,
       decoration: const BoxDecoration(
         shape: BoxShape.circle,
         color: Color(0xFFF3E8F7),
@@ -1287,7 +1414,7 @@ class _TeacherProfileBody extends StatelessWidget {
       alignment: Alignment.center,
       child: Text(
         name.isNotEmpty ? name[0].toUpperCase() : '?',
-        style: const TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w800, fontSize: 30),
+        style: TextStyle(color: const Color(0xFF77328D), fontWeight: FontWeight.w800, fontSize: size * 0.375),
       ),
     );
   }

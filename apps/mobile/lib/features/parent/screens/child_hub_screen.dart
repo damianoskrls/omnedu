@@ -481,7 +481,7 @@ class _TeacherChip extends ConsumerWidget {
   final _HeaderTeacher teacher;
   const _TeacherChip({required this.schoolId, required this.teacher});
 
-  Future<void> _open(BuildContext context, WidgetRef ref) async {
+  Future<void> _message(BuildContext context, WidgetRef ref) async {
     final parentId = ref.read(authProvider).user?.id;
     if (parentId == null) return;
     try {
@@ -514,6 +514,18 @@ class _TeacherChip extends ConsumerWidget {
     }
   }
 
+  Future<void> _openProfile(BuildContext context, WidgetRef ref) {
+    return showTeacherProfileSheet(
+      context,
+      schoolId: schoolId,
+      teacherId: teacher.id,
+      teacherName: teacher.name,
+      avatarUrl: teacher.avatarUrl,
+      className: teacher.className,
+      onMessage: () => _message(context, ref),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Material(
@@ -521,7 +533,7 @@ class _TeacherChip extends ConsumerWidget {
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        onTap: () => _open(context, ref),
+        onTap: () => _openProfile(context, ref),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(4, 4, 10, 4),
           child: Row(
