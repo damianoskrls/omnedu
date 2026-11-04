@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/widgets/app_image.dart';
-import '../../../core/widgets/app_top_bar.dart';
 import 'billing_docs_sheet.dart';
 import 'billing_events_sheet.dart';
 import 'receipts_screen.dart';
@@ -245,8 +244,8 @@ class BillingScreen extends ConsumerWidget {
                           color: const Color(0xFF77328D),
                           onTap: () => showBillingEventsSheet(
                             context,
+                            schoolId: schoolId,
                             events: events,
-                            onOpenEventsTab: () => ref.read(shellTabProvider.notifier).state = 2,
                           ),
                         ),
                       ),
