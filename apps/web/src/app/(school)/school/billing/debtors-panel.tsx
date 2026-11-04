@@ -155,7 +155,7 @@ export function DebtorsPanel({
           <div>
             <h2 className="font-bold text-gray-900 flex items-center gap-2">
               <Users className="h-5 w-5 text-amber-600" />
-              Χρεώστες
+              Εκκρεμότητες
             </h2>
             <p className="text-sm text-gray-500 mt-0.5">
               Ποιοι χρωστάνε και τι — με μαζική ή ατομική υπενθύμιση.

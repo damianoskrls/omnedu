@@ -552,7 +552,7 @@ export default function BillingPage() {
             onClick={() => setTab('debtors')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'debtors' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
           >
-            <Users className="h-4 w-4" /> Χρεώστες
+            <Users className="h-4 w-4" /> Εκκρεμότητες
             {(stats?.studentsOwingThisMonth ?? 0) > 0 && (
               <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
                 {stats.studentsOwingThisMonth}
