@@ -48,3 +48,11 @@ Future<void> registerIosRemoteNotifications() async {
     await _channel.invokeMethod('registerPush');
   } catch (_) {}
 }
+
+/// After Firebase.initializeApp, flush any APNs token held by AppDelegate into FIRMessaging.
+Future<void> flushIosApnsTokenToFirebase() async {
+  if (kIsWeb || !Platform.isIOS) return;
+  try {
+    await _channel.invokeMethod('flushApnsToken');
+  } catch (_) {}
+}

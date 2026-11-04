@@ -118,6 +118,10 @@ Future<void> startPhonePush({
   _phonePushOpened = onOpened;
   _phonePushForeground = onForeground;
   await _ensureFirebase();
+  if (Platform.isIOS) {
+    // Firebase is ready now — hand the pending APNs device token to FIRMessaging.
+    await flushIosApnsTokenToFirebase();
+  }
   if (_phonePushListening) {
     unawaited(_publishPhoneToken(onToken));
     return;
@@ -128,6 +132,7 @@ Future<void> startPhonePush({
     if (Platform.isIOS) {
       await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(alert: true, badge: true, sound: true);
       await registerIosRemoteNotifications();
+      await flushIosApnsTokenToFirebase();
     }
     await ensurePushAndroidChannel();
   } catch (_) {}
@@ -168,11 +173,15 @@ Future<void> _publishPhoneToken(Future<void> Function(String token) onToken) asy
         await FirebaseMessaging.instance.requestPermission(alert: true, badge: true, sound: true);
       }
       await registerIosRemoteNotifications();
-      for (var attempt = 0; attempt < 20; attempt++) {
+      await flushIosApnsTokenToFirebase();
+      for (var attempt = 0; attempt < 30; attempt++) {
         final apns = await FirebaseMessaging.instance.getAPNSToken();
         if (apns != null && apns.isNotEmpty) break;
-        if (attempt == 4 || attempt == 10) await registerIosRemoteNotifications();
-        await Future<void>.delayed(const Duration(seconds: 1));
+        if (attempt == 2 || attempt == 6 || attempt == 12 || attempt == 20) {
+          await registerIosRemoteNotifications();
+          await flushIosApnsTokenToFirebase();
+        }
+        await Future<void>.delayed(Duration(milliseconds: attempt < 8 ? 500 : 1000));
       }
     }
     final token = await FirebaseMessaging.instance.getToken();
@@ -188,9 +197,9 @@ Future<void> _publishPhoneToken(Future<void> Function(String token) onToken) asy
   }
   if (_phoneTokenSent || !Platform.isIOS || _phoneTokenRetry != null) return;
   var tries = 0;
-  _phoneTokenRetry = Timer.periodic(const Duration(seconds: 8), (_) {
+  _phoneTokenRetry = Timer.periodic(const Duration(seconds: 5), (_) {
     tries += 1;
-    if (_phoneTokenSent || tries > 12) {
+    if (_phoneTokenSent || tries > 24) {
       _phoneTokenRetry?.cancel();
       _phoneTokenRetry = null;
       return;
