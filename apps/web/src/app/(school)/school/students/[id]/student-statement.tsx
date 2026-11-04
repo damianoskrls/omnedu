@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useRef, useState, type ComponentProps } from 'react';
 import { ExternalLink, FileText, RefreshCw } from 'lucide-react';
 import { PaymentDetailsLink } from '@/components/PaymentDetailsLink';
 
@@ -29,11 +29,11 @@ export type FiscalMonthTarget = {
 };
 
 function statusLabel(status: string, totalDue?: number) {
-  if (status === 'paid' && Number(totalDue ?? 0) === 0) return { text: 'Καλύπτεται', className: 'bg-emerald-100 text-emerald-700' };
-  if (status === 'paid') return { text: 'Εξοφλήθη', className: 'bg-green-100 text-green-700' };
-  if (status === 'partial') return { text: 'Μερική πληρωμή', className: 'bg-blue-100 text-blue-700' };
+  if (status === 'paid' && Number(totalDue ?? 0) === 0) return { text: 'Καλύπτεται', className: 'bg-emerald-100 text-emerald-800' };
+  if (status === 'paid') return { text: 'Εξοφλήθη', className: 'bg-emerald-100 text-emerald-800' };
+  if (status === 'partial') return { text: 'Μερική πληρωμή', className: 'bg-sky-100 text-sky-800' };
   if (status === 'upcoming') return { text: 'Δεν έχει ανοίξει', className: 'bg-gray-100 text-gray-500' };
-  return { text: 'Αναμονή πληρωμής', className: 'bg-amber-100 text-amber-800' };
+  return { text: 'Αναμονή πληρωμής', className: 'bg-amber-100 text-amber-900' };
 }
 
 function monthRemainder(totalDue: number, paidAmount: number) {
@@ -74,7 +74,9 @@ function MonthAmount({
     return (
       <div className="text-right">
         <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Υπόλοιπο</p>
-        <p className={`text-lg font-extrabold ${remain > 0.005 ? 'text-red-700' : 'text-gray-900'}`}>{money(remain)}</p>
+        <p className={`text-xl font-extrabold tabular-nums leading-tight ${remain > 0.005 ? 'text-red-700' : 'text-gray-900'}`}>
+          {money(remain)}
+        </p>
         <p className="mt-0.5 text-[11px] text-gray-500">
           Οφειλή {money(due)} · Πληρώθηκε {money(paid)}
         </p>
@@ -84,7 +86,7 @@ function MonthAmount({
 
   return (
     <div className="text-right">
-      <p className="text-lg font-extrabold text-gray-900">{money(due)}</p>
+      <p className="text-xl font-extrabold tabular-nums leading-tight text-gray-900">{money(due)}</p>
       {paid > 0.005 && due > 0 && (
         <p className="mt-0.5 text-[11px] text-gray-500">Πληρώθηκε {money(paid)}</p>
       )}
@@ -121,6 +123,15 @@ function canUndoMonth(month: any) {
     && (month.status === 'paid' || month.status === 'partial');
 }
 
+function cardBorderClass(status: string, totalDue: number, paidAmount: number) {
+  const remain = monthRemainder(totalDue, paidAmount);
+  if (status === 'upcoming') return 'border-gray-100 bg-gray-50/60';
+  if ((status === 'unpaid' || status === 'overdue' || status === 'partial') && remain > 0.005) {
+    return 'border-amber-200/80 bg-white shadow-sm';
+  }
+  return 'border-gray-200 bg-white shadow-sm';
+}
+
 function MonthActionButtons({
   canPay,
   canFiscal,
@@ -129,7 +140,6 @@ function MonthActionButtons({
   onPay,
   onFiscal,
   onUndo,
-  fullWidthPay,
 }: {
   canPay: boolean;
   canFiscal: boolean;
@@ -138,23 +148,18 @@ function MonthActionButtons({
   onPay: () => void;
   onFiscal: () => void;
   onUndo: () => void;
-  fullWidthPay?: boolean;
 }) {
   if (!canPay && !canFiscal && !canUndo) return null;
   return (
-    <div className={`mt-2 flex flex-wrap gap-1.5 ${fullWidthPay ? '' : 'justify-end'}`}>
-      {canPay && (
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      {canUndo && (
         <button
           type="button"
           disabled={saving}
-          onClick={onPay}
-          className={
-            fullWidthPay
-              ? 'flex-1 rounded-xl bg-[#77328D] py-2.5 text-sm font-semibold text-white disabled:opacity-50'
-              : 'rounded-lg bg-[#77328D] px-2.5 py-1.5 text-xs font-semibold text-white disabled:opacity-50'
-          }
+          onClick={onUndo}
+          className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:opacity-50"
         >
-          Είσπραξη
+          Αναίρεση
         </button>
       )}
       {canFiscal && (
@@ -162,23 +167,19 @@ function MonthActionButtons({
           type="button"
           disabled={saving}
           onClick={onFiscal}
-          className={
-            fullWidthPay
-              ? 'flex-1 rounded-xl border border-indigo-200 bg-indigo-50 py-2.5 text-sm font-semibold text-indigo-700 disabled:opacity-50'
-              : 'rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 disabled:opacity-50'
-          }
+          className="rounded-lg border border-[#d9bce6] bg-[#f8f1fb] px-3 py-1.5 text-xs font-semibold text-[#77328D] hover:bg-[#f1e4f7] disabled:opacity-50"
         >
           Παραστατικό
         </button>
       )}
-      {canUndo && (
+      {canPay && (
         <button
           type="button"
           disabled={saving}
-          onClick={onUndo}
-          className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-400 hover:text-gray-600 disabled:opacity-50"
+          onClick={onPay}
+          className="rounded-lg bg-[#77328D] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#652978] disabled:opacity-50"
         >
-          Αναίρεση
+          Είσπραξη
         </button>
       )}
     </div>
@@ -196,14 +197,14 @@ function MonthFiscalLinks({
 }) {
   if (!docs.length) return null;
   return (
-    <div className="mt-2 space-y-1.5 text-right">
+    <div className="space-y-1.5">
       {docs.map((doc) => {
         const href = doc.verificationUrl || doc.qrUrl;
         const label = `${doc.documentKind === 'service_invoice' ? 'ΤΙΜ' : 'ΑΠ'}-${doc.number}`;
         const pending = doc.status === 'pending' || !href;
         return (
-          <div key={doc.id} className="flex flex-wrap items-center justify-end gap-1.5">
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
+          <div key={doc.id} className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 ring-1 ring-emerald-100">
               <FileText className="h-3 w-3" />
               {label} · €{Number(doc.grossValue).toFixed(2)}
               {pending ? ' · σε εξέλιξη' : ''}
@@ -213,7 +214,7 @@ function MonthFiscalLinks({
                 href={href}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-0.5 text-[11px] font-medium text-indigo-600 hover:text-indigo-800"
+                className="inline-flex items-center gap-0.5 text-[11px] font-medium text-[#77328D] hover:underline"
               >
                 <ExternalLink className="h-3 w-3" /> Προβολή
               </a>
@@ -233,6 +234,207 @@ function MonthFiscalLinks({
         );
       })}
     </div>
+  );
+}
+
+function LineList({ lines }: { lines?: { label: string; amount: number }[] }) {
+  if (!lines?.length) {
+    return <p className="text-sm text-gray-400">Δεν υπάρχει μηνιαία χρέωση.</p>;
+  }
+  return (
+    <ul className="divide-y divide-gray-100 rounded-xl border border-gray-100 bg-gray-50/50">
+      {lines.map((line) => (
+        <li key={line.label} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+          <span className="text-gray-700">{line.label}</span>
+          <span className={`tabular-nums font-semibold ${line.amount < 0 ? 'text-emerald-700' : 'text-gray-900'}`}>
+            {line.amount < 0 ? `−${money(line.amount)}` : money(line.amount)}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ExtraList({
+  extras,
+  isAdmin,
+  saving,
+  onPayExtra,
+  onUndoExtra,
+}: {
+  extras?: any[];
+  isAdmin: boolean;
+  saving: boolean;
+  onPayExtra: (extra: any) => void;
+  onUndoExtra?: (extra: any) => void;
+}) {
+  if (!extras?.length) return null;
+  return (
+    <div className="mt-3 space-y-2">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-orange-700/80">Εκδρομές / επιπλέον</p>
+      {extras.map((extra) => {
+        const badge = statusLabel(extra.status === 'pending_payment' ? 'unpaid' : extra.status, Number(extra.amount));
+        const canUndo = isAdmin && Boolean(onUndoExtra) && (extra.status === 'paid' || extra.status === 'partial');
+        const showDetails = extra.status === 'paid' || extra.status === 'partial';
+        return (
+          <div
+            key={extra.id}
+            className="rounded-xl border border-orange-100 bg-orange-50/70 px-3 py-2.5"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-gray-900">
+                  {extra.kind === 'event' ? `Εκδρομή · ${extra.title}` : extra.title}
+                </p>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-semibold tabular-nums text-gray-900">{money(Number(extra.amount))}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${badge.className}`}>{badge.text}</span>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {showDetails && (
+                  <PaymentDetailsLink
+                    notes={extra.notes}
+                    paidAt={extra.paidAt}
+                    totalDue={Number(extra.amount)}
+                    paidAmount={Number(extra.paidAmount ?? (extra.status === 'paid' ? extra.amount : 0))}
+                  />
+                )}
+                {isAdmin && extra.status !== 'paid' && (
+                  <button
+                    type="button"
+                    onClick={() => onPayExtra(extra)}
+                    disabled={saving}
+                    className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    Είσπραξη
+                  </button>
+                )}
+                {canUndo && (
+                  <button
+                    type="button"
+                    onClick={() => onUndoExtra?.(extra)}
+                    disabled={saving}
+                    className="rounded-lg px-2 py-1 text-xs font-medium text-gray-500 hover:bg-white/80 hover:text-red-600 disabled:opacity-50"
+                  >
+                    Αναίρεση
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function MonthCard({
+  month,
+  eyebrow,
+  accent,
+  isAdmin,
+  saving,
+  fiscalDocs,
+  showDetails,
+  detailsProps,
+  canPay,
+  canFiscal,
+  canUndo,
+  onPay,
+  onFiscal,
+  onUndo,
+  onPayExtra,
+  onUndoExtra,
+  onResendFiscal,
+  resendingFiscalId,
+}: {
+  month: any;
+  eyebrow?: string;
+  accent?: boolean;
+  isAdmin: boolean;
+  saving: boolean;
+  fiscalDocs: any[];
+  showDetails: boolean;
+  detailsProps?: ComponentProps<typeof PaymentDetailsLink>;
+  canPay: boolean;
+  canFiscal: boolean;
+  canUndo: boolean;
+  onPay: () => void;
+  onFiscal: () => void;
+  onUndo: () => void;
+  onPayExtra: (extra: any) => void;
+  onUndoExtra?: (extra: any) => void;
+  onResendFiscal?: (id: string) => void | Promise<void>;
+  resendingFiscalId?: string | null;
+}) {
+  const badge = statusLabel(month.status, Number(month.totalDue));
+  const quiet = month.status === 'upcoming';
+  const hasFooter = showDetails || canPay || canFiscal || canUndo || fiscalDocs.length > 0;
+  const border = accent
+    ? 'border-[#e6d0ee] bg-white shadow-sm ring-1 ring-[#f3e8f8]'
+    : cardBorderClass(month.status, Number(month.totalDue), Number(month.paidAmount ?? 0));
+
+  return (
+    <article className={`overflow-hidden rounded-2xl border ${border} ${quiet ? 'opacity-75' : ''}`}>
+      <div className="flex items-start justify-between gap-4 px-4 py-3.5 sm:px-5">
+        <div className="min-w-0">
+          {eyebrow && (
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-[#77328D]">{eyebrow}</p>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-base font-bold text-gray-900 sm:text-lg">
+              {MONTHS[month.month]} {month.year}
+            </h3>
+            <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${badge.className}`}>
+              {badge.text}
+            </span>
+          </div>
+        </div>
+        <MonthAmount
+          status={month.status}
+          totalDue={Number(month.totalDue)}
+          paidAmount={Number(month.paidAmount ?? 0)}
+        />
+      </div>
+
+      <div className="px-4 pb-3 sm:px-5">
+        <LineList lines={month.lines} />
+        <ExtraList
+          extras={month.extras}
+          isAdmin={isAdmin}
+          saving={saving}
+          onPayExtra={onPayExtra}
+          onUndoExtra={onUndoExtra}
+        />
+      </div>
+
+      {hasFooter && (
+        <div className="space-y-2.5 border-t border-gray-100 bg-gray-50/60 px-4 py-3 sm:px-5">
+          {(showDetails || canPay || canFiscal || canUndo) && (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-h-[28px]">
+                {showDetails && detailsProps ? <PaymentDetailsLink {...detailsProps} /> : <span />}
+              </div>
+              <MonthActionButtons
+                canPay={canPay}
+                canFiscal={canFiscal}
+                canUndo={canUndo}
+                saving={saving}
+                onPay={onPay}
+                onFiscal={onFiscal}
+                onUndo={onUndo}
+              />
+            </div>
+          )}
+          <MonthFiscalLinks
+            docs={fiscalDocs}
+            onResend={isAdmin ? onResendFiscal : undefined}
+            resendingId={resendingFiscalId}
+          />
+        </div>
+      )}
+    </article>
   );
 }
 
@@ -324,7 +526,31 @@ export function StudentStatement({
 
   const current = statement.current;
   const owed = Number(statement.pendingNow ?? 0);
+  void onDeleteReceipt;
   void uploadingKey;
+
+  function monthDetailsProps(month: any) {
+    return {
+      notes: month.notes,
+      paidAt: month.paidAt,
+      totalDue: Number(month.totalDue),
+      paidAmount: Number(month.paidAmount ?? 0),
+      receipt: receiptFor(month.month, month.year),
+      onDownloadReceipt,
+      onUploadReceipt: isAdmin ? () => triggerUpload(month.month, month.year) : undefined,
+      onRequestSystemReceipt:
+        isAdmin && onRequestSystemReceipt
+          ? () => onRequestSystemReceipt(month.month, month.year, month.notes)
+          : undefined,
+    };
+  }
+
+  function showMonthDetails(month: any) {
+    return (
+      (month.status === 'paid' || month.status === 'partial' || Number(month.paidAmount ?? 0) > 0.005)
+      && Number(month.totalDue) > 0
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -332,242 +558,113 @@ export function StudentStatement({
       <div className={`rounded-2xl px-5 py-4 text-white ${owed > 0 ? 'bg-[#77328D]' : 'bg-emerald-600'}`}>
         <p className="text-sm text-white/80">Σύνολο που εκκρεμεί τώρα</p>
         <p className="text-3xl font-extrabold tracking-tight">{owed > 0 ? money(owed) : 'Τίποτα'}</p>
-        <p className="text-xs text-white/75 mt-1">Υπόλοιπα ανοιχτών μηνών, γραφική ύλη και εκδρομές που δεν έχουν εξοφληθεί.</p>
+        <p className="mt-1 text-xs text-white/75">Υπόλοιπα ανοιχτών μηνών, γραφική ύλη και εκδρομές που δεν έχουν εξοφληθεί.</p>
       </div>
 
       {current && (
-        <div className="bg-white rounded-2xl border border-[#e6d0ee] shadow-sm p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#77328D]">Τρέχων μήνας</p>
-              <h3 className="text-xl font-bold text-gray-900">{MONTHS[current.month]} {current.year}</h3>
-            </div>
-            <div className="text-right">
-              <MonthAmount
-                status={current.status}
-                totalDue={Number(current.totalDue)}
-                paidAmount={Number(current.paidAmount ?? 0)}
-              />
-              <span className={`inline-block mt-1 text-xs font-semibold px-2 py-0.5 rounded-full ${statusLabel(current.status, Number(current.totalDue)).className}`}>
-                {statusLabel(current.status, Number(current.totalDue)).text}
-              </span>
-              {(current.status === 'paid' || current.status === 'partial') && Number(current.totalDue) > 0 && (
-                <div className="mt-1 flex justify-end">
-                  <PaymentDetailsLink
-                    notes={current.notes}
-                    paidAt={current.paidAt}
-                    totalDue={Number(current.totalDue)}
-                    paidAmount={Number(current.paidAmount ?? 0)}
-                    receipt={receiptFor(current.month, current.year)}
-                    onDownloadReceipt={onDownloadReceipt}
-                    onUploadReceipt={isAdmin ? () => triggerUpload(current.month, current.year) : undefined}
-                    onRequestSystemReceipt={isAdmin && onRequestSystemReceipt ? () => onRequestSystemReceipt(current.month, current.year, current.notes) : undefined}
-                  />
-                </div>
-              )}
-              <MonthFiscalLinks
-                docs={fiscalsForCharge(current.chargeId)}
-                onResend={isAdmin ? onResendFiscal : undefined}
-                resendingId={resendingFiscalId}
-              />
-            </div>
-          </div>
-          <LineList lines={current.lines} />
-          <ExtraList extras={current.extras} isAdmin={isAdmin} saving={saving} onPayExtra={onPayExtra} onUndoExtra={onUndoExtra} />
-          {isAdmin && (
-            <MonthActionButtons
-              canPay={current.status !== 'paid'}
-              canFiscal={Boolean(onIssueFiscalMonth)}
-              canUndo={canUndoMonth(current)}
-              saving={saving}
-              fullWidthPay
-              onPay={() => onPayMonth(toPayTarget(current))}
-              onFiscal={() => onIssueFiscalMonth?.(toFiscalTarget(current))}
-              onUndo={() => onUndoMonth(current.chargeId)}
-            />
-          )}
-        </div>
+        <MonthCard
+          month={current}
+          eyebrow="Τρέχων μήνας"
+          accent
+          isAdmin={isAdmin}
+          saving={saving}
+          fiscalDocs={fiscalsForCharge(current.chargeId)}
+          showDetails={showMonthDetails(current)}
+          detailsProps={monthDetailsProps(current)}
+          canPay={isAdmin && current.status !== 'paid'}
+          canFiscal={isAdmin && Boolean(onIssueFiscalMonth)}
+          canUndo={isAdmin && canUndoMonth(current)}
+          onPay={() => onPayMonth(toPayTarget(current))}
+          onFiscal={() => onIssueFiscalMonth?.(toFiscalTarget(current))}
+          onUndo={() => onUndoMonth(current.chargeId)}
+          onPayExtra={onPayExtra}
+          onUndoExtra={onUndoExtra}
+          onResendFiscal={onResendFiscal}
+          resendingFiscalId={resendingFiscalId}
+        />
       )}
 
       {statement.stationery && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4">
-          <div className="flex-1">
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Έναρξη χρονιάς</p>
+        <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Έναρξη χρονιάς</p>
             <h3 className="font-bold text-gray-900">{statement.stationery.description}</h3>
             <p className="text-xs text-gray-500">Μία φορά για τη σχολική χρονιά {statement.schoolYear}</p>
           </div>
           <div className="text-right">
-            <div className="text-xl font-extrabold">{money(Number(statement.stationery.amount))}</div>
-            <span className={`inline-block mt-1 text-xs font-semibold px-2 py-0.5 rounded-full ${statusLabel(statement.stationery.status).className}`}>
+            <div className="text-xl font-extrabold tabular-nums">{money(Number(statement.stationery.amount))}</div>
+            <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${statusLabel(statement.stationery.status).className}`}>
               {statement.stationery.status === 'paid' ? 'Πληρώθηκε' : 'Δεν έχει πληρωθεί'}
             </span>
-            {(statement.stationery.status === 'paid' || statement.stationery.status === 'partial') && (
-              <div className="mt-1 flex justify-end">
-                <PaymentDetailsLink
-                  notes={statement.stationery.notes}
-                  paidAt={statement.stationery.paidAt}
-                  totalDue={Number(statement.stationery.amount)}
-                  paidAmount={Number(statement.stationery.paidAmount ?? 0)}
-                />
-              </div>
-            )}
           </div>
-          {isAdmin && statement.stationery.status !== 'paid' && (
-            <button
-              onClick={() => onPayExtra({ id: statement.stationery.id, kind: 'once', amount: statement.stationery.amount })}
-              disabled={saving}
-              className="rounded-lg border border-green-200 px-3 py-2 text-xs font-semibold text-green-700 hover:bg-green-50"
-            >
-              Είσπραξη
-            </button>
-          )}
-          {isAdmin && onUndoExtra && (statement.stationery.status === 'paid' || statement.stationery.status === 'partial') && Number(statement.stationery.paidAmount ?? statement.stationery.amount) > 0 && (
-            <button
-              type="button"
-              onClick={() => onUndoExtra({ id: statement.stationery.id, kind: 'once', amount: statement.stationery.amount, status: statement.stationery.status })}
-              disabled={saving}
-              className="rounded-lg px-3 py-2 text-xs font-medium text-gray-400 hover:text-red-500 disabled:opacity-50"
-            >
-              Αναίρεση
-            </button>
-          )}
-        </div>
-      )}
-
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="px-5 py-3 border-b border-gray-100 bg-gray-50">
-          <h3 className="font-semibold text-gray-900">Σχολικό έτος {statement.schoolYear}</h3>
-          <p className="text-xs text-gray-500">Κάθε μήνας δείχνει φοίτηση, σχολικό, δραστηριότητες και voucher όπως ίσχυαν τότε. Μια αλλαγή τιμής ή voucher πιάνει από τον μήνα της και μετά.</p>
-        </div>
-        <div className="divide-y divide-gray-50">
-          {(statement.months ?? []).map((month: any) => {
-            const badge = statusLabel(month.status, Number(month.totalDue));
-            const quiet = month.status === 'upcoming';
-            const canPay = isAdmin && month.status !== 'paid' && Number(month.totalDue) >= 0;
-            const canFiscal = isAdmin && Boolean(onIssueFiscalMonth) && month.status !== 'upcoming';
-            return (
-              <div key={`${month.year}-${month.month}`} className={`px-5 py-4 ${quiet ? 'opacity-80' : ''}`}>
-                <div className="flex items-start gap-3">
-                  <div className="w-36 shrink-0">
-                    <p className="font-semibold text-gray-900">{MONTHS[month.month]}</p>
-                    <p className="text-xs text-gray-400">{month.year}</p>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <LineList lines={month.lines} compact />
-                    <ExtraList extras={month.extras} isAdmin={isAdmin} saving={saving} onPayExtra={onPayExtra} onUndoExtra={onUndoExtra} />
-                  </div>
-                  <div className="text-right shrink-0 min-w-[9.5rem]">
-                    <MonthAmount
-                      status={month.status}
-                      totalDue={Number(month.totalDue)}
-                      paidAmount={Number(month.paidAmount ?? 0)}
-                    />
-                    <span className={`inline-block mt-1 text-xs font-semibold px-2 py-0.5 rounded-full ${badge.className}`}>{badge.text}</span>
-                    {(month.status === 'paid' || month.status === 'partial' || Number(month.paidAmount ?? 0) > 0.005) && Number(month.totalDue) > 0 && (
-                      <div className="mt-1 flex justify-end">
-                        <PaymentDetailsLink
-                          notes={month.notes}
-                          paidAt={month.paidAt}
-                          totalDue={Number(month.totalDue)}
-                          paidAmount={Number(month.paidAmount ?? 0)}
-                          receipt={receiptFor(month.month, month.year)}
-                          onDownloadReceipt={onDownloadReceipt}
-                          onUploadReceipt={isAdmin ? () => triggerUpload(month.month, month.year) : undefined}
-                          onRequestSystemReceipt={isAdmin && onRequestSystemReceipt ? () => onRequestSystemReceipt(month.month, month.year, month.notes) : undefined}
-                        />
-                      </div>
-                    )}
-                    <MonthActionButtons
-                      canPay={canPay}
-                      canFiscal={canFiscal}
-                      canUndo={isAdmin && canUndoMonth(month)}
-                      saving={saving}
-                      onPay={() => onPayMonth(toPayTarget(month))}
-                      onFiscal={() => onIssueFiscalMonth?.(toFiscalTarget(month))}
-                      onUndo={() => onUndoMonth(month.chargeId)}
-                    />
-                    <MonthFiscalLinks
-                      docs={fiscalsForCharge(month.chargeId)}
-                      onResend={isAdmin ? onResendFiscal : undefined}
-                      resendingId={resendingFiscalId}
-                    />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function LineList({ lines, compact }: { lines?: { label: string; amount: number }[]; compact?: boolean }) {
-  if (!lines?.length) return <p className="text-sm text-gray-400">Δεν υπάρχει μηνιαία χρέωση.</p>;
-  return (
-    <ul className={compact ? 'space-y-0.5' : 'mt-4 divide-y divide-gray-50 rounded-xl border border-gray-100'}>
-      {lines.map((line) => (
-        <li key={line.label} className={`flex justify-between gap-3 text-sm ${compact ? 'py-0.5' : 'px-3 py-2'}`}>
-          <span className="text-gray-700">{line.label}</span>
-          <span className={line.amount < 0 ? 'font-semibold text-emerald-700' : 'font-semibold text-gray-900'}>
-            {line.amount < 0 ? `−${money(line.amount)}` : money(line.amount)}
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function ExtraList({
-  extras,
-  isAdmin,
-  saving,
-  onPayExtra,
-  onUndoExtra,
-}: {
-  extras?: any[];
-  isAdmin: boolean;
-  saving: boolean;
-  onPayExtra: (extra: any) => void;
-  onUndoExtra?: (extra: any) => void;
-}) {
-  if (!extras?.length) return null;
-  return (
-    <div className="mt-2 space-y-1">
-      {extras.map((extra) => {
-        const badge = statusLabel(extra.status === 'pending_payment' ? 'unpaid' : extra.status, Number(extra.amount));
-        const canUndo = isAdmin && Boolean(onUndoExtra) && (extra.status === 'paid' || extra.status === 'partial');
-        return (
-          <div key={extra.id} className="flex items-center gap-2 rounded-lg bg-orange-50 px-3 py-2 text-sm">
-            <span className="flex-1 text-gray-800">{extra.kind === 'event' ? `Εκδρομή · ${extra.title}` : extra.title}</span>
-            <span className="font-semibold">{money(Number(extra.amount))}</span>
-            <span className="flex flex-col items-end">
-              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badge.className}`}>{badge.text}</span>
-              {(extra.status === 'paid' || extra.status === 'partial') && (
-                <PaymentDetailsLink
-                  notes={extra.notes}
-                  paidAt={extra.paidAt}
-                  totalDue={Number(extra.amount)}
-                  paidAmount={Number(extra.paidAmount ?? (extra.status === 'paid' ? extra.amount : 0))}
-                />
-              )}
-            </span>
-            {isAdmin && extra.status !== 'paid' && (
-              <button onClick={() => onPayExtra(extra)} disabled={saving} className="text-xs font-semibold text-green-700">Είσπραξη</button>
+          <div className="flex w-full flex-wrap items-center justify-end gap-2 border-t border-gray-100 pt-3 sm:w-auto sm:border-0 sm:pt-0">
+            {(statement.stationery.status === 'paid' || statement.stationery.status === 'partial') && (
+              <PaymentDetailsLink
+                notes={statement.stationery.notes}
+                paidAt={statement.stationery.paidAt}
+                totalDue={Number(statement.stationery.amount)}
+                paidAmount={Number(statement.stationery.paidAmount ?? 0)}
+              />
             )}
-            {canUndo && (
+            {isAdmin && statement.stationery.status !== 'paid' && (
               <button
                 type="button"
-                onClick={() => onUndoExtra?.(extra)}
+                onClick={() => onPayExtra({ id: statement.stationery.id, kind: 'once', amount: statement.stationery.amount })}
                 disabled={saving}
-                className="text-xs font-medium text-gray-400 hover:text-red-500 disabled:opacity-50"
+                className="rounded-lg bg-[#77328D] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+              >
+                Είσπραξη
+              </button>
+            )}
+            {isAdmin && onUndoExtra && (statement.stationery.status === 'paid' || statement.stationery.status === 'partial') && Number(statement.stationery.paidAmount ?? statement.stationery.amount) > 0 && (
+              <button
+                type="button"
+                onClick={() => onUndoExtra({ id: statement.stationery.id, kind: 'once', amount: statement.stationery.amount, status: statement.stationery.status })}
+                disabled={saving}
+                className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-red-600 disabled:opacity-50"
               >
                 Αναίρεση
               </button>
             )}
           </div>
-        );
-      })}
+        </div>
+      )}
+
+      <section className="space-y-3">
+        <div className="px-0.5">
+          <h3 className="font-semibold text-gray-900">Σχολικό έτος {statement.schoolYear}</h3>
+          <p className="mt-0.5 text-xs text-gray-500">
+            Κάθε μήνας δείχνει φοίτηση, σχολικό, δραστηριότητες και voucher όπως ίσχυαν τότε. Μια αλλαγή τιμής ή voucher πιάνει από τον μήνα της και μετά.
+          </p>
+        </div>
+        <div className="space-y-3">
+          {(statement.months ?? []).map((month: any) => {
+            const canPay = isAdmin && month.status !== 'paid' && Number(month.totalDue) >= 0;
+            const canFiscal = isAdmin && Boolean(onIssueFiscalMonth) && month.status !== 'upcoming';
+            return (
+              <MonthCard
+                key={`${month.year}-${month.month}`}
+                month={month}
+                isAdmin={isAdmin}
+                saving={saving}
+                fiscalDocs={fiscalsForCharge(month.chargeId)}
+                showDetails={showMonthDetails(month)}
+                detailsProps={monthDetailsProps(month)}
+                canPay={canPay}
+                canFiscal={canFiscal}
+                canUndo={isAdmin && canUndoMonth(month)}
+                onPay={() => onPayMonth(toPayTarget(month))}
+                onFiscal={() => onIssueFiscalMonth?.(toFiscalTarget(month))}
+                onUndo={() => onUndoMonth(month.chargeId)}
+                onPayExtra={onPayExtra}
+                onUndoExtra={onUndoExtra}
+                onResendFiscal={onResendFiscal}
+                resendingFiscalId={resendingFiscalId}
+              />
+            );
+          })}
+        </div>
+      </section>
     </div>
   );
 }
