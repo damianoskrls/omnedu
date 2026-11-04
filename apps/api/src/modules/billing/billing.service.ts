@@ -1116,4 +1116,205 @@ export class BillingService implements OnModuleInit {
       },
     };
   }
+
+  /**
+   * Debtors board: who owes for the selected month, or across the school year.
+   * Includes monthly charges + unpaid one-time charges (overall scope).
+   */
+  async getDebtors(
+    schoolId: string,
+    opts: { scope?: 'month' | 'all'; month?: number; year?: number } = {},
+  ) {
+    const now = new Date();
+    const scope = opts.scope === 'all' ? 'all' : 'month';
+    const month = opts.month ?? now.getMonth() + 1;
+    const year = opts.year ?? now.getFullYear();
+    const sy = schoolYearBounds(now);
+    const syWhere = {
+      schoolId,
+      OR: sy.months.map(({ month: m, year: y }) => ({ month: m, year: y })),
+    };
+
+    const chargeWhere =
+      scope === 'month'
+        ? { schoolId, month, year, status: { in: ['unpaid', 'partial'] } }
+        : { ...syWhere, status: { in: ['unpaid', 'partial'] } };
+
+    const [charges, oneTime] = await Promise.all([
+      this.prisma.monthlyCharge.findMany({
+        where: chargeWhere,
+        include: {
+          student: {
+            select: {
+              id: true,
+              fullName: true,
+              enrollments: {
+                where: { academicYear: { isCurrent: true } },
+                include: {
+                  class: {
+                    select: {
+                      id: true,
+                      name: true,
+                      level: { select: { id: true, name: true } },
+                    },
+                  },
+                },
+                take: 1,
+              },
+            },
+          },
+        },
+        orderBy: [{ year: 'asc' }, { month: 'asc' }],
+      }),
+      scope === 'all'
+        ? this.prisma.oneTimeCharge.findMany({
+            where: { schoolId, status: { in: ['unpaid', 'partial'] } },
+            include: {
+              student: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  enrollments: {
+                    where: { academicYear: { isCurrent: true } },
+                    include: {
+                      class: {
+                        select: {
+                          id: true,
+                          name: true,
+                          level: { select: { id: true, name: true } },
+                        },
+                      },
+                    },
+                    take: 1,
+                  },
+                },
+              },
+            },
+            orderBy: { chargeDate: 'asc' },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    type DebtorItem = {
+      kind: 'monthly' | 'one_time';
+      id: string;
+      label: string;
+      month?: number;
+      year?: number;
+      totalDue: number;
+      paidAmount: number;
+      remaining: number;
+      status: string;
+    };
+
+    type DebtorRow = {
+      studentId: string;
+      fullName: string;
+      classId: string | null;
+      className: string;
+      levelId: string | null;
+      levelName: string;
+      totalDue: number;
+      paidAmount: number;
+      remaining: number;
+      items: DebtorItem[];
+    };
+
+    const byStudent = new Map<string, DebtorRow>();
+
+    const ensure = (student: {
+      id: string;
+      fullName: string;
+      enrollments: {
+        class: { id: string; name: string; level: { id: string; name: string } | null } | null;
+      }[];
+    }) => {
+      let row = byStudent.get(student.id);
+      if (row) return row;
+      const enr = student.enrollments?.[0];
+      row = {
+        studentId: student.id,
+        fullName: student.fullName,
+        classId: enr?.class?.id ?? null,
+        className: enr?.class?.name ?? '',
+        levelId: enr?.class?.level?.id ?? null,
+        levelName: enr?.class?.level?.name ?? '',
+        totalDue: 0,
+        paidAmount: 0,
+        remaining: 0,
+        items: [],
+      };
+      byStudent.set(student.id, row);
+      return row;
+    };
+
+    for (const c of charges) {
+      const totalDue = Number(c.totalDue);
+      const paidAmount = Number(c.paidAmount);
+      const remaining = Math.max(0, totalDue - paidAmount);
+      if (remaining <= 0.009) continue;
+      const row = ensure(c.student);
+      row.totalDue += totalDue;
+      row.paidAmount += paidAmount;
+      row.remaining += remaining;
+      row.items.push({
+        kind: 'monthly',
+        id: c.id,
+        label: `${monthNames[c.month]} ${c.year}`,
+        month: c.month,
+        year: c.year,
+        totalDue,
+        paidAmount,
+        remaining,
+        status: c.status,
+      });
+    }
+
+    for (const ot of oneTime) {
+      const totalDue = Number(ot.amount);
+      const paidAmount = Number(ot.paidAmount);
+      const remaining = Math.max(0, totalDue - paidAmount);
+      if (remaining <= 0.009) continue;
+      const row = ensure(ot.student);
+      row.totalDue += totalDue;
+      row.paidAmount += paidAmount;
+      row.remaining += remaining;
+      row.items.push({
+        kind: 'one_time',
+        id: ot.id,
+        label: ot.description,
+        totalDue,
+        paidAmount,
+        remaining,
+        status: ot.status,
+      });
+    }
+
+    const debtors = [...byStudent.values()]
+      .filter((d) => d.remaining > 0.009)
+      .sort((a, b) => b.remaining - a.remaining || a.fullName.localeCompare(b.fullName, 'el'));
+
+    const byLevel = new Map<string, { label: string; count: number; remaining: number }>();
+    for (const d of debtors) {
+      const key = d.levelId || 'none';
+      const label = d.levelName || 'Χωρίς βαθμίδα';
+      const cur = byLevel.get(key) ?? { label, count: 0, remaining: 0 };
+      cur.count += 1;
+      cur.remaining += d.remaining;
+      byLevel.set(key, cur);
+    }
+
+    return {
+      scope,
+      month,
+      year,
+      schoolYear: sy.label,
+      totalDebtors: debtors.length,
+      totalRemaining: debtors.reduce((s, d) => s + d.remaining, 0),
+      totalDue: debtors.reduce((s, d) => s + d.totalDue, 0),
+      totalPaid: debtors.reduce((s, d) => s + d.paidAmount, 0),
+      byLevel: [...byLevel.values()].sort((a, b) => b.remaining - a.remaining),
+      debtors,
+    };
+  }
 }
