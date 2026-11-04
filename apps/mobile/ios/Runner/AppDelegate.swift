@@ -4,11 +4,61 @@ import UIKit
 import UserNotifications
 
 // Firebase is configured from Dart (firebase_core / firebase_messaging).
-// Avoid native `import FirebaseCore` / `FirebaseMessaging` — Xcode Cloud Archive
+// Do NOT `import FirebaseCore` / `FirebaseMessaging` — Xcode Cloud Archive
 // failed with "Unable to resolve module dependency" on those modules.
-// Called by: phone_push.dart Firebase.initializeApp + FlutterAppDelegate APNs forwarding.
+// Instead forward the APNs token to FIRMessaging via the ObjC runtime.
 
 private let noticeTaskId = "com.omnedu.omnedu.notices"
+
+/// Holds the latest APNs device token and hands it to Firebase Messaging even
+/// when FlutterFire's swizzling misses `didRegister` under Implicit Engine / UIScene.
+enum IosPush {
+  private static var pendingToken: Data?
+  private static var flushTimer: Timer?
+
+  static func remember(_ deviceToken: Data) {
+    pendingToken = deviceToken
+    applyPending()
+  }
+
+  static func applyPending() {
+    guard let token = pendingToken else { return }
+    guard let messagingClass = NSClassFromString("FIRMessaging") as? NSObject.Type else {
+      // Firebase Messaging not ready yet (Dart configure still pending) — retry briefly.
+      scheduleFlush()
+      return
+    }
+    let messagingSelector = NSSelectorFromString("messaging")
+    guard messagingClass.responds(to: messagingSelector),
+          let messaging = messagingClass.perform(messagingSelector)?.takeUnretainedValue() as? NSObject
+    else {
+      scheduleFlush()
+      return
+    }
+    messaging.setValue(token, forKey: "APNSToken")
+    flushTimer?.invalidate()
+    flushTimer = nil
+  }
+
+  static func register() {
+    UIApplication.shared.registerForRemoteNotifications()
+    applyPending()
+  }
+
+  private static func scheduleFlush() {
+    if flushTimer != nil { return }
+    var tries = 0
+    flushTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
+      tries += 1
+      applyPending()
+      // Stop once applied (timer cleared in applyPending) or after ~30s.
+      if tries >= 30 {
+        timer.invalidate()
+        flushTimer = nil
+      }
+    }
+  }
+}
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -32,10 +82,10 @@ private let noticeTaskId = "com.omnedu.omnedu.notices"
     // FlutterImplicitEngineDelegate (plugins register after didFinishLaunching).
     center.requestAuthorization(options: [.alert, .badge, .sound]) { _, _ in
       DispatchQueue.main.async {
-        application.registerForRemoteNotifications()
+        IosPush.register()
       }
     }
-    application.registerForRemoteNotifications()
+    IosPush.register()
     return ready
   }
 
@@ -55,8 +105,18 @@ private let noticeTaskId = "com.omnedu.omnedu.notices"
     _ application: UIApplication,
     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
   ) {
-    // FlutterAppDelegate + firebase_messaging plugin receive the APNs token.
+    // Critical: assign APNs token to FIRMessaging explicitly. Method swizzling
+    // does not reliably catch this with FlutterImplicitEngineDelegate + UIScene.
+    IosPush.remember(deviceToken)
     super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
+  }
+
+  override func application(
+    _ application: UIApplication,
+    didFailToRegisterForRemoteNotificationsWithError error: Error
+  ) {
+    NSLog("Omnedu APNs registration failed: \(error.localizedDescription)")
+    super.application(application, didFailToRegisterForRemoteNotificationsWithError: error)
   }
 
   override func application(
@@ -77,8 +137,8 @@ private let noticeTaskId = "com.omnedu.omnedu.notices"
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
-    // Re-register after plugins load so firebase_messaging receives the APNs token.
-    UIApplication.shared.registerForRemoteNotifications()
+    // Re-register + flush after plugins load so FIRMessaging can accept APNsToken.
+    IosPush.register()
     let channel = FlutterMethodChannel(
       name: "com.omnedu.omnedu/notices",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
@@ -103,7 +163,12 @@ private let noticeTaskId = "com.omnedu.omnedu.notices"
         IosNotices.refresh { _ in }
         result(nil)
       case "registerPush":
-        UIApplication.shared.registerForRemoteNotifications()
+        IosPush.register()
+        result(nil)
+      case "flushApnsToken":
+        // Called from Dart after Firebase.initializeApp so APNSToken sticks.
+        IosPush.applyPending()
+        IosPush.register()
         result(nil)
       default:
         result(FlutterMethodNotImplemented)
