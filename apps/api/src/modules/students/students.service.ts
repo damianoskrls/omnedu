@@ -11,11 +11,47 @@ const parentUserSelect = {
   phone: true,
   avatarUrl: true,
   vatNumber: true,
+  profession: true,
+  taxOffice: true,
   billingStreet: true,
   billingNumber: true,
   billingPostalCode: true,
   billingCity: true,
 } as const;
+
+type ParentBillingFields = {
+  vatNumber?: string | null;
+  profession?: string | null;
+  taxOffice?: string | null;
+  billingStreet?: string | null;
+  billingNumber?: string | null;
+  billingPostalCode?: string | null;
+  billingCity?: string | null;
+};
+
+function parentBillingUpdate(data: ParentBillingFields) {
+  return {
+    ...(data.vatNumber !== undefined ? { vatNumber: data.vatNumber?.trim() || null } : {}),
+    ...(data.profession !== undefined ? { profession: data.profession?.trim() || null } : {}),
+    ...(data.taxOffice !== undefined ? { taxOffice: data.taxOffice?.trim() || null } : {}),
+    ...(data.billingStreet !== undefined ? { billingStreet: data.billingStreet?.trim() || null } : {}),
+    ...(data.billingNumber !== undefined ? { billingNumber: data.billingNumber?.trim() || null } : {}),
+    ...(data.billingPostalCode !== undefined ? { billingPostalCode: data.billingPostalCode?.trim() || null } : {}),
+    ...(data.billingCity !== undefined ? { billingCity: data.billingCity?.trim() || null } : {}),
+  };
+}
+
+function hasParentBillingUpdate(data: ParentBillingFields) {
+  return (
+    data.vatNumber !== undefined ||
+    data.profession !== undefined ||
+    data.taxOffice !== undefined ||
+    data.billingStreet !== undefined ||
+    data.billingNumber !== undefined ||
+    data.billingPostalCode !== undefined ||
+    data.billingCity !== undefined
+  );
+}
 
 const parentChildSelect = {
   id: true,
@@ -41,6 +77,13 @@ type ParentUser = {
   email: string;
   phone: string | null;
   avatarUrl: string | null;
+  vatNumber: string | null;
+  profession: string | null;
+  taxOffice: string | null;
+  billingStreet: string | null;
+  billingNumber: string | null;
+  billingPostalCode: string | null;
+  billingCity: string | null;
 };
 
 type ParentChild = {
@@ -66,6 +109,13 @@ type ParentCard = {
   phone: string | null;
   avatarUrl: string | null;
   notes: string | null;
+  vatNumber: string | null;
+  profession: string | null;
+  taxOffice: string | null;
+  billingStreet: string | null;
+  billingNumber: string | null;
+  billingPostalCode: string | null;
+  billingCity: string | null;
   children: ParentChild[];
 };
 
@@ -77,6 +127,13 @@ function parentCard(user: ParentUser, notes?: string | null): ParentCard {
     phone: user.phone,
     avatarUrl: user.avatarUrl,
     notes: notes ?? null,
+    vatNumber: user.vatNumber ?? null,
+    profession: user.profession ?? null,
+    taxOffice: user.taxOffice ?? null,
+    billingStreet: user.billingStreet ?? null,
+    billingNumber: user.billingNumber ?? null,
+    billingPostalCode: user.billingPostalCode ?? null,
+    billingCity: user.billingCity ?? null,
     children: [],
   };
 }
@@ -469,12 +526,7 @@ export class StudentsService {
 
   async updateParent(studentId: string, schoolId: string, parentUserId: string, data: {
     fullName?: string; phone?: string; relation?: string; isPrimary?: boolean;
-    vatNumber?: string | null;
-    billingStreet?: string | null;
-    billingNumber?: string | null;
-    billingPostalCode?: string | null;
-    billingCity?: string | null;
-  }) {
+  } & ParentBillingFields) {
     const exists = await this.prisma.studentParent.findFirst({ where: { studentId, userId: parentUserId } });
     if (!exists) throw new Error('Parent link not found');
 
@@ -482,22 +534,14 @@ export class StudentsService {
       if (
         data.fullName !== undefined ||
         data.phone !== undefined ||
-        data.vatNumber !== undefined ||
-        data.billingStreet !== undefined ||
-        data.billingNumber !== undefined ||
-        data.billingPostalCode !== undefined ||
-        data.billingCity !== undefined
+        hasParentBillingUpdate(data)
       ) {
         await tx.user.update({
           where: { id: parentUserId },
           data: {
             ...(data.fullName !== undefined ? { fullName: data.fullName } : {}),
             ...(data.phone !== undefined ? { phone: normalizePhone(data.phone) } : {}),
-            ...(data.vatNumber !== undefined ? { vatNumber: data.vatNumber?.trim() || null } : {}),
-            ...(data.billingStreet !== undefined ? { billingStreet: data.billingStreet?.trim() || null } : {}),
-            ...(data.billingNumber !== undefined ? { billingNumber: data.billingNumber?.trim() || null } : {}),
-            ...(data.billingPostalCode !== undefined ? { billingPostalCode: data.billingPostalCode?.trim() || null } : {}),
-            ...(data.billingCity !== undefined ? { billingCity: data.billingCity?.trim() || null } : {}),
+            ...parentBillingUpdate(data),
           },
         });
       }
@@ -650,13 +694,30 @@ export class StudentsService {
     return parent;
   }
 
-  async createStandaloneParent(schoolId: string, data: { fullName: string; email?: string; phone?: string; notes?: string }) {
+  async createStandaloneParent(schoolId: string, data: {
+    fullName: string; email?: string; phone?: string; notes?: string;
+  } & ParentBillingFields) {
     return this.prisma.$transaction(async (tx) => {
       const email = data.email?.trim() || `parent-${randomBytes(8).toString('hex')}@omnedu.placeholder`;
       let user = await this.findUserByContact(tx, data.email, data.phone);
       if (!user) {
         user = await tx.user.create({
-          data: { email, fullName: data.fullName, phone: normalizePhone(data.phone), passwordHash: randomBytes(32).toString('hex') },
+          data: {
+            email,
+            fullName: data.fullName,
+            phone: normalizePhone(data.phone),
+            passwordHash: randomBytes(32).toString('hex'),
+            ...parentBillingUpdate(data),
+          },
+        });
+      } else if (hasParentBillingUpdate(data) || data.fullName) {
+        user = await tx.user.update({
+          where: { id: user.id },
+          data: {
+            ...(data.fullName ? { fullName: data.fullName } : {}),
+            ...(data.phone !== undefined ? { phone: normalizePhone(data.phone) } : {}),
+            ...parentBillingUpdate(data),
+          },
         });
       }
       const existing = await tx.schoolMember.findFirst({ where: { schoolId, userId: user.id, role: 'parent' } });
@@ -674,12 +735,7 @@ export class StudentsService {
 
   async updateStandaloneParent(schoolId: string, userId: string, data: {
     fullName?: string; email?: string; phone?: string; notes?: string;
-    vatNumber?: string | null;
-    billingStreet?: string | null;
-    billingNumber?: string | null;
-    billingPostalCode?: string | null;
-    billingCity?: string | null;
-  }) {
+  } & ParentBillingFields) {
     const member = await this.prisma.schoolMember.findFirst({ where: { schoolId, userId } });
     if (!member) throw new NotFoundException('Ο γονέας δεν βρέθηκε');
     await Promise.all([
@@ -689,11 +745,7 @@ export class StudentsService {
           ...(data.fullName !== undefined ? { fullName: data.fullName } : {}),
           ...(data.phone !== undefined ? { phone: normalizePhone(data.phone) } : {}),
           ...(data.email !== undefined ? { email: data.email } : {}),
-          ...(data.vatNumber !== undefined ? { vatNumber: data.vatNumber?.trim() || null } : {}),
-          ...(data.billingStreet !== undefined ? { billingStreet: data.billingStreet?.trim() || null } : {}),
-          ...(data.billingNumber !== undefined ? { billingNumber: data.billingNumber?.trim() || null } : {}),
-          ...(data.billingPostalCode !== undefined ? { billingPostalCode: data.billingPostalCode?.trim() || null } : {}),
-          ...(data.billingCity !== undefined ? { billingCity: data.billingCity?.trim() || null } : {}),
+          ...parentBillingUpdate(data),
         },
       }),
       data.notes !== undefined

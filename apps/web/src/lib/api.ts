@@ -184,6 +184,8 @@ export const studentsApi = {
   updateParent: (schoolId: string, id: string, parentUserId: string, data: {
     fullName?: string; phone?: string; relation?: string; isPrimary?: boolean;
     vatNumber?: string | null;
+    profession?: string | null;
+    taxOffice?: string | null;
     billingStreet?: string | null;
     billingNumber?: string | null;
     billingPostalCode?: string | null;
@@ -224,11 +226,21 @@ export const classesApi = {
     api.delete(`/schools/${schoolId}/classes/${classId}/teachers/${userId}`),
 };
 
+type ParentBillingPayload = {
+  vatNumber?: string | null;
+  profession?: string | null;
+  taxOffice?: string | null;
+  billingStreet?: string | null;
+  billingNumber?: string | null;
+  billingPostalCode?: string | null;
+  billingCity?: string | null;
+};
+
 export const parentsApi = {
   list: (schoolId: string) => api.get(`/schools/${schoolId}/parents`),
-  create: (schoolId: string, data: { fullName: string; email?: string; phone?: string; notes?: string }) =>
+  create: (schoolId: string, data: { fullName: string; email?: string; phone?: string; notes?: string } & ParentBillingPayload) =>
     api.post(`/schools/${schoolId}/parents`, data),
-  update: (schoolId: string, userId: string, data: { fullName?: string; email?: string; phone?: string; notes?: string }) =>
+  update: (schoolId: string, userId: string, data: { fullName?: string; email?: string; phone?: string; notes?: string } & ParentBillingPayload) =>
     api.patch(`/schools/${schoolId}/parents/${userId}`, data),
   delete: (schoolId: string, userId: string) =>
     api.delete(`/schools/${schoolId}/parents/${userId}`),
@@ -375,6 +387,8 @@ export const fiscalApi = {
       country?: string;
       street?: string;
       number?: string;
+      profession?: string;
+      taxOffice?: string;
       postalCode?: string;
       city?: string;
     };

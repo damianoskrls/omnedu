@@ -1289,6 +1289,8 @@ export default function StudentProfilePage() {
                                 relation: p.relation,
                                 isPrimary: p.isPrimary,
                                 vatNumber: p.user.vatNumber || '',
+                                profession: p.user.profession || '',
+                                taxOffice: p.user.taxOffice || '',
                                 billingStreet: p.user.billingStreet || '',
                                 billingNumber: p.user.billingNumber || '',
                                 billingPostalCode: p.user.billingPostalCode || '',
@@ -2217,6 +2219,8 @@ export default function StudentProfilePage() {
                       userId: p.userId || p.user?.id,
                       fullName: p.user?.fullName || '',
                       vatNumber: p.user?.vatNumber || null,
+                      profession: p.user?.profession || null,
+                      taxOffice: p.user?.taxOffice || null,
                       billingStreet: p.user?.billingStreet || null,
                       billingNumber: p.user?.billingNumber || null,
                       billingPostalCode: p.user?.billingPostalCode || null,
@@ -2307,6 +2311,8 @@ export default function StudentProfilePage() {
                           userId: p.userId || p.user?.id,
                           fullName: p.user?.fullName || '',
                           vatNumber: p.user?.vatNumber || null,
+                          profession: p.user?.profession || null,
+                          taxOffice: p.user?.taxOffice || null,
                           billingStreet: p.user?.billingStreet || null,
                           billingNumber: p.user?.billingNumber || null,
                           billingPostalCode: p.user?.billingPostalCode || null,
@@ -2888,6 +2894,8 @@ export default function StudentProfilePage() {
                                             userId: p.userId || p.user?.id,
                                             fullName: p.user?.fullName || '',
                                             vatNumber: p.user?.vatNumber || null,
+                                            profession: p.user?.profession || null,
+                                            taxOffice: p.user?.taxOffice || null,
                                             billingStreet: p.user?.billingStreet || null,
                                             billingNumber: p.user?.billingNumber || null,
                                             billingPostalCode: p.user?.billingPostalCode || null,
@@ -3670,17 +3678,37 @@ export default function StudentProfilePage() {
                 <div className="space-y-3 rounded-xl border border-indigo-50 bg-indigo-50/40 p-3">
                   <p className="text-xs font-semibold text-indigo-900">Στοιχεία για παραστατικά (πελάτης)</p>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">ΑΦΜ γονέα</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Επάγγελμα</label>
                     <input
-                      value={parentForm.vatNumber || ''}
-                      onChange={e => setParentForm({ ...parentForm, vatNumber: e.target.value })}
+                      value={parentForm.profession || ''}
+                      onChange={e => setParentForm({ ...parentForm, profession: e.target.value })}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
-                      placeholder="π.χ. 125944067"
+                      placeholder="π.χ. Ιδιωτικός υπάλληλος"
                     />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">ΑΦΜ γονέα</label>
+                      <input
+                        value={parentForm.vatNumber || ''}
+                        onChange={e => setParentForm({ ...parentForm, vatNumber: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                        placeholder="π.χ. 125944067"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">ΔΟΥ</label>
+                      <input
+                        value={parentForm.taxOffice || ''}
+                        onChange={e => setParentForm({ ...parentForm, taxOffice: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                        placeholder="π.χ. Α΄ Αθηνών"
+                      />
+                    </div>
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     <div className="col-span-2">
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Οδός</label>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Διεύθυνση</label>
                       <input
                         value={parentForm.billingStreet || ''}
                         onChange={e => setParentForm({ ...parentForm, billingStreet: e.target.value })}
@@ -3755,6 +3783,8 @@ export default function StudentProfilePage() {
                         relation: parentForm.relation,
                         isPrimary: parentForm.isPrimary,
                         vatNumber: parentForm.vatNumber || null,
+                        profession: parentForm.profession || null,
+                        taxOffice: parentForm.taxOffice || null,
                         billingStreet: parentForm.billingStreet || null,
                         billingNumber: parentForm.billingNumber || null,
                         billingPostalCode: parentForm.billingPostalCode || null,

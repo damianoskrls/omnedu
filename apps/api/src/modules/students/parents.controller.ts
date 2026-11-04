@@ -19,7 +19,16 @@ export class ParentsController {
   @Roles('school_admin')
   create(
     @Param('schoolId') schoolId: string,
-    @Body() body: { fullName: string; email?: string; phone?: string; notes?: string },
+    @Body() body: {
+      fullName: string; email?: string; phone?: string; notes?: string;
+      vatNumber?: string | null;
+      profession?: string | null;
+      taxOffice?: string | null;
+      billingStreet?: string | null;
+      billingNumber?: string | null;
+      billingPostalCode?: string | null;
+      billingCity?: string | null;
+    },
   ) {
     return this.students.createStandaloneParent(schoolId, body);
   }
@@ -38,6 +47,8 @@ export class ParentsController {
     @Body() body: {
       fullName?: string; email?: string; phone?: string; notes?: string;
       vatNumber?: string | null;
+      profession?: string | null;
+      taxOffice?: string | null;
       billingStreet?: string | null;
       billingNumber?: string | null;
       billingPostalCode?: string | null;

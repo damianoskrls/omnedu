@@ -8,6 +8,8 @@ export type FiscalParentOption = {
   userId: string;
   fullName: string;
   vatNumber?: string | null;
+  profession?: string | null;
+  taxOffice?: string | null;
   billingStreet?: string | null;
   billingNumber?: string | null;
   billingPostalCode?: string | null;
@@ -54,36 +56,37 @@ const MONTHS_GR = [
   'Ιούλιος', 'Αύγουστος', 'Σεπτέμβριος', 'Οκτώβριος', 'Νοέμβριος', 'Δεκέμβριος',
 ];
 
-function applyParent(
-  parent: FiscalParentOption | undefined,
-  studentAddress: string | null | undefined,
-  setters: {
-    setCpVat: (v: string) => void;
-    setCpName: (v: string) => void;
-    setCpStreet: (v: string) => void;
-    setCpNumber: (v: string) => void;
-    setCpPostal: (v: string) => void;
-    setCpCity: (v: string) => void;
-  },
-) {
-  setters.setCpName(parent?.fullName || '');
-  setters.setCpVat(parent?.vatNumber || '');
-  setters.setCpStreet(parent?.billingStreet || studentAddress || '');
-  setters.setCpNumber(parent?.billingNumber || '');
-  setters.setCpPostal(parent?.billingPostalCode || '');
-  setters.setCpCity(parent?.billingCity || '');
-}
-
-function clearCustomer(setters: {
+type CpSetters = {
   setCpVat: (v: string) => void;
   setCpName: (v: string) => void;
   setCpStreet: (v: string) => void;
   setCpNumber: (v: string) => void;
   setCpPostal: (v: string) => void;
   setCpCity: (v: string) => void;
-}) {
+  setCpProfession: (v: string) => void;
+  setCpTaxOffice: (v: string) => void;
+};
+
+function applyParent(
+  parent: FiscalParentOption | undefined,
+  studentAddress: string | null | undefined,
+  setters: CpSetters,
+) {
+  setters.setCpName(parent?.fullName || '');
+  setters.setCpVat(parent?.vatNumber || '');
+  setters.setCpProfession(parent?.profession || '');
+  setters.setCpTaxOffice(parent?.taxOffice || '');
+  setters.setCpStreet(parent?.billingStreet || studentAddress || '');
+  setters.setCpNumber(parent?.billingNumber || '');
+  setters.setCpPostal(parent?.billingPostalCode || '');
+  setters.setCpCity(parent?.billingCity || '');
+}
+
+function clearCustomer(setters: CpSetters) {
   setters.setCpName('');
   setters.setCpVat('');
+  setters.setCpProfession('');
+  setters.setCpTaxOffice('');
   setters.setCpStreet('');
   setters.setCpNumber('');
   setters.setCpPostal('');
@@ -96,6 +99,8 @@ function mapParents(raw: any[]): FiscalParentOption[] {
       userId: p.userId || p.user?.id,
       fullName: p.user?.fullName || p.fullName || '',
       vatNumber: p.user?.vatNumber ?? p.vatNumber ?? null,
+      profession: p.user?.profession ?? p.profession ?? null,
+      taxOffice: p.user?.taxOffice ?? p.taxOffice ?? null,
       billingStreet: p.user?.billingStreet ?? p.billingStreet ?? null,
       billingNumber: p.user?.billingNumber ?? p.billingNumber ?? null,
       billingPostalCode: p.user?.billingPostalCode ?? p.billingPostalCode ?? null,
@@ -135,6 +140,8 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued, a
   const [cpNumber, setCpNumber] = useState('');
   const [cpPostal, setCpPostal] = useState('');
   const [cpCity, setCpCity] = useState('');
+  const [cpProfession, setCpProfession] = useState('');
+  const [cpTaxOffice, setCpTaxOffice] = useState('');
   const [defaults, setDefaults] = useState<any>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -150,7 +157,7 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued, a
   const [loadingStudent, setLoadingStudent] = useState(false);
 
   const setters = useMemo(() => ({
-    setCpVat, setCpName, setCpStreet, setCpNumber, setCpPostal, setCpCity,
+    setCpVat, setCpName, setCpStreet, setCpNumber, setCpPostal, setCpCity, setCpProfession, setCpTaxOffice,
   }), []);
 
   const suggestions = useMemo(
@@ -317,6 +324,8 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued, a
           number: cpNumber.trim() || undefined,
           postalCode: cpPostal.trim() || undefined,
           city: cpCity.trim() || undefined,
+          profession: cpProfession.trim() || undefined,
+          taxOffice: cpTaxOffice.trim() || undefined,
         },
       });
       if (doc?.status === 'failed') {
@@ -588,9 +597,19 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued, a
               <label className="block text-xs text-gray-600 mb-1">Επωνυμία / Ονοματεπώνυμο *</label>
               <input value={cpName} onChange={(e) => setCpName(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" />
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Επάγγελμα</label>
+                <input value={cpProfession} onChange={(e) => setCpProfession(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">ΔΟΥ</label>
+                <input value={cpTaxOffice} onChange={(e) => setCpTaxOffice(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" />
+              </div>
+            </div>
             <div className="grid grid-cols-3 gap-2">
               <div className="col-span-2">
-                <label className="block text-xs text-gray-600 mb-1">Οδός</label>
+                <label className="block text-xs text-gray-600 mb-1">Διεύθυνση</label>
                 <input value={cpStreet} onChange={(e) => setCpStreet(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" />
               </div>
               <div>

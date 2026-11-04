@@ -13,9 +13,29 @@ type ParentRow = {
   email?: string;
   phone?: string | null;
   notes?: string | null;
+  vatNumber?: string | null;
+  profession?: string | null;
+  taxOffice?: string | null;
+  billingStreet?: string | null;
+  billingNumber?: string | null;
+  billingPostalCode?: string | null;
+  billingCity?: string | null;
   children?: Child[];
 };
 type StudentOption = { id: string; fullName: string; className?: string };
+type ParentFormState = {
+  fullName: string;
+  email: string;
+  phone: string;
+  notes: string;
+  profession: string;
+  vatNumber: string;
+  taxOffice: string;
+  billingStreet: string;
+  billingNumber: string;
+  billingPostalCode: string;
+  billingCity: string;
+};
 
 function errText(error: any) {
   const message = error?.response?.data?.message ?? error?.message;
@@ -23,7 +43,113 @@ function errText(error: any) {
   return message || 'Σφάλμα';
 }
 
-const emptyForm = () => ({ fullName: '', email: '', phone: '', notes: '' });
+const emptyForm = (): ParentFormState => ({
+  fullName: '',
+  email: '',
+  phone: '',
+  notes: '',
+  profession: '',
+  vatNumber: '',
+  taxOffice: '',
+  billingStreet: '',
+  billingNumber: '',
+  billingPostalCode: '',
+  billingCity: '',
+});
+
+function billingPayload(form: ParentFormState) {
+  return {
+    profession: form.profession.trim() || null,
+    vatNumber: form.vatNumber.trim() || null,
+    taxOffice: form.taxOffice.trim() || null,
+    billingStreet: form.billingStreet.trim() || null,
+    billingNumber: form.billingNumber.trim() || null,
+    billingPostalCode: form.billingPostalCode.trim() || null,
+    billingCity: form.billingCity.trim() || null,
+  };
+}
+
+function ParentBillingFields({
+  form,
+  onChange,
+}: {
+  form: ParentFormState;
+  onChange: (next: ParentFormState) => void;
+}) {
+  const set = (key: keyof ParentFormState, value: string) => onChange({ ...form, [key]: value });
+  return (
+    <div className="space-y-3 rounded-xl border border-indigo-50 bg-indigo-50/40 p-3">
+      <p className="text-xs font-semibold text-indigo-900">Στοιχεία για παραστατικά</p>
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">Επάγγελμα</label>
+        <input
+          value={form.profession}
+          onChange={(e) => set('profession', e.target.value)}
+          placeholder="π.χ. Ιδιωτικός υπάλληλος"
+          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">ΑΦΜ</label>
+          <input
+            value={form.vatNumber}
+            onChange={(e) => set('vatNumber', e.target.value)}
+            placeholder="π.χ. 125944067"
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">ΔΟΥ</label>
+          <input
+            value={form.taxOffice}
+            onChange={(e) => set('taxOffice', e.target.value)}
+            placeholder="π.χ. Α΄ Αθηνών"
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <div className="col-span-2">
+          <label className="block text-xs font-medium text-gray-600 mb-1">Διεύθυνση</label>
+          <input
+            value={form.billingStreet}
+            onChange={(e) => set('billingStreet', e.target.value)}
+            placeholder="Οδός"
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Αρ.</label>
+          <input
+            value={form.billingNumber}
+            onChange={(e) => set('billingNumber', e.target.value)}
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Τ.Κ.</label>
+          <input
+            value={form.billingPostalCode}
+            onChange={(e) => set('billingPostalCode', e.target.value)}
+            placeholder="π.χ. 11527"
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Πόλη</label>
+          <input
+            value={form.billingCity}
+            onChange={(e) => set('billingCity', e.target.value)}
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function ParentsPage() {
   const user = useStoredUser();
@@ -94,6 +220,7 @@ export default function ParentsPage() {
         email: createForm.email.trim() || undefined,
         phone: createForm.phone.trim() || undefined,
         notes: createForm.notes.trim() || undefined,
+        ...billingPayload(createForm),
       });
       setShowCreate(false);
       setCreateForm(emptyForm());
@@ -107,7 +234,19 @@ export default function ParentsPage() {
 
   const openEdit = (parent: ParentRow) => {
     setEditTarget(parent);
-    setEditForm({ fullName: parent.fullName, email: parent.email ?? '', phone: parent.phone ?? '', notes: parent.notes ?? '' });
+    setEditForm({
+      fullName: parent.fullName,
+      email: parent.email ?? '',
+      phone: parent.phone ?? '',
+      notes: parent.notes ?? '',
+      profession: parent.profession ?? '',
+      vatNumber: parent.vatNumber ?? '',
+      taxOffice: parent.taxOffice ?? '',
+      billingStreet: parent.billingStreet ?? '',
+      billingNumber: parent.billingNumber ?? '',
+      billingPostalCode: parent.billingPostalCode ?? '',
+      billingCity: parent.billingCity ?? '',
+    });
     setEditChildren(parent.children ?? []);
     setEditError('');
     setChildSearch('');
@@ -134,6 +273,7 @@ export default function ParentsPage() {
         email: editForm.email.trim() || undefined,
         phone: editForm.phone.trim() || undefined,
         notes: editForm.notes,
+        ...billingPayload(editForm),
       });
       setEditTarget(null);
       reload();
@@ -283,7 +423,7 @@ export default function ParentsPage() {
       {/* Create modal */}
       {showCreate && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100">
               <h3 className="text-lg font-bold text-gray-900">Νέος Γονέας</h3>
               <button onClick={() => setShowCreate(false)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
@@ -332,6 +472,7 @@ export default function ParentsPage() {
                   className="w-full resize-none border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
                 />
               </div>
+              <ParentBillingFields form={createForm} onChange={setCreateForm} />
               {createError && <p className="text-sm text-red-500">{createError}</p>}
             </div>
             <div className="flex justify-end gap-2 px-6 pb-6">
@@ -398,6 +539,7 @@ export default function ParentsPage() {
                     className="w-full resize-none border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
                   />
                 </div>
+                <ParentBillingFields form={editForm} onChange={setEditForm} />
               </div>
 
               {/* Children management */}
