@@ -7,6 +7,7 @@ import { eventDisplayStatus } from '@/lib/event-status';
 import { payerOptions, paymentNote } from '@/lib/payment-note';
 import { PaymentConfirmModal, PaymentPrompt } from '@/components/PaymentConfirmModal';
 import { PaymentDetailsLink } from '@/components/PaymentDetailsLink';
+import { PaymentHistoryStrip } from '@/components/PaymentHistoryStrip';
 import { FiscalIssueModal, type FiscalIssuePrefill } from '@/components/FiscalIssueModal';
 import { useStoredUser } from '@/lib/auth';
 import { currentMonthKey } from '@/lib/month-quote';
@@ -1041,9 +1042,7 @@ export default function BillingPage() {
                         </button>
                       </div>
                     </div>
-                    {charge.notes && (
-                      <div className="mt-2 text-xs text-gray-400 pl-0">{charge.notes}</div>
-                    )}
+                    <PaymentHistoryStrip notes={charge.notes} compact />
                   </div>
                 );
               })}
