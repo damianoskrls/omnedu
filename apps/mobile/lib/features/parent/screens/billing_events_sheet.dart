@@ -1,22 +1,26 @@
 import 'package:flutter/material.dart';
 
+import 'events_screen.dart';
+
 Future<void> showBillingEventsSheet(
   BuildContext context, {
+  required String schoolId,
   required List<Map<String, dynamic>> events,
-  VoidCallback? onOpenEventsTab,
-}) {
-  return showModalBottomSheet<void>(
+}) async {
+  final eventId = await showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => _BillingEventsSheet(events: events, onOpenEventsTab: onOpenEventsTab),
+    builder: (_) => _BillingEventsSheet(events: events),
   );
+  if (eventId == null || eventId.isEmpty) return;
+  if (!context.mounted) return;
+  openParentEvent(context, schoolId, eventId);
 }
 
 class _BillingEventsSheet extends StatelessWidget {
   final List<Map<String, dynamic>> events;
-  final VoidCallback? onOpenEventsTab;
-  const _BillingEventsSheet({required this.events, this.onOpenEventsTab});
+  const _BillingEventsSheet({required this.events});
 
   static const _statusLabel = {
     'pending_consent': 'Αναμονή συναίνεσης',
@@ -66,9 +70,19 @@ class _BillingEventsSheet extends StatelessWidget {
             child: Row(
               children: [
                 const Expanded(
-                  child: Text(
-                    'Εκδηλώσεις',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Color(0xFF111827)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Εκδηλώσεις',
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Color(0xFF111827)),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Πάτα μια εκδρομή για λεπτομέρειες',
+                        style: TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+                      ),
+                    ],
                   ),
                 ),
                 IconButton(
@@ -102,7 +116,7 @@ class _BillingEventsSheet extends StatelessWidget {
                     child: Text('Δεν υπάρχουν χρεώσεις εκδηλώσεων.', style: TextStyle(color: Color(0xFF9CA3AF))),
                   )
                 : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                     itemCount: ordered.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
                     itemBuilder: (context, i) {
@@ -119,79 +133,68 @@ class _BillingEventsSheet extends StatelessWidget {
                         final parts = date.substring(0, 10).split('-');
                         if (parts.length == 3) when = '${parts[2]}/${parts[1]}/${parts[0]}';
                       }
-                      return Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
+                      final eventId = e['eventId']?.toString() ?? '';
+                      return Material(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        child: InkWell(
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFFE5E7EB)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
+                          onTap: eventId.isEmpty ? null : () => Navigator.pop(context, eventId),
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: const Color(0xFFE5E7EB)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Expanded(
-                                  child: Text(
-                                    e['title']?.toString() ?? 'Εκδήλωση',
-                                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF111827)),
-                                  ),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        e['title']?.toString() ?? 'Εκδήλωση',
+                                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF111827)),
+                                      ),
+                                    ),
+                                    Text(
+                                      '€${cost.toStringAsFixed(2)}',
+                                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF111827)),
+                                    ),
+                                    if (eventId.isNotEmpty) ...[
+                                      const SizedBox(width: 6),
+                                      const Icon(Icons.chevron_right_rounded, color: Color(0xFF77328D), size: 22),
+                                    ],
+                                  ],
                                 ),
+                                const SizedBox(height: 6),
                                 Text(
-                                  '€${cost.toStringAsFixed(2)}',
-                                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF111827)),
+                                  [
+                                    e['studentName']?.toString() ?? '',
+                                    if (when.isNotEmpty) when,
+                                  ].where((p) => p.isNotEmpty).join(' · '),
+                                  style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+                                ),
+                                const SizedBox(height: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: color.withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Text(
+                                    label,
+                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color),
+                                  ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 6),
-                            Text(
-                              [
-                                e['studentName']?.toString() ?? '',
-                                if (when.isNotEmpty) when,
-                              ].where((p) => p.isNotEmpty).join(' · '),
-                              style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
-                            ),
-                            const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: color.withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                label,
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color),
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
                       );
                     },
                   ),
           ),
-          if (onOpenEventsTab != null)
-            SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      onOpenEventsTab!();
-                    },
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF77328D),
-                      side: const BorderSide(color: Color(0xFFD8B4E2)),
-                      minimumSize: const Size.fromHeight(48),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    ),
-                    child: const Text('Άνοιγμα καρτέλας Εκδηλώσεις', style: TextStyle(fontWeight: FontWeight.w700)),
-                  ),
-                ),
-              ),
-            ),
         ],
       ),
     );
