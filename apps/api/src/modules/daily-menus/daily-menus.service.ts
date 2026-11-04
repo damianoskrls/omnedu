@@ -1,5 +1,6 @@
 import { BadRequestException, HttpException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { dateOnly, ensureMenuSchema, menuUnique, normalizeAudience, weekdaysOfMonth } from './menu-audience';
 import { parseMenuJson, parseMenuText, ParsedMenu } from './menu-text.parser';
 
@@ -12,6 +13,23 @@ type MenuInput = {
   notes?: string;
   audienceType?: string;
   audienceIds?: unknown;
+};
+
+type MealSlot = 'midMorning' | 'lunch';
+
+type EmergencyChangeBody = {
+  mode?: 'replace' | 'swap';
+  meal?: MealSlot;
+  date?: string;
+  newValue?: string;
+  swapWithDate?: string;
+  audienceType?: string;
+  audienceIds?: unknown;
+};
+
+const MEAL_LABELS: Record<MealSlot, string> = {
+  midMorning: 'Δεκατιανό',
+  lunch: 'Μεσημεριανό',
 };
 
 const AI_PROMPT = `Είσαι βοηθός παιδικού σταθμού. Διάβασε το διατροφολόγιο και επέστρεψε ΜΟΝΟ JSON:
@@ -27,7 +45,10 @@ const AI_PROMPT = `Είσαι βοηθός παιδικού σταθμού. Δι
 export class DailyMenusService implements OnModuleInit {
   private readonly logger = new Logger(DailyMenusService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notifications: NotificationsService,
+  ) {}
 
   async onModuleInit() {
     await this.ensureSchema();
@@ -238,6 +259,180 @@ export class DailyMenusService implements OnModuleInit {
       throw new BadRequestException(parsed?.warnings?.[0] || heuristic?.warnings?.[0] || 'Δεν αναγνωρίστηκε διατροφολόγιο στο αρχείο.');
     }
     return parsed;
+  }
+
+  async emergencyChange(schoolId: string, body: EmergencyChangeBody) {
+    await this.ensureSchema();
+    const mode = body.mode === 'swap' ? 'swap' : 'replace';
+    if (body.meal !== 'midMorning' && body.meal !== 'lunch') {
+      throw new BadRequestException('Διάλεξε δεκατιανό ή μεσημεριανό.');
+    }
+    const meal: MealSlot = body.meal;
+    if (!/^\d{4}-\d{2}-\d{2}/.test(String(body.date || ''))) {
+      throw new BadRequestException('Διάλεξε ημερομηνία.');
+    }
+    const audience = normalizeAudience(body.audienceType, body.audienceIds);
+    const date = String(body.date).slice(0, 10);
+    const mealLabel = MEAL_LABELS[meal];
+
+    if (mode === 'replace') {
+      const newValue = String(body.newValue ?? '').trim();
+      if (!newValue) throw new BadRequestException('Γράψε με τι θα αντικατασταθεί το γεύμα.');
+      const existing = await this.prisma.dailyMenu.findUnique({
+        where: menuUnique(schoolId, dateOnly(date), audience.audienceType, audience.audienceIds),
+      });
+      const previous = (existing?.[meal] ?? '').trim() || '—';
+      const updated = await this.upsert(schoolId, {
+        date,
+        breakfast: existing?.breakfast ?? undefined,
+        midMorning: meal === 'midMorning' ? newValue : (existing?.midMorning ?? undefined),
+        lunch: meal === 'lunch' ? newValue : (existing?.lunch ?? undefined),
+        afternoon: existing?.afternoon ?? undefined,
+        notes: existing?.notes ?? undefined,
+        ...audience,
+      });
+      const dateLabel = this.formatGreekDate(date);
+      const bodyText = previous === '—'
+        ? `${mealLabel} ${dateLabel}: ${newValue}.`
+        : `${mealLabel} ${dateLabel}: αντί για «${previous}» → «${newValue}».`;
+      await this.notifyMenuChange(schoolId, audience.audienceType, audience.audienceIds, {
+        title: 'Έκτακτη αλλαγή διατροφολόγιου',
+        body: bodyText,
+        date,
+        meal,
+        mode,
+      });
+      return { mode, meal, date, previous, next: newValue, days: [updated] };
+    }
+
+    const swapWith = String(body.swapWithDate || this.nextWeekday(date)).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(swapWith)) {
+      throw new BadRequestException('Διάλεξε τη δεύτερη ημερομηνία για ανταλλαγή.');
+    }
+    if (swapWith === date) throw new BadRequestException('Διάλεξε δύο διαφορετικές ημέρες.');
+
+    const a = await this.prisma.dailyMenu.findUnique({
+      where: menuUnique(schoolId, dateOnly(date), audience.audienceType, audience.audienceIds),
+    });
+    const b = await this.prisma.dailyMenu.findUnique({
+      where: menuUnique(schoolId, dateOnly(swapWith), audience.audienceType, audience.audienceIds),
+    });
+    const valueA = (a?.[meal] ?? '').trim();
+    const valueB = (b?.[meal] ?? '').trim();
+    if (!valueA && !valueB) {
+      throw new BadRequestException('Καμία από τις δύο ημέρες δεν έχει καταχωρημένο αυτό το γεύμα.');
+    }
+
+    const mealsFor = (
+      row: { breakfast?: string | null; midMorning?: string | null; lunch?: string | null; afternoon?: string | null; notes?: string | null } | null,
+      slotValue: string,
+    ) => ({
+      breakfast: row?.breakfast ?? undefined,
+      midMorning: meal === 'midMorning' ? (slotValue || undefined) : (row?.midMorning ?? undefined),
+      lunch: meal === 'lunch' ? (slotValue || undefined) : (row?.lunch ?? undefined),
+      afternoon: row?.afternoon ?? undefined,
+      notes: row?.notes ?? undefined,
+    });
+
+    const updatedA = await this.upsert(schoolId, { date, ...mealsFor(a, valueB), ...audience });
+    const updatedB = await this.upsert(schoolId, { date: swapWith, ...mealsFor(b, valueA), ...audience });
+
+    const bodyText =
+      `Ανταλλαγή ${mealLabel.toLowerCase()}: ${this.formatGreekDate(date)} («${valueA || '—'}») ↔ ` +
+      `${this.formatGreekDate(swapWith)} («${valueB || '—'}»).`;
+    await this.notifyMenuChange(schoolId, audience.audienceType, audience.audienceIds, {
+      title: 'Έκτακτη αλλαγή διατροφολόγιου',
+      body: bodyText,
+      date,
+      meal,
+      mode,
+      swapWithDate: swapWith,
+    });
+    return {
+      mode,
+      meal,
+      date,
+      swapWithDate: swapWith,
+      previous: valueA || '—',
+      next: valueB || '—',
+      days: [updatedA, updatedB],
+    };
+  }
+
+  private nextWeekday(isoDate: string): string {
+    const base = dateOnly(isoDate);
+    for (let i = 1; i <= 7; i++) {
+      const next = new Date(base);
+      next.setUTCDate(base.getUTCDate() + i);
+      const dow = next.getUTCDay();
+      if (dow !== 0 && dow !== 6) return next.toISOString().slice(0, 10);
+    }
+    throw new BadRequestException('Δεν βρέθηκε επόμενη εργάσιμη ημέρα.');
+  }
+
+  private formatGreekDate(iso: string) {
+    const [y, m, d] = iso.split('-').map(Number);
+    if (!y || !m || !d) return iso;
+    return `${d}/${m}/${y}`;
+  }
+
+  private async notifyMenuChange(
+    schoolId: string,
+    audienceType: string,
+    audienceIdsJson: string,
+    payload: {
+      title: string;
+      body: string;
+      date: string;
+      meal: MealSlot;
+      mode: string;
+      swapWithDate?: string;
+    },
+  ) {
+    const userIds = await this.menuRecipientIds(schoolId, audienceType, audienceIdsJson);
+    if (!userIds.length) return;
+    await this.notifications.notifyUsers(schoolId, userIds, {
+      event: 'menu_change',
+      type: 'menu_change',
+      title: payload.title,
+      body: payload.body,
+      data: {
+        screen: 'menu',
+        date: payload.date,
+        meal: payload.meal,
+        mode: payload.mode,
+        ...(payload.swapWithDate ? { swapWithDate: payload.swapWithDate } : {}),
+      },
+    });
+  }
+
+  private async menuRecipientIds(schoolId: string, audienceType: string, audienceIdsJson: string) {
+    let ids: string[] = [];
+    try {
+      const parsed = JSON.parse(audienceIdsJson || '[]');
+      if (Array.isArray(parsed)) ids = parsed.map(String);
+    } catch {
+      ids = [];
+    }
+    if (audienceType === 'teachers') {
+      const members = await this.prisma.schoolMember.findMany({
+        where: { schoolId, role: 'teacher', isActive: true },
+        select: { userId: true },
+      });
+      return members.map((member) => member.userId);
+    }
+    const parents = await this.prisma.studentParent.findMany({
+      where: {
+        student: {
+          schoolId,
+          isActive: true,
+          ...(audienceType === 'class' ? { enrollments: { some: { classId: { in: ids } } } } : {}),
+          ...(audienceType === 'level' ? { enrollments: { some: { class: { levelId: { in: ids } } } } } : {}),
+        },
+      },
+      select: { userId: true },
+    });
+    return [...new Set(parents.map((parent) => parent.userId))];
   }
 
   async clearMonth(schoolId: string, month: string, audienceType?: string, audienceIds?: unknown) {

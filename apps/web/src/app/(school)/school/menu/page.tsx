@@ -4,8 +4,8 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { classesApi, dailyMenusApi, levelsApi, menuTemplatesApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
-import { ChevronLeft, ChevronRight, Save, X, LayoutTemplate, Plus, Trash2, CheckCircle, Upload, Copy } from 'lucide-react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, isToday, getDay } from 'date-fns';
+import { ChevronLeft, ChevronRight, Save, X, LayoutTemplate, Plus, Trash2, CheckCircle, Upload, Copy, AlertTriangle, ArrowLeftRight } from 'lucide-react';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, isToday, getDay, addDays } from 'date-fns';
 import { el } from 'date-fns/locale';
 import { AudienceSelector, AudienceValue, audienceLabel } from '@/components/AudienceSelector';
 
@@ -50,6 +50,16 @@ function errorText(err: any) {
   return typeof message === 'string' ? message : 'Κάτι πήγε στραβά. Δοκίμασε ξανά.';
 }
 
+function nextWeekdayIso(iso: string) {
+  let cursor = new Date(`${iso}T12:00:00`);
+  for (let i = 0; i < 7; i++) {
+    cursor = addDays(cursor, 1);
+    const dow = getDay(cursor);
+    if (dow !== 0 && dow !== 6) return format(cursor, 'yyyy-MM-dd');
+  }
+  return iso;
+}
+
 export default function MenuPage() {
   const user = useStoredUser();
   const schoolId = user?.schoolId ?? '';
@@ -84,6 +94,15 @@ export default function MenuPage() {
   const [notesSaving, setNotesSaving] = useState(false);
   const [notesSaved, setNotesSaved] = useState(false);
 
+  const [emergencyOpen, setEmergencyOpen] = useState(false);
+  const [emMode, setEmMode] = useState<'replace' | 'swap'>('replace');
+  const [emMeal, setEmMeal] = useState<'midMorning' | 'lunch'>('lunch');
+  const [emDate, setEmDate] = useState('');
+  const [emSwapDate, setEmSwapDate] = useState('');
+  const [emNewValue, setEmNewValue] = useState('');
+  const [emSaving, setEmSaving] = useState(false);
+  const [emDone, setEmDone] = useState('');
+
   const monthKey = format(currentMonth, 'yyyy-MM');
   const monthLabel = format(currentMonth, 'LLLL yyyy', { locale: el });
   const who = audienceLabel(audience.audienceType, audience.audienceIds, classes, levels);
@@ -93,7 +112,8 @@ export default function MenuPage() {
     setLoading(true);
     try {
       const from = format(startOfMonth(currentMonth), 'yyyy-MM-dd');
-      const to = format(endOfMonth(currentMonth), 'yyyy-MM-dd');
+      // +7 days so έκτακτη ανταλλαγή στο τέλος του μήνα βλέπει και την επόμενη εργάσιμη.
+      const to = format(addDays(endOfMonth(currentMonth), 7), 'yyyy-MM-dd');
       const [data, notesRow] = await Promise.all([
         dailyMenusApi.list(schoolId, {
           from,
@@ -316,8 +336,64 @@ export default function MenuPage() {
     }
   };
 
+  const openEmergency = () => {
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const inMonth = today.startsWith(monthKey) ? today : format(startOfMonth(currentMonth), 'yyyy-MM-dd');
+    const weekday = (() => {
+      const d = new Date(`${inMonth}T12:00:00`);
+      const dow = getDay(d);
+      if (dow === 0 || dow === 6) return nextWeekdayIso(inMonth);
+      return inMonth;
+    })();
+    setEmMode('replace');
+    setEmMeal('lunch');
+    setEmDate(weekday);
+    setEmSwapDate(nextWeekdayIso(weekday));
+    setEmNewValue('');
+    setEmDone('');
+    setEmergencyOpen(true);
+  };
+
+  const submitEmergency = async () => {
+    if (!emDate) return;
+    setEmSaving(true);
+    setPageError('');
+    setEmDone('');
+    try {
+      await dailyMenusApi.emergencyChange(schoolId, {
+        mode: emMode,
+        meal: emMeal,
+        date: emDate,
+        newValue: emMode === 'replace' ? emNewValue : undefined,
+        swapWithDate: emMode === 'swap' ? emSwapDate : undefined,
+        audienceType: audience.audienceType,
+        audienceIds: audience.audienceIds,
+      });
+      setEmDone(emMode === 'swap' ? 'Η ανταλλαγή αποθηκεύτηκε και ειδοποιήθηκαν οι γονείς.' : 'Η αλλαγή αποθηκεύτηκε και ειδοποιήθηκαν οι γονείς.');
+      await loadMenus();
+      setTimeout(() => {
+        setEmergencyOpen(false);
+        setEmDone('');
+      }, 1600);
+    } catch (err) {
+      setPageError(errorText(err));
+    } finally {
+      setEmSaving(false);
+    }
+  };
+
   const days = eachDayOfInterval({ start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) });
+  const weekdayOptions = (() => {
+    const spanEnd = addDays(endOfMonth(currentMonth), 7);
+    return eachDayOfInterval({ start: startOfMonth(currentMonth), end: spanEnd }).filter((day) => {
+      const dow = getDay(day);
+      return dow !== 0 && dow !== 6;
+    });
+  })();
   const firstDayOfWeek = (getDay(startOfMonth(currentMonth)) + 6) % 7;
+  const emCurrent = emDate ? (menus[emDate]?.[emMeal] || '') : '';
+  const emSwapCurrent = emSwapDate ? (menus[emSwapDate]?.[emMeal] || '') : '';
+  const emMealLabel = emMeal === 'midMorning' ? 'Δεκατιανό' : 'Μεσημεριανό';
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -348,6 +424,9 @@ export default function MenuPage() {
               <Upload size={15} /> Ανέβασμα JPG / PDF
             </button>
             <input ref={fileRef} type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,image/jpeg,image/png,image/webp,application/pdf" hidden onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ''; }} />
+            <button onClick={openEmergency} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100">
+              <AlertTriangle size={15} /> Έκτακτη αλλαγή
+            </button>
             <button onClick={clearMonth} disabled={saving} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50">
               <Trash2 size={15} /> Καθαρισμός μήνα
             </button>
@@ -494,6 +573,155 @@ export default function MenuPage() {
           </div>
         )}
       </div>
+
+      {emergencyOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Έκτακτη αλλαγή</h2>
+                <p className="text-sm text-gray-500">Για {who} · οι γονείς ειδοποιούνται αμέσως</p>
+              </div>
+              <button onClick={() => setEmergencyOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-medium text-gray-800 mb-2">Γεύμα</p>
+                <div className="flex gap-2">
+                  {([
+                    { key: 'midMorning' as const, label: 'Δεκατιανό' },
+                    { key: 'lunch' as const, label: 'Μεσημεριανό' },
+                  ]).map((option) => (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => setEmMeal(option.key)}
+                      className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium border ${
+                        emMeal === option.key
+                          ? 'border-indigo-600 bg-indigo-50 text-indigo-800'
+                          : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm font-medium text-gray-800 mb-2">Τύπος αλλαγής</p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEmMode('replace')}
+                    className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium border ${
+                      emMode === 'replace'
+                        ? 'border-indigo-600 bg-indigo-50 text-indigo-800'
+                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    Αντικατάσταση
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmMode('swap');
+                      if (emDate && !emSwapDate) setEmSwapDate(nextWeekdayIso(emDate));
+                    }}
+                    className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium border flex items-center justify-center gap-1.5 ${
+                      emMode === 'swap'
+                        ? 'border-indigo-600 bg-indigo-50 text-indigo-800'
+                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    <ArrowLeftRight size={14} /> Ανταλλαγή ημερών
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-800 mb-1">Ημέρα</label>
+                <select
+                  value={emDate}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setEmDate(next);
+                    if (emMode === 'swap') setEmSwapDate(nextWeekdayIso(next));
+                  }}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  {weekdayOptions.map((day) => {
+                    const key = format(day, 'yyyy-MM-dd');
+                    return (
+                      <option key={key} value={key}>
+                        {format(day, 'EEEE d MMMM', { locale: el })}
+                      </option>
+                    );
+                  })}
+                </select>
+                <p className="mt-2 text-sm text-gray-600">
+                  Τώρα: <span className="font-medium text-gray-900">{emCurrent || '— δεν υπάρχει καταχώρηση'}</span>
+                </p>
+              </div>
+
+              {emMode === 'replace' ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-800 mb-1">Νέο {emMealLabel.toLowerCase()}</label>
+                  <input
+                    value={emNewValue}
+                    onChange={(e) => setEmNewValue(e.target.value)}
+                    placeholder={emMeal === 'lunch' ? 'πχ. Ψάρι φιλέτο με ρύζι' : 'πχ. Μπανάνα και κουλούρι'}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-gray-800 mb-1">Ανταλλαγή με</label>
+                  <select
+                    value={emSwapDate}
+                    onChange={(e) => setEmSwapDate(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {weekdayOptions.map((day) => {
+                      const key = format(day, 'yyyy-MM-dd');
+                      return (
+                        <option key={key} value={key} disabled={key === emDate}>
+                          {format(day, 'EEEE d MMMM', { locale: el })}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <p className="mt-2 text-sm text-gray-600">
+                    Εκεί: <span className="font-medium text-gray-900">{emSwapCurrent || '— δεν υπάρχει καταχώρηση'}</span>
+                  </p>
+                  <p className="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                    Θα ανταλλαχθεί το {emMealLabel.toLowerCase()}: «{emCurrent || '—'}» ↔ «{emSwapCurrent || '—'}».
+                  </p>
+                </div>
+              )}
+
+              {emDone && (
+                <p className="text-sm text-green-700 bg-green-50 border border-green-100 rounded-lg px-3 py-2">{emDone}</p>
+              )}
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button onClick={() => setEmergencyOpen(false)} className="flex-1 border border-gray-300 text-gray-700 rounded-lg py-2 text-sm hover:bg-gray-50">
+                Άκυρο
+              </button>
+              <button
+                onClick={submitEmergency}
+                disabled={emSaving || (emMode === 'replace' && !emNewValue.trim()) || (emMode === 'swap' && (!emSwapDate || emSwapDate === emDate))}
+                className="flex-1 bg-amber-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-amber-700 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                <AlertTriangle size={14} />
+                {emSaving ? 'Αποθήκευση...' : 'Αποθήκευση & ειδοποίηση'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {editDay && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
