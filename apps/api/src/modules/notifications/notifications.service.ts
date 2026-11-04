@@ -411,6 +411,9 @@ export class NotificationsService implements OnModuleInit {
         aps: {
           alert: { title: title.slice(0, 120), body: body.slice(0, 180) },
           sound: 'default',
+          // Wake the app briefly so iOS can refresh inbox even if the banner
+          // was already shown from the alert payload.
+          contentAvailable: true,
         },
       },
     };

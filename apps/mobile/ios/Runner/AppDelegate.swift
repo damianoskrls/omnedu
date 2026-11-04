@@ -27,7 +27,15 @@ private let noticeTaskId = "com.omnedu.omnedu.notices"
     let ready = super.application(application, didFinishLaunchingWithOptions: launchOptions)
     let center = UNUserNotificationCenter.current()
     center.delegate = self
-    center.requestAuthorization(options: [.alert, .badge, .sound]) { _, _ in }
+    // Ask for permission, then register with APNs so FCM can deliver when the
+    // app is backgrounded / killed. FlutterFire alone often misses this under
+    // FlutterImplicitEngineDelegate (plugins register after didFinishLaunching).
+    center.requestAuthorization(options: [.alert, .badge, .sound]) { _, _ in
+      DispatchQueue.main.async {
+        application.registerForRemoteNotifications()
+      }
+    }
+    application.registerForRemoteNotifications()
     return ready
   }
 
@@ -69,6 +77,8 @@ private let noticeTaskId = "com.omnedu.omnedu.notices"
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    // Re-register after plugins load so firebase_messaging receives the APNs token.
+    UIApplication.shared.registerForRemoteNotifications()
     let channel = FlutterMethodChannel(
       name: "com.omnedu.omnedu/notices",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
@@ -91,6 +101,9 @@ private let noticeTaskId = "com.omnedu.omnedu.notices"
         result(nil)
       case "check":
         IosNotices.refresh { _ in }
+        result(nil)
+      case "registerPush":
+        UIApplication.shared.registerForRemoteNotifications()
         result(nil)
       default:
         result(FlutterMethodNotImplemented)
