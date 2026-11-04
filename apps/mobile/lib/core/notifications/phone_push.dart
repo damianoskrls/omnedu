@@ -5,6 +5,9 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+import 'ios_notices.dart';
 
 /// Public Firebase app values. Android and iPhone each use their own app id.
 class PhonePushConfig {
@@ -41,10 +44,58 @@ Future<void> _ensureFirebase() async {
   }
 }
 
+Future<void> ensurePushAndroidChannel() async {
+  if (kIsWeb || !Platform.isAndroid) return;
+  const channel = AndroidNotificationChannel(
+    'oneirochora',
+    'Ονειροχώρα',
+    description: 'Μηνύματα, δελτία και πληρωμές',
+    importance: Importance.max,
+  );
+  final plugin = FlutterLocalNotificationsPlugin();
+  await plugin
+      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(channel);
+}
+
 @pragma('vm:entry-point')
 Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
   if (!PhonePushConfig.ready) return;
+  WidgetsFlutterBinding.ensureInitialized();
   await _ensureFirebase();
+  // notification+data payloads are shown by the OS. Show a local banner only
+  // for data-only messages so backgrounded Android still gets a tray entry.
+  if (message.notification != null) return;
+  final title = message.data['title']?.toString() ?? 'Ονειροχώρα';
+  final body = message.data['body']?.toString() ?? '';
+  if (title.trim().isEmpty && body.trim().isEmpty) return;
+  try {
+    final plugin = FlutterLocalNotificationsPlugin();
+    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+    await plugin.initialize(settings: const InitializationSettings(android: android, iOS: DarwinInitializationSettings()));
+    await ensurePushAndroidChannel();
+    await plugin.show(
+      id: message.messageId?.hashCode ?? DateTime.now().millisecondsSinceEpoch & 0x7fffffff,
+      title: title,
+      body: body,
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'oneirochora',
+          'Ονειροχώρα',
+          channelDescription: 'Μηνύματα, δελτία και πληρωμές',
+          importance: Importance.max,
+          priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+          presentBanner: true,
+          presentList: true,
+        ),
+      ),
+    );
+  } catch (_) {}
 }
 
 bool _phonePushListening = false;
@@ -76,7 +127,9 @@ Future<void> startPhonePush({
     await FirebaseMessaging.instance.requestPermission(alert: true, badge: true, sound: true);
     if (Platform.isIOS) {
       await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(alert: true, badge: true, sound: true);
+      await registerIosRemoteNotifications();
     }
+    await ensurePushAndroidChannel();
   } catch (_) {}
   FirebaseMessaging.onMessage.listen((message) {
     if (Platform.isIOS && message.notification != null) return;
@@ -114,9 +167,11 @@ Future<void> _publishPhoneToken(Future<void> Function(String token) onToken) asy
       if (settings.authorizationStatus == AuthorizationStatus.notDetermined) {
         await FirebaseMessaging.instance.requestPermission(alert: true, badge: true, sound: true);
       }
-      for (var attempt = 0; attempt < 12; attempt++) {
+      await registerIosRemoteNotifications();
+      for (var attempt = 0; attempt < 20; attempt++) {
         final apns = await FirebaseMessaging.instance.getAPNSToken();
         if (apns != null && apns.isNotEmpty) break;
+        if (attempt == 4 || attempt == 10) await registerIosRemoteNotifications();
         await Future<void>.delayed(const Duration(seconds: 1));
       }
     }

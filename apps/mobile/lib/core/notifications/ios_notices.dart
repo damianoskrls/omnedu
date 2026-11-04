@@ -40,3 +40,11 @@ Future<void> checkIosNotices() async {
     await _channel.invokeMethod('check');
   } catch (_) {}
 }
+
+/// Asks iOS to (re)register for APNs so FCM tokens work when the app is closed.
+Future<void> registerIosRemoteNotifications() async {
+  if (kIsWeb || !Platform.isIOS) return;
+  try {
+    await _channel.invokeMethod('registerPush');
+  } catch (_) {}
+}

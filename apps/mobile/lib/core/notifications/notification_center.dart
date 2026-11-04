@@ -134,6 +134,7 @@ class _NotificationWatcherState extends ConsumerState<NotificationWatcher> with 
           if (payload != null && mounted) _openPayload(payload);
         },
       );
+      await ensurePushAndroidChannel();
       await _plugin
           .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
           ?.requestNotificationsPermission();
