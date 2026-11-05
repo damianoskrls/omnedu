@@ -227,9 +227,8 @@ export class NotificationsService implements OnModuleInit {
             this.logPushFailures(res);
           } catch (e) {
             this.logger.error('FCM send error', e);
-            const code = String((e as { code?: string; errorInfo?: { code?: string } })?.errorInfo?.code
-              || (e as { code?: string })?.code
-              || 'fcm-send-error');
+            const err = e as { code?: string; name?: string; errorInfo?: { code?: string } };
+            const code = String(err?.errorInfo?.code || err?.code || err?.name || 'fcm-send-error');
             pushFailureCounts.set(code, (pushFailureCounts.get(code) ?? 0) + 1);
           }
         }
@@ -500,7 +499,9 @@ export class NotificationsService implements OnModuleInit {
       code === 'messaging/authentication-error' ||
       code === 'messaging/mismatched-credential' ||
       code === 'app/invalid-credential' ||
-      code === 'auth/invalid-credential',
+      code === 'auth/invalid-credential' ||
+      code === 'AuthError' ||
+      /invalid.?credential/i.test(code),
     );
     const onlyStale = codes.length > 0 && codes.every((code) =>
       code.includes('registration-token-not-registered') ||
