@@ -1239,18 +1239,15 @@ class _MeetingCountdownBadgeState extends State<_MeetingCountdownBadge>
 
   @override
   Widget build(BuildContext context) {
-    final label = widget.daysLeft <= 0
-        ? 'Σήμερα'
-        : widget.daysLeft == 1
-            ? 'αύριο'
-            : 'ημέρες';
+    final isToday = widget.daysLeft <= 0;
+    final isTomorrow = widget.daysLeft == 1;
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
         return Transform.scale(
           scale: _scale.value,
           child: Container(
-            width: 64,
+            width: 72,
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
@@ -1270,26 +1267,41 @@ class _MeetingCountdownBadgeState extends State<_MeetingCountdownBadge>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  widget.daysLeft <= 0 ? '!' : '${_count.value}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    height: 1,
+                if (isToday) ...[
+                  const Text(
+                    'Σήμερα',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w900, height: 1.1),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  label,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    height: 1.1,
+                ] else if (isTomorrow) ...[
+                  const Text(
+                    'Αύριο',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900, height: 1.1),
                   ),
-                ),
+                ] else ...[
+                  const Text(
+                    'σε',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700, height: 1),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${_count.value}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      height: 1,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  const Text(
+                    'ημέρες',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700, height: 1.1),
+                  ),
+                ],
               ],
             ),
           ),
