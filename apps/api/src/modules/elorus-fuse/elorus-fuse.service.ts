@@ -388,11 +388,28 @@ export class ElorusFuseService {
       },
     });
 
+    // Fuse OpenAPI: for invoice_type 11.x (retail), cp_name / cp_vat / cp_country /
+    // cp_address are ignored unless Tax-free. The printed document then shows
+    // «Πελάτης λιανικής». Put customer text on the line so it still appears.
+    // For 2.1 invoices, cp_* is required and is rendered in the ΠΕΛΑΤΗΣ block.
+    const customerLineBits = counterparty
+      ? [
+          counterparty.name,
+          [counterparty.street, counterparty.number].filter(Boolean).join(' ').trim(),
+          [counterparty.postalCode, counterparty.city].filter(Boolean).join(' ').trim(),
+          counterparty.vatNumber ? `ΑΦΜ ${counterparty.vatNumber}` : '',
+        ].filter(Boolean)
+      : [];
+    const lineDescription =
+      kind === 'retail_receipt' && customerLineBits.length
+        ? `${description} — ${customerLineBits.join(', ')}`
+        : description;
+
     const line: FuseCreateInvoicePayload['lines'][number] = {
       net_value: money(net),
       vat_category: vatCategory,
       vat_amount: money(vatAmount),
-      description,
+      description: lineDescription,
     };
     if (vatExemptionCategory != null) {
       line.vat_exemption_category = vatExemptionCategory;
@@ -400,6 +417,7 @@ export class ElorusFuseService {
 
     const payload: FuseCreateInvoicePayload = {
       issuer_vat_number: issuerVat,
+      issuer_name: String(school.name || '').trim() || undefined,
       invoice_type: invoiceType,
       number,
       issue_date: issueDateStr,
@@ -411,7 +429,8 @@ export class ElorusFuseService {
       payment_methods: [{ type: paymentMethodType, amount: money(gross) }],
     };
 
-    if (counterparty) {
+    // Only send counterparty on invoices (2.1). Retail 11.2 ignores these fields.
+    if (kind === 'service_invoice' && counterparty) {
       payload.cp_vat_number = counterparty.vatNumber;
       payload.cp_name = counterparty.name;
       payload.cp_country = counterparty.country || 'GR';
