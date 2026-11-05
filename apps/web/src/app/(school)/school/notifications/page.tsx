@@ -354,6 +354,9 @@ export default function NotificationsPage() {
       const result: any = await broadcastsApi.send(schoolId, payload);
       if (form.channels.includes('push')) {
         const diagnosis = result?.pushDiagnosis?.message as string | undefined;
+        const failureBits = Array.isArray(result?.pushFailures)
+          ? result.pushFailures.map((f: any) => `${f.code}×${f.count}`).join(', ')
+          : '';
         if (diagnosis) {
           setSendNote(diagnosis);
         } else if (!result?.pushConfigured) {
@@ -363,7 +366,11 @@ export default function NotificationsPage() {
         } else if (result?.pushDelivered > 0) {
           setSendNote(`Έφτασε σε ${result.pushDelivered} κινητά, ακόμα και αν η εφαρμογή είναι κλειστή.`);
         } else {
-          setSendNote('Η ειδοποίηση μπήκε στην εφαρμογή, αλλά δεν παραδόθηκε σε κινητό.');
+          setSendNote(
+            failureBits
+              ? `Η ειδοποίηση μπήκε στην εφαρμογή, αλλά το FCM απέτυχε: ${failureBits}`
+              : 'Η ειδοποίηση μπήκε στην εφαρμογή, αλλά δεν παραδόθηκε σε κινητό.',
+          );
         }
       } else {
         setSendNote('Η ειδοποίηση καταχωρήθηκε.');
@@ -556,7 +563,7 @@ export default function NotificationsPage() {
       )}
       {isAdmin && pushConfigured === true && pushDevices > 0 && (
         <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          Push έτοιμο: {pushDevices} συσκευές (iOS {iosDevices} · Android {androidDevices}). Αν iPhone δεν χτυπάει με κλειστή εφαρμογή, στο Firebase → Cloud Messaging πρέπει να υπάρχει APNs Authentication Key (.p8) για το iOS app.
+          Push έτοιμο: {pushDevices} συσκευές (iOS {iosDevices} · Android {androidDevices}). Αν δεις σφάλμα APNs μετά την αποστολή, στο Firebase → Cloud Messaging έλεγξε ότι Key ID + Team ID ταιριάζουν με το Apple .p8 (όχι μόνο ότι υπάρχει ανεβασμένο).
         </div>
       )}
 

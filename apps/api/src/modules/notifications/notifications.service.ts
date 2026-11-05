@@ -227,9 +227,8 @@ export class NotificationsService implements OnModuleInit {
             this.logPushFailures(res);
           } catch (e) {
             this.logger.error('FCM send error', e);
-            const code = String((e as { code?: string; errorInfo?: { code?: string } })?.errorInfo?.code
-              || (e as { code?: string })?.code
-              || 'fcm-send-error');
+            const err = e as { code?: string; name?: string; errorInfo?: { code?: string } };
+            const code = String(err?.errorInfo?.code || err?.code || err?.name || 'fcm-send-error');
             pushFailureCounts.set(code, (pushFailureCounts.get(code) ?? 0) + 1);
           }
         }
@@ -477,6 +476,7 @@ export class NotificationsService implements OnModuleInit {
     delivered: number;
     failures: { code: string; count: number }[];
   }) {
+    const failureText = input.failures.map((f) => `${f.code}×${f.count}`).join(', ');
     if (!input.configured) {
       return {
         code: 'missing_firebase_env',
@@ -489,20 +489,51 @@ export class NotificationsService implements OnModuleInit {
         message: 'Κανένα κινητό δεν έχει δηλώσει FCM token. Άνοιξε το app 1.0.46+, δώσε άδεια ειδοποιήσεων.',
       };
     }
-    const top = input.failures[0]?.code || '';
-    if (top.includes('third-party-auth') || top.includes('apns') || top.includes('AuthError')) {
+    const codes = input.failures.map((f) => f.code);
+    const hasApnsAuth = codes.some((code) =>
+      code.includes('third-party-auth-error') ||
+      code.includes('third-party-auth') ||
+      /apns/i.test(code),
+    );
+    const hasServerAuth = codes.some((code) =>
+      code === 'messaging/authentication-error' ||
+      code === 'messaging/mismatched-credential' ||
+      code === 'app/invalid-credential' ||
+      code === 'auth/invalid-credential' ||
+      code === 'AuthError' ||
+      /invalid.?credential/i.test(code),
+    );
+    const onlyStale = codes.length > 0 && codes.every((code) =>
+      code.includes('registration-token-not-registered') ||
+      code.includes('invalid-registration-token') ||
+      code.includes('unregistered'),
+    );
+    if (hasServerAuth) {
       return {
-        code: 'apns_not_configured',
-        message: 'Το Firebase δεν έχει έγκυρο APNs key (.p8) για το iOS app. Ανέβασέ το στο Firebase → Cloud Messaging.',
+        code: 'firebase_service_account',
+        message: `Λάθος Firebase service account στον server (PRIVATE_KEY/CLIENT_EMAIL). FCM: ${failureText}`,
+      };
+    }
+    if (hasApnsAuth) {
+      return {
+        code: 'apns_auth_failed',
+        message: `Το APNs key στο Firebase απορρίφθηκε από την Apple (Key ID / Team ID / .p8). Έλεγξε Cloud Messaging. FCM: ${failureText}`,
       };
     }
     if (input.delivered > 0) {
-      return { code: 'ok', message: `Παραδόθηκε σε ${input.delivered} συσκευές.` };
+      const extra = failureText ? ` (αποτυχίες: ${failureText})` : '';
+      return { code: 'ok', message: `Παραδόθηκε σε ${input.delivered} συσκευές.${extra}` };
+    }
+    if (onlyStale) {
+      return {
+        code: 'stale_tokens',
+        message: `Τα FCM tokens είναι παλιά/άκυρα. Ξαναάνοιξε το app 1.0.46+ για νέο token. FCM: ${failureText}`,
+      };
     }
     if (input.failures.length) {
       return {
         code: 'fcm_rejected',
-        message: `Το FCM απέρριψε την αποστολή (${input.failures.map((f) => `${f.code}×${f.count}`).join(', ')}).`,
+        message: `Το FCM απέρριψε την αποστολή (${failureText}).`,
       };
     }
     return { code: 'unknown', message: 'Δεν παραδόθηκε push· έλεγξε Firebase APNs και tokens.' };
