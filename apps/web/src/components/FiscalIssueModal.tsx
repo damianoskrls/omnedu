@@ -291,7 +291,20 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued, a
       return;
     }
     if (kind === 'service_invoice' && !cpVat.trim()) {
-      setError('Για τιμολόγιο απαιτείται ΑΦΜ παραλήπτη');
+      const country = cpCountry.trim().toUpperCase() || 'GR';
+      setError(
+        country === 'GR'
+          ? 'Για τιμολόγιο στην Ελλάδα απαιτείται ΑΦΜ παραλήπτη (9 ψηφία)'
+          : 'Για ενδοκοινοτικό/εξωτερικό τιμολόγιο βάλε ΑΦΜ/VAT του πελάτη και σωστή χώρα (π.χ. DE, CY)',
+      );
+      return;
+    }
+    if (
+      kind === 'service_invoice' &&
+      (cpCountry.trim().toUpperCase() || 'GR') === 'GR' &&
+      !/^\d{9}$/.test(cpVat.trim().replace(/[\s.-]/g, ''))
+    ) {
+      setError('Το ελληνικό ΑΦΜ πρέπει να είναι 9 ψηφία. Για πελάτη εξωτερικού άλλαξε τη Χώρα.');
       return;
     }
     if (recipientMode === 'student' && allowStudentPicker && !studentId && !prefill?.studentId) {
@@ -394,7 +407,7 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued, a
                 }`}
               >
                 <div className="font-semibold">Τιμολόγιο</div>
-                <div className="text-[11px] opacity-70">Με όνομα/ΑΦΜ στο ΠΕΛΑΤΗΣ · 2.1</div>
+                <div className="text-[11px] opacity-70">ΠΕΛΑΤΗΣ · GR 2.1 / ΕΕ 2.2 / εκτός 2.3</div>
               </button>
             </div>
             {kind === 'retail_receipt' ? (
@@ -402,11 +415,13 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued, a
                 Στο Elorus Fuse / myDATA η απόδειξη <strong>11.2</strong> δείχνει πάντα «Πελάτης λιανικής»
                 — τα πεδία ονόματος/διεύθυνσης <em>αγνοούνται</em> από το API.
                 Το όνομα μπαίνει στην περιγραφή γραμμής. Για εμφάνιση στο μπλοκ ΠΕΛΑΤΗΣ επίλεξε{' '}
-                <strong>Τιμολόγιο</strong> (απαιτεί ΑΦΜ).
+                <strong>Τιμολόγιο</strong> (απαιτεί ΑΦΜ/VAT).
               </p>
             ) : (
               <p className="mt-2 rounded-lg bg-emerald-50 text-emerald-900 text-[11px] leading-relaxed px-3 py-2">
-                Το τιμολόγιο <strong>2.1</strong> στέλνει όνομα, ΑΦΜ και διεύθυνση στο Fuse και εμφανίζονται στο παραστατικό.
+                Τιμολόγιο: <strong>GR → 2.1</strong>, χώρα ΕΕ → <strong>2.2</strong> (ενδοκοινοτικό),
+                εκτός ΕΕ → <strong>2.3</strong>. Για ΕΕ/εξωτερικό το σύστημα στέλνει συνήθως ΦΠΑ 0%
+                (απαλλαγή) — επιβεβαίωσε με λογιστή.
               </p>
             )}
           </div>
@@ -597,14 +612,45 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued, a
             )}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-gray-600 mb-1">ΑΦΜ {kind === 'service_invoice' ? '*' : ''}</label>
-                <input value={cpVat} onChange={(e) => setCpVat(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" />
+                <label className="block text-xs text-gray-600 mb-1">
+                  {(cpCountry.trim().toUpperCase() || 'GR') === 'GR' ? 'ΑΦΜ' : 'ΑΦΜ / VAT'}
+                  {kind === 'service_invoice' ? ' *' : ''}
+                </label>
+                <input
+                  value={cpVat}
+                  onChange={(e) => setCpVat(e.target.value)}
+                  placeholder={(cpCountry.trim().toUpperCase() || 'GR') === 'GR' ? '123456789' : 'π.χ. DE123456789'}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                />
               </div>
               <div>
-                <label className="block text-xs text-gray-600 mb-1">Χώρα</label>
-                <input value={cpCountry} onChange={(e) => setCpCountry(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" />
+                <label className="block text-xs text-gray-600 mb-1">Χώρα {kind === 'service_invoice' ? '*' : ''}</label>
+                <select
+                  value={(cpCountry.trim().toUpperCase() || 'GR')}
+                  onChange={(e) => setCpCountry(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                >
+                  <option value="GR">Ελλάδα (GR) · 2.1</option>
+                  <option value="CY">Κύπρος (CY) · 2.2</option>
+                  <option value="BG">Βουλγαρία (BG) · 2.2</option>
+                  <option value="DE">Γερμανία (DE) · 2.2</option>
+                  <option value="FR">Γαλλία (FR) · 2.2</option>
+                  <option value="IT">Ιταλία (IT) · 2.2</option>
+                  <option value="NL">Ολλανδία (NL) · 2.2</option>
+                  <option value="RO">Ρουμανία (RO) · 2.2</option>
+                  <option value="ES">Ισπανία (ES) · 2.2</option>
+                  <option value="GB">Ην. Βασίλειο (GB) · 2.3</option>
+                  <option value="US">ΗΠΑ (US) · 2.3</option>
+                  <option value="CH">Ελβετία (CH) · 2.3</option>
+                </select>
               </div>
             </div>
+            {kind === 'service_invoice' && (cpCountry.trim().toUpperCase() || 'GR') !== 'GR' && (
+              <p className="text-[11px] text-indigo-800 bg-indigo-50 rounded-lg px-3 py-2">
+                Ενδοκοινοτικό/εξωτερικό τιμολόγιο: βάλε το VAT χωρίς ή με πρόθεμα χώρας· η χώρα επιλέγεται δίπλα.
+                Το myDATA type θα είναι {['CY','BG','DE','FR','IT','NL','RO','ES','AT','BE','HR','CZ','DK','EE','FI','HU','IE','LV','LT','LU','MT','PL','PT','SK','SI','SE'].includes(cpCountry.trim().toUpperCase()) ? '2.2' : '2.3'}.
+              </p>
+            )}
             <div>
               <label className="block text-xs text-gray-600 mb-1">Επωνυμία / Ονοματεπώνυμο *</label>
               <input value={cpName} onChange={(e) => setCpName(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" />
