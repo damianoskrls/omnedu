@@ -10,7 +10,7 @@ import { noteWithoutPayment, payerOptions, paymentNote, PaymentInfo, readPayment
 import { createReceiptFile } from '@/lib/receipt-pdf';
 import { PaymentConfirmModal, PaymentPrompt } from '@/components/PaymentConfirmModal';
 import { PaymentDetailsLink } from '@/components/PaymentDetailsLink';
-import { FiscalIssueModal, type FiscalIssuePrefill } from '@/components/FiscalIssueModal';
+import { buildFiscalIssueHref } from '@/components/FiscalIssueForm';
 import { FiscalDocumentsList } from '@/components/FiscalDocumentsList';
 import { useStoredUser } from '@/lib/auth';
 import { PersonAvatar } from '@/components/PersonAvatar';
@@ -106,7 +106,11 @@ export default function StudentProfilePage() {
   const schoolId = user?.schoolId ?? '';
   const [student, setStudent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState('general');
+  const [tab, setTab] = useState(() => {
+    if (typeof window === 'undefined') return 'general';
+    const t = new URLSearchParams(window.location.search).get('tab');
+    return t || 'general';
+  });
   const [attendanceData, setAttendanceData] = useState<any>(null);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [healthFocus, setHealthFocus] = useState<'all' | 'meds' | 'forms'>('all');
@@ -134,10 +138,9 @@ export default function StudentProfilePage() {
   const [statement, setStatement] = useState<any>(null);
   const [studentReceipts, setStudentReceipts] = useState<any[]>([]);
   const [fiscalDocuments, setFiscalDocuments] = useState<any[]>([]);
-  const [fiscalIssueOpen, setFiscalIssueOpen] = useState(false);
-  const [fiscalPrefill, setFiscalPrefill] = useState<FiscalIssuePrefill | null>(null);
   const [refreshingFiscalId, setRefreshingFiscalId] = useState<string | null>(null);
   const [resendingFiscalId, setResendingFiscalId] = useState<string | null>(null);
+  const [creditingFiscalId, setCreditingFiscalId] = useState<string | null>(null);
   const [oneTimeCharges, setOneTimeCharges] = useState<any[]>([]);
   const [chargesLoading, setChargesLoading] = useState(false);
   const [subsidies, setSubsidies] = useState<any[]>([]);
@@ -2211,28 +2214,13 @@ export default function StudentProfilePage() {
                   const paid = Number(target.paidAmount || 0);
                   const due = Number(target.totalDue || 0);
                   const suggested = paid > 0.005 ? paid : due;
-                  setFiscalPrefill({
+                  router.push(buildFiscalIssueHref({
                     studentId: id,
-                    studentName: student?.fullName,
-                    studentAddress: student?.address || null,
-                    parents: (student?.parents || []).map((p: any) => ({
-                      userId: p.userId || p.user?.id,
-                      fullName: p.user?.fullName || '',
-                      vatNumber: p.user?.vatNumber || null,
-                      profession: p.user?.profession || null,
-                      taxOffice: p.user?.taxOffice || null,
-                      billingStreet: p.user?.billingStreet || null,
-                      billingNumber: p.user?.billingNumber || null,
-                      billingPostalCode: p.user?.billingPostalCode || null,
-                      billingCity: p.user?.billingCity || null,
-                      isPrimary: Boolean(p.isPrimary),
-                      relation: p.relation || null,
-                    })).filter((p: any) => p.userId && p.fullName),
                     monthlyChargeId: target.chargeId || undefined,
-                    grossAmount: suggested > 0 ? suggested : undefined,
+                    amount: suggested > 0 ? suggested : undefined,
                     description: target.description || monthFiscalDescription(target),
-                  });
-                  setFiscalIssueOpen(true);
+                    returnTo: `/school/students/${id}?tab=billing`,
+                  }));
                 }}
                 onResendFiscal={async (docId) => {
                   setResendingFiscalId(docId);
@@ -2246,6 +2234,29 @@ export default function StudentProfilePage() {
                   }
                 }}
                 resendingFiscalId={resendingFiscalId}
+                onCreditFiscal={async (doc) => {
+                  const kind =
+                    doc.documentKind === 'service_invoice'
+                      ? 'πιστωτικό τιμολόγιο (5.1)'
+                      : 'πιστωτικό απόδειξης (11.4)';
+                  const ok = window.confirm(
+                    `Έκδοση ${kind} για ${doc.series}-${doc.number} (€${Number(doc.grossValue).toFixed(2)}) μέσω Elorus Fuse;\n\nΘα δημιουργηθεί νέο παραστατικό με τα ίδια ποσά.`,
+                  );
+                  if (!ok) return;
+                  setCreditingFiscalId(doc.id);
+                  try {
+                    const result: any = await fiscalApi.credit(schoolId, doc.id);
+                    if (result?.status === 'failed') {
+                      window.alert(result.errorMessage || 'Η έκδοση πιστωτικού απέτυχε');
+                    }
+                    await loadBillingData();
+                  } catch (err: any) {
+                    window.alert(err?.response?.data?.message || err?.message || 'Αποτυχία έκδοσης πιστωτικού');
+                  } finally {
+                    setCreditingFiscalId(null);
+                  }
+                }}
+                creditingFiscalId={creditingFiscalId}
                 onPayExtra={(extra) => {
                   if (extra.kind === 'event') {
                     const enrollment = (student.eventEnrollments ?? []).find((row: any) => row.id === extra.id);
@@ -2303,27 +2314,12 @@ export default function StudentProfilePage() {
                       const remain = Number(statement?.totals?.remainder ?? statement?.totals?.remaining ?? 0);
                       const paid = Number(statement?.totals?.paid ?? 0);
                       const suggested = remain > 0 ? remain : (paid > 0 ? paid : 0);
-                      setFiscalPrefill({
+                      router.push(buildFiscalIssueHref({
                         studentId: id,
-                        studentName: student?.fullName,
-                        studentAddress: student?.address || null,
-                        parents: (student?.parents || []).map((p: any) => ({
-                          userId: p.userId || p.user?.id,
-                          fullName: p.user?.fullName || '',
-                          vatNumber: p.user?.vatNumber || null,
-                          profession: p.user?.profession || null,
-                          taxOffice: p.user?.taxOffice || null,
-                          billingStreet: p.user?.billingStreet || null,
-                          billingNumber: p.user?.billingNumber || null,
-                          billingPostalCode: p.user?.billingPostalCode || null,
-                          billingCity: p.user?.billingCity || null,
-                          isPrimary: Boolean(p.isPrimary),
-                          relation: p.relation || null,
-                        })).filter((p: any) => p.userId && p.fullName),
-                        grossAmount: suggested || undefined,
+                        amount: suggested || undefined,
                         description: `Φοίτηση — ${student?.fullName || 'μαθητής'}`,
-                      });
-                      setFiscalIssueOpen(true);
+                        returnTo: `/school/students/${id}?tab=billing`,
+                      }));
                     }}
                     className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700"
                   >
@@ -2886,28 +2882,13 @@ export default function StudentProfilePage() {
                                             amount: Number(l.amount || 0),
                                           })),
                                         });
-                                        setFiscalPrefill({
+                                        router.push(buildFiscalIssueHref({
                                           studentId: id,
-                                          studentName: student?.fullName,
-                                          studentAddress: student?.address || null,
-                                          parents: (student?.parents || []).map((p: any) => ({
-                                            userId: p.userId || p.user?.id,
-                                            fullName: p.user?.fullName || '',
-                                            vatNumber: p.user?.vatNumber || null,
-                                            profession: p.user?.profession || null,
-                                            taxOffice: p.user?.taxOffice || null,
-                                            billingStreet: p.user?.billingStreet || null,
-                                            billingNumber: p.user?.billingNumber || null,
-                                            billingPostalCode: p.user?.billingPostalCode || null,
-                                            billingCity: p.user?.billingCity || null,
-                                            isPrimary: Boolean(p.isPrimary),
-                                            relation: p.relation || null,
-                                          })).filter((p: any) => p.userId && p.fullName),
                                           monthlyChargeId: charge.id,
-                                          grossAmount: suggested > 0 ? suggested : undefined,
+                                          amount: suggested > 0 ? suggested : undefined,
                                           description: desc,
-                                        });
-                                        setFiscalIssueOpen(true);
+                                          returnTo: `/school/students/${id}?tab=billing`,
+                                        }));
                                       }}
                                       className="px-2 py-1 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-[11px] font-semibold"
                                       title="Παραστατικό"
@@ -3978,13 +3959,6 @@ export default function StudentProfilePage() {
         </div>
       )}
       <PaymentConfirmModal prompt={payPrompt} onClose={() => setPayPrompt(null)} />
-      <FiscalIssueModal
-        schoolId={schoolId}
-        open={fiscalIssueOpen}
-        prefill={fiscalPrefill}
-        onClose={() => { setFiscalIssueOpen(false); setFiscalPrefill(null); }}
-        onIssued={() => { void loadBillingData(); }}
-      />
     </div>
   );
 }

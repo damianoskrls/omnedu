@@ -3,7 +3,6 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ExternalLink, FileText, Search } from 'lucide-react';
-import type { FiscalIssuePrefill } from '@/components/FiscalIssueModal';
 import { fiscalDocNetGross, pairFiscalDocuments } from '@/lib/fiscal-document-pairs';
 
 const MONTHS_SHORT = ['', 'Ιαν', 'Φεβ', 'Μάρ', 'Απρ', 'Μάι', 'Ιουν', 'Ιουλ', 'Αυγ', 'Σεπ', 'Οκτ', 'Νοε', 'Δεκ'];
@@ -70,7 +69,7 @@ export function FiscalPanel({
   onRefreshDoc: (id: string) => void;
   onCreditDoc?: (doc: any) => void;
   onRefreshList: () => void;
-  onIssue: (prefill?: FiscalIssuePrefill | null) => void;
+  onIssue: () => void;
 }) {
   const router = useRouter();
   const [search, setSearch] = useState('');
@@ -217,7 +216,7 @@ export function FiscalPanel({
           </div>
           <button
             type="button"
-            onClick={() => onIssue(null)}
+            onClick={() => onIssue()}
             className="shrink-0 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700"
           >
             <FileText className="h-4 w-4" /> Έκδοση παραστατικού

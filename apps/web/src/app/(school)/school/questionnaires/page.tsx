@@ -1,33 +1,20 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { questionnairesApi, schoolsApi, studentsApi, classesApi, levelsApi } from '@/lib/api';
 import { useStoredUser } from '@/lib/auth';
 import { useAcademicYear } from '@/contexts/AcademicYearContext';
-import { LinkKind, Question, QuestionType, registrationQuestionnaire } from '@/lib/registration-questionnaire';
+import { LinkKind, Question } from '@/lib/registration-questionnaire';
 import {
   ClipboardList, Plus, ChevronDown, ChevronUp, Pencil, Trash2, X, Save,
-  Users, Clock, Send, CheckCircle2, Circle, ToggleLeft, List, AlignLeft,
-  Loader2, Heading, Calendar, Hash, CheckSquare, FileText,
+  Users, Clock, Send, CheckCircle2, Circle, Loader2,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { el } from 'date-fns/locale';
-import { AudienceSelector, AudienceValue, audienceLabel } from '@/components/AudienceSelector';
+import { audienceLabel } from '@/components/AudienceSelector';
 
 const CURRENT_YEAR = new Date().getFullYear();
-
-// ─── Question types ──────────────────────────────────────────────────────────
-
-const Q_TYPE_META: Record<QuestionType, { label: string; icon: React.ReactNode }> = {
-  section: { label: 'Ενότητα', icon: <Heading className="w-4 h-4" /> },
-  text: { label: 'Κείμενο', icon: <AlignLeft className="w-4 h-4" /> },
-  long: { label: 'Μεγάλο κείμενο', icon: <FileText className="w-4 h-4" /> },
-  date: { label: 'Ημερομηνία', icon: <Calendar className="w-4 h-4" /> },
-  number: { label: 'Αριθμός', icon: <Hash className="w-4 h-4" /> },
-  yesno: { label: 'Ναι / Όχι', icon: <ToggleLeft className="w-4 h-4" /> },
-  choice: { label: 'Επιλογή', icon: <List className="w-4 h-4" /> },
-  agree: { label: 'Συμφωνώ', icon: <CheckSquare className="w-4 h-4" /> },
-};
 
 const LINK_LABELS: Record<Exclude<LinkKind, ''>, string> = {
   operating: 'Κανονισμός λειτουργίας',
@@ -67,28 +54,14 @@ const parseJson = <T,>(s: string, fallback: T): T => {
   try { return JSON.parse(s); } catch { return fallback; }
 };
 
-const genId = () => Math.random().toString(36).slice(2, 9);
-
 const inputCls = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
-
-// ─── Edit modal state type ────────────────────────────────────────────────────
-
-type EditState = {
-  id?: string;
-  title: string;
-  description: string;
-  academicYear: number;
-  questions: Question[];
-  audience: AudienceValue;
-  deadline: string;
-  status: 'draft' | 'sent';
-};
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function QuestionnairesPage() {
   const user = useStoredUser();
   const schoolId = user?.schoolId ?? '';
+  const router = useRouter();
   const { selectedYear } = useAcademicYear();
   const isAdmin = user?.role === 'school_admin' || user?.role === 'teacher';
 
@@ -101,9 +74,6 @@ export default function QuestionnairesPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [responses, setResponses] = useState<Record<string, any[]>>({});
   const [loadingResponses, setLoadingResponses] = useState<string | null>(null);
-
-  const [editModal, setEditModal] = useState<EditState | null>(null);
-  const [savingQ, setSavingQ] = useState(false);
 
   const [fillModal, setFillModal] = useState<{ questionnaire: Questionnaire; student: Student } | null>(null);
   const [fillAnswers, setFillAnswers] = useState<Record<string, any>>({});
@@ -141,65 +111,9 @@ export default function QuestionnairesPage() {
     return students;
   };
 
-  const openNew = () => setEditModal({
-    title: '', description: '', academicYear: CURRENT_YEAR,
-    questions: [],
-    audience: { audienceType: 'all', audienceIds: [] },
-    deadline: '', status: 'draft',
-  });
-
-  const openRegistration = () => {
-    const form = registrationQuestionnaire();
-    setEditModal({
-      title: form.title,
-      description: form.description,
-      academicYear: CURRENT_YEAR,
-      questions: form.questions,
-      audience: { audienceType: 'all', audienceIds: [] },
-      deadline: '',
-      status: 'draft',
-    });
-  };
-
-  const openEdit = (q: Questionnaire) => setEditModal({
-    id: q.id,
-    title: q.title,
-    description: q.description ?? '',
-    academicYear: q.academicYear,
-    questions: parseJson<Question[]>(q.questions, []),
-    audience: {
-      audienceType: q.scopeType as any,
-      audienceIds: parseJson<string[]>(q.scopeIds, []),
-    },
-    deadline: q.deadline ? q.deadline.slice(0, 16) : '',
-    status: q.status,
-  });
-
-  const saveQuestionnaire = async () => {
-    if (!editModal?.title.trim()) return;
-    setSavingQ(true);
-    try {
-      const payload = {
-        title: editModal.title,
-        description: editModal.description || undefined,
-        academicYear: editModal.academicYear,
-        questions: editModal.questions,
-        scopeType: editModal.audience.audienceType,
-        scopeIds: editModal.audience.audienceIds,
-        deadline: editModal.deadline || undefined,
-        status: editModal.status,
-      };
-      if (editModal.id) {
-        await questionnairesApi.update(schoolId, editModal.id, payload);
-      } else {
-        await questionnairesApi.create(schoolId, payload);
-      }
-      setEditModal(null);
-      await load();
-    } finally {
-      setSavingQ(false);
-    }
-  };
+  const openNew = () => router.push('/school/questionnaires/new');
+  const openRegistration = () => router.push('/school/questionnaires/new?template=registration');
+  const openEdit = (q: Questionnaire) => router.push(`/school/questionnaires/${q.id}/edit`);
 
   const sendQuestionnaire = async (q: Questionnaire) => {
     if (!confirm('Να αποσταλεί το ερωτηματολόγιο; Δεν θα μπορείτε να αλλάξετε τις ερωτήσεις μετά.')) return;
@@ -240,22 +154,6 @@ export default function QuestionnairesPage() {
       setResponses(prev => ({ ...prev, [fillModal.questionnaire.id]: Array.isArray(r) ? r : [] }));
       setFillModal(null);
     } finally { setSavingF(false); }
-  };
-
-  // ── Question builder helpers ─────────────────────────────────────────────
-
-  const addQuestion = () => {
-    if (!editModal) return;
-    const q: Question = { id: genId(), text: '', type: 'yesno' };
-    setEditModal(p => p ? { ...p, questions: [...p.questions, q] } : p);
-  };
-
-  const updateQuestion = (id: string, patch: Partial<Question>) => {
-    setEditModal(p => p ? { ...p, questions: p.questions.map(q => q.id === id ? { ...q, ...patch } : q) } : p);
-  };
-
-  const removeQuestion = (id: string) => {
-    setEditModal(p => p ? { ...p, questions: p.questions.filter(q => q.id !== id) } : p);
   };
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -420,239 +318,6 @@ export default function QuestionnairesPage() {
               </div>
             );
           })}
-        </div>
-      )}
-
-      {/* ─── Create/Edit questionnaire modal ─── */}
-      {editModal && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl my-6">
-            <div className="flex items-center justify-between p-5 border-b border-gray-100">
-              <h2 className="font-semibold text-gray-900">
-                {editModal.id ? 'Επεξεργασία Ερωτηματολογίου' : 'Νέο Ερωτηματολόγιο'}
-              </h2>
-              <button onClick={() => setEditModal(null)} className="p-2 rounded-lg hover:bg-gray-100">
-                <X className="w-4 h-4 text-gray-500" />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-5">
-              {/* Title */}
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Τίτλος *</label>
-                <input
-                  className={inputCls}
-                  value={editModal.title}
-                  onChange={e => setEditModal(p => p ? { ...p, title: e.target.value } : p)}
-                  placeholder="π.χ. Ερωτηματολόγιο Υγείας 2026"
-                />
-              </div>
-
-              {/* Description */}
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Περιγραφή</label>
-                <textarea
-                  className={inputCls + ' resize-none'}
-                  rows={2}
-                  value={editModal.description}
-                  onChange={e => setEditModal(p => p ? { ...p, description: e.target.value } : p)}
-                  placeholder="Σύντομη περιγραφή..."
-                />
-              </div>
-
-              {/* Audience */}
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-2">Απευθύνεται σε</label>
-                <AudienceSelector
-                  value={editModal.audience}
-                  onChange={v => setEditModal(p => p ? { ...p, audience: v } : p)}
-                  classes={classes}
-                  levels={levels}
-                />
-              </div>
-
-              {/* Deadline */}
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Προθεσμία συμπλήρωσης</label>
-                <input
-                  type="datetime-local"
-                  className={inputCls}
-                  value={editModal.deadline}
-                  onChange={e => setEditModal(p => p ? { ...p, deadline: e.target.value } : p)}
-                />
-              </div>
-
-              {/* Questions builder */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <label className="text-xs font-medium text-gray-600">
-                    Ερωτήσεις ({editModal.questions.length})
-                  </label>
-                  <button
-                    onClick={addQuestion}
-                    className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Προσθήκη ερώτησης
-                  </button>
-                </div>
-
-                {editModal.questions.length === 0 ? (
-                  <div className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center">
-                    <ClipboardList className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                    <p className="text-sm text-gray-400">Δεν υπάρχουν ερωτήσεις ακόμα</p>
-                    <button
-                      onClick={addQuestion}
-                      className="mt-2 text-xs text-indigo-600 hover:text-indigo-800 font-medium"
-                    >
-                      Προσθήκη πρώτης ερώτησης
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {editModal.questions.map((q, idx) => (
-                      <div key={q.id} className="border border-gray-200 rounded-xl p-4 bg-gray-50">
-                        <div className="flex items-start gap-3">
-                          <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
-                            {idx + 1}
-                          </span>
-                          <div className="flex-1 space-y-2">
-                            <input
-                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                              value={q.text}
-                              onChange={e => updateQuestion(q.id, { text: e.target.value })}
-                              placeholder="Κείμενο ερώτησης..."
-                            />
-                            <div className="flex gap-2 flex-wrap">
-                              {(Object.keys(Q_TYPE_META) as QuestionType[]).map(t => (
-                                <button
-                                  key={t}
-                                  type="button"
-                                  onClick={() => updateQuestion(q.id, {
-                                    type: t,
-                                    options: t === 'choice' ? (q.options?.length ? q.options : ['', '']) : undefined,
-                                  })}
-                                  className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border font-medium transition-colors ${
-                                    q.type === t
-                                      ? 'border-[#77328D] bg-[#77328D]/10 text-[#77328D]'
-                                      : 'border-gray-200 text-gray-500 hover:border-[#77328D]/30 bg-white'
-                                  }`}
-                                >
-                                  {Q_TYPE_META[t].icon}{Q_TYPE_META[t].label}
-                                </button>
-                              ))}
-                            </div>
-                            <textarea
-                              rows={2}
-                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
-                              value={q.help ?? ''}
-                              onChange={e => updateQuestion(q.id, { help: e.target.value })}
-                              placeholder={q.type === 'section' ? 'Σύντομη περιγραφή της ενότητας...' : 'Επεξήγηση που βλέπει ο γονέας κάτω από την ερώτηση...'}
-                            />
-                            {(q.type === 'yesno' || q.type === 'agree') && (
-                              <div className="space-y-2">
-                                <select
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
-                                  value={q.linkKind ?? ''}
-                                  onChange={e => {
-                                    const linkKind = e.target.value as LinkKind;
-                                    updateQuestion(q.id, {
-                                      linkKind,
-                                      linkLabel: linkKind && linkKind !== 'url' ? LINK_LABELS[linkKind] : q.linkLabel,
-                                    });
-                                  }}
-                                >
-                                  <option value="">Χωρίς σύνδεσμο</option>
-                                  <option value="operating">Σύνδεσμος: κανονισμός λειτουργίας</option>
-                                  <option value="financial">Σύνδεσμος: οικονομικός κανονισμός</option>
-                                  <option value="medication">Σύνδεσμος: πρωτόκολλο φαρμάκων</option>
-                                  <option value="text">Σύνδεσμος: κείμενο για ανάγνωση</option>
-                                  <option value="url">Σύνδεσμος: διεύθυνση ιστοσελίδας</option>
-                                </select>
-                                {q.linkKind === 'url' && (
-                                  <input
-                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
-                                    value={q.linkUrl ?? ''}
-                                    onChange={e => updateQuestion(q.id, { linkUrl: e.target.value })}
-                                    placeholder="https://"
-                                  />
-                                )}
-                                {(q.linkKind === 'medication' || q.linkKind === 'text') && (
-                                  <textarea
-                                    rows={4}
-                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
-                                    value={q.document ?? ''}
-                                    onChange={e => updateQuestion(q.id, { document: e.target.value })}
-                                    placeholder="Το κείμενο που ανοίγει ο σύνδεσμος..."
-                                  />
-                                )}
-                              </div>
-                            )}
-
-                            {q.type === 'choice' && (
-                              <div className="space-y-1.5 ml-1">
-                                {(q.options ?? ['', '']).map((opt, i) => (
-                                  <div key={i} className="flex items-center gap-2">
-                                    <span className="w-4 h-4 rounded-full border-2 border-gray-300 shrink-0" />
-                                    <input
-                                      className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                                      value={opt}
-                                      onChange={e => {
-                                        const opts = [...(q.options ?? [])];
-                                        opts[i] = e.target.value;
-                                        updateQuestion(q.id, { options: opts });
-                                      }}
-                                      placeholder={`Επιλογή ${i + 1}`}
-                                    />
-                                    {(q.options ?? []).length > 2 && (
-                                      <button
-                                        onClick={() => {
-                                          const opts = (q.options ?? []).filter((_, j) => j !== i);
-                                          updateQuestion(q.id, { options: opts });
-                                        }}
-                                        className="text-red-400 hover:text-red-600"
-                                      >
-                                        <X className="w-3.5 h-3.5" />
-                                      </button>
-                                    )}
-                                  </div>
-                                ))}
-                                <button
-                                  onClick={() => updateQuestion(q.id, { options: [...(q.options ?? []), ''] })}
-                                  className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1 ml-6"
-                                >
-                                  <Plus className="w-3 h-3" /> Επιλογή
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                          <button onClick={() => removeQuestion(q.id)} className="p-1 rounded hover:bg-red-50 text-red-400 shrink-0">
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="px-5 pb-5 flex gap-3 border-t border-gray-100 pt-4">
-              <button
-                onClick={() => setEditModal(null)}
-                className="flex-1 border border-gray-200 text-gray-700 rounded-xl py-2.5 text-sm hover:bg-gray-50"
-              >
-                Ακύρωση
-              </button>
-              <button
-                onClick={saveQuestionnaire}
-                disabled={savingQ || !editModal.title.trim()}
-                className="flex-1 bg-indigo-600 text-white rounded-xl py-2.5 text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                <Save className="w-4 h-4" />
-                {savingQ ? 'Αποθήκευση...' : 'Αποθήκευση'}
-              </button>
-            </div>
-          </div>
         </div>
       )}
 
