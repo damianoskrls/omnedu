@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnedu/features/parent/home/home_widgets.dart';
-import 'package:omnedu/features/parent/home/parent_icons.dart';
 
 void main() {
   testWidgets('home composition at mobile widths', (tester) async {
@@ -86,15 +85,46 @@ void main() {
               const SizedBox(height: 24),
             ],
           ),
-          bottomNavigationBar: Material(
-            child: SizedBox(
+          bottomNavigationBar: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+            child: Container(
               height: 70,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(36),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF77328D).withValues(alpha: 0.18),
+                    blurRadius: 32,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
               child: Row(
-                children: const [
-                  Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [ParentIcon(ParentIconData.home, size: 22), Text('Αρχική', style: TextStyle(fontSize: 10))])),
-                  Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [ParentIcon(ParentIconData.activities, size: 22), Text('Δραστηριότητες', style: TextStyle(fontSize: 10))])),
-                  Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [ParentIcon(ParentIconData.events, size: 22), Text('Εκδηλώσεις', style: TextStyle(fontSize: 10))])),
-                  Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [ParentIcon(ParentIconData.billing, size: 22), Text('Οικονομικά', style: TextStyle(fontSize: 10))])),
+                children: [
+                  Expanded(
+                    flex: 5,
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF77328D), Color(0xFFE95926)],
+                        ),
+                        borderRadius: BorderRadius.circular(28),
+                      ),
+                      child: const Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.home_rounded, color: Colors.white, size: 22),
+                          SizedBox(height: 2),
+                          Text('Αρχική', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const Expanded(flex: 3, child: Icon(Icons.sports_soccer_outlined, color: Color(0xFFBBB8D4))),
+                  const Expanded(flex: 3, child: Icon(Icons.event_outlined, color: Color(0xFFBBB8D4))),
+                  const Expanded(flex: 3, child: Icon(Icons.account_balance_wallet_outlined, color: Color(0xFFBBB8D4))),
                 ],
               ),
             ),
