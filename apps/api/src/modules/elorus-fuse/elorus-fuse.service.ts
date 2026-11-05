@@ -67,6 +67,10 @@ function money(n: number): string {
   return (Math.round((n + Number.EPSILON) * 100) / 100).toFixed(2);
 }
 
+function round2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
 function decimal(n: number | string): Prisma.Decimal {
   return new Prisma.Decimal(typeof n === 'number' ? money(n) : n);
 }
@@ -83,9 +87,37 @@ function vatRateForCategory(category: number): number {
     case 7:
     case 8:
       return 0;
+    case 9: return 0.03;
+    case 10: return 0.04;
     default:
       return 0.24;
   }
+}
+
+/**
+ * Split a gross amount into net + VAT for myDATA.
+ * Prefers net+vat === gross with vat === round(net * rate, 2) (avoids error 229).
+ * When no 2-decimal solution keeps the exact gross (e.g. €100 @ 24%), returns
+ * rate-exact net/vat and a possibly adjusted gross (±€0.01).
+ */
+function splitGrossToNetVat(
+  gross: number,
+  rate: number,
+): { net: number; vat: number; gross: number } {
+  const g = round2(gross);
+  if (rate <= 0) return { net: g, vat: 0, gross: g };
+  const approx = g / (1 + rate);
+  for (const delta of [0, -0.01, 0.01, -0.02, 0.02, -0.03, 0.03]) {
+    const net = round2(approx + delta);
+    if (net < 0 || net > g) continue;
+    const vat = round2(g - net);
+    if (round2(net * rate) === vat) {
+      return { net, vat, gross: g };
+    }
+  }
+  const net = round2(approx);
+  const vat = round2(net * rate);
+  return { net, vat, gross: round2(net + vat) };
 }
 
 function normalizeStatus(raw: FuseInvoiceResult | null | undefined): string | null {
@@ -330,20 +362,37 @@ export class ElorusFuseService {
       if (!student) throw new BadRequestException('Ο μαθητής δεν βρέθηκε');
     }
 
-    const vatCategory =
+    let vatCategory =
       dto.vatCategory ??
       school.fiscalVatCategory ??
       1;
-    const vatExemptionCategory =
+    let vatExemptionCategory =
       dto.vatExemptionCategory !== undefined
         ? dto.vatExemptionCategory
         : school.fiscalVatExemptionCategory;
 
-    const rate = vatExemptionCategory != null || vatCategory === 7 || vatCategory === 8
+    // Exemption without category 7/8 makes myDATA reject vatAmount vs vatCategory (229).
+    if (vatExemptionCategory != null && vatCategory !== 7 && vatCategory !== 8) {
+      vatCategory = 7;
+    }
+    if ((vatCategory === 7 || vatCategory === 8) && vatExemptionCategory == null) {
+      // Category 7 requires an exemption code; leave unset only for category 8
+      // (records without VAT). Prefer empty exemption → treat as normal 24% if
+      // admin left category at default by mistake — only force when explicitly 7.
+      if (vatCategory === 7) {
+        throw new BadRequestException(
+          'Για ΦΠΑ 0% (κατηγορία 7) πρέπει να οριστεί κατηγορία απαλλαγής ΦΠΑ στις ρυθμίσεις.',
+        );
+      }
+    }
+
+    const rate = vatCategory === 7 || vatCategory === 8 || vatExemptionCategory != null
       ? 0
       : vatRateForCategory(vatCategory);
-    const net = rate > 0 ? gross / (1 + rate) : gross;
-    const vatAmount = gross - net;
+    const split = splitGrossToNetVat(gross, rate);
+    const net = split.net;
+    const vatAmount = split.vat;
+    const grossOut = split.gross;
 
     // Counterparty = πελάτης (γονέας). Required for invoices; recommended for
     // service receipts so the printed/Fuse document matches classic school APYs.
@@ -394,7 +443,7 @@ export class ElorusFuseService {
         vatCategory,
         vatExemptionCategory: vatExemptionCategory ?? null,
         vatAmount: decimal(vatAmount),
-        grossValue: decimal(gross),
+        grossValue: decimal(grossOut),
         paymentMethodType,
         cpVatNumber: counterparty?.vatNumber || null,
         cpName: counterparty?.name || null,
@@ -446,8 +495,8 @@ export class ElorusFuseService {
       lines: [line],
       total_net_value: money(net),
       total_vat_amount: money(vatAmount),
-      total_gross_value: money(gross),
-      payment_methods: [{ type: paymentMethodType, amount: money(gross) }],
+      total_gross_value: money(grossOut),
+      payment_methods: [{ type: paymentMethodType, amount: money(grossOut) }],
     };
 
     // Only send counterparty on invoices (2.1). Retail 11.2 ignores these fields.
@@ -570,12 +619,23 @@ export class ElorusFuseService {
     ).trim();
     if (!description) throw new BadRequestException('Λείπει η περιγραφή');
 
-    const net = Number(original.netValue);
-    const vatAmount = Number(original.vatAmount);
-    const gross = Number(original.grossValue);
-    if (![net, vatAmount, gross].every((n) => Number.isFinite(n) && n >= 0) || gross <= 0) {
+    const grossIn = Number(original.grossValue);
+    if (!Number.isFinite(grossIn) || grossIn <= 0) {
       throw new BadRequestException('Άκυρα ποσά στο αρχικό παραστατικό');
     }
+    let vatCategory = original.vatCategory;
+    let vatExemptionCategory = original.vatExemptionCategory;
+    if (vatExemptionCategory != null && vatCategory !== 7 && vatCategory !== 8) {
+      vatCategory = 7;
+    }
+    const rate = vatCategory === 7 || vatCategory === 8 || vatExemptionCategory != null
+      ? 0
+      : vatRateForCategory(vatCategory);
+    // Recompute so credit notes don't replay a previously rounded-wrong 229 pair.
+    const split = splitGrossToNetVat(grossIn, rate);
+    const net = split.net;
+    const vatAmount = split.vat;
+    const gross = split.gross;
 
     const issueDateStr = new Date().toISOString().slice(0, 10);
     const number = await this.nextNumber(schoolId, series);
@@ -594,8 +654,8 @@ export class ElorusFuseService {
         issueDate: new Date(`${issueDateStr}T00:00:00.000Z`),
         description,
         netValue: decimal(net),
-        vatCategory: original.vatCategory,
-        vatExemptionCategory: original.vatExemptionCategory,
+        vatCategory,
+        vatExemptionCategory,
         vatAmount: decimal(vatAmount),
         grossValue: decimal(gross),
         paymentMethodType,
@@ -620,12 +680,12 @@ export class ElorusFuseService {
 
     const line: FuseCreateInvoicePayload['lines'][number] = {
       net_value: money(net),
-      vat_category: original.vatCategory,
+      vat_category: vatCategory,
       vat_amount: money(vatAmount),
       description: lineDescription,
     };
-    if (original.vatExemptionCategory != null) {
-      line.vat_exemption_category = original.vatExemptionCategory;
+    if (vatExemptionCategory != null) {
+      line.vat_exemption_category = vatExemptionCategory;
     }
 
     const payload: FuseCreateInvoicePayload = {
