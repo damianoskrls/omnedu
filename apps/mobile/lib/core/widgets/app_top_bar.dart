@@ -65,16 +65,22 @@ class AppTopBar extends ConsumerWidget {
       child: SafeArea(
         bottom: false,
         child: Container(
-          height: 58,
+          height: 52,
           padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: Color(0xFFF0E8F4))),
+            border: Border(bottom: BorderSide(color: Color(0xFFE8E4F0))),
           ),
           child: Row(
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(10),
-                child: Image.asset('assets/images/school_logo.png', width: 36, height: 36, fit: BoxFit.contain),
+                child: Image.asset(
+                  'assets/images/school_logo.png',
+                  width: 34,
+                  height: 34,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.medium,
+                ),
               ),
               const Spacer(),
               if (!owner && !user.isDriver) ...[
@@ -83,26 +89,32 @@ class AppTopBar extends ConsumerWidget {
                   active: current == notificationsIndex,
                   count: notes,
                   onTap: () => open(notificationsIndex),
+                  tooltip: 'Ειδοποιήσεις',
                 ),
-                const SizedBox(width: 4),
+                const SizedBox(width: 2),
                 _TopAction(
                   icon: current == messagesIndex ? Icons.chat_bubble_rounded : Icons.chat_bubble_outline_rounded,
                   active: current == messagesIndex,
                   count: messages,
                   onTap: () => open(messagesIndex),
+                  tooltip: 'Μηνύματα',
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
               ],
-              GestureDetector(
-                onTap: () => _accountSheet(ref),
-                child: PersonFace(
-                  name: user.fullName,
-                  photoUrl: user.avatarUrl,
-                  size: 36,
-                  radius: 18,
-                  fontSize: 15,
-                  background: const Color(0xFFF3E8F7),
-                  foreground: const Color(0xFF77328D),
+              Semantics(
+                button: true,
+                label: 'Λογαριασμός',
+                child: GestureDetector(
+                  onTap: () => _accountSheet(ref),
+                  child: PersonFace(
+                    name: user.fullName,
+                    photoUrl: user.avatarUrl,
+                    size: 34,
+                    radius: 17,
+                    fontSize: 14,
+                    background: const Color(0xFFF0E8F7),
+                    foreground: const Color(0xFF783B96),
+                  ),
                 ),
               ),
             ],
@@ -219,17 +231,26 @@ class _TopAction extends StatelessWidget {
   final bool active;
   final int count;
   final VoidCallback onTap;
-  const _TopAction({required this.icon, required this.active, required this.count, required this.onTap});
+  final String? tooltip;
+  const _TopAction({
+    required this.icon,
+    required this.active,
+    required this.count,
+    required this.onTap,
+    this.tooltip,
+  });
 
   @override
   Widget build(BuildContext context) {
     final label = count > 9 ? '9+' : '$count';
     return IconButton(
       onPressed: onTap,
+      tooltip: tooltip,
+      constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
       icon: Stack(
         clipBehavior: Clip.none,
         children: [
-          Icon(icon, color: active ? const Color(0xFF77328D) : const Color(0xFF6B7280)),
+          Icon(icon, size: 22, color: active ? const Color(0xFF783B96) : const Color(0xFF696577)),
           if (count > 0)
             Positioned(
               right: -8,
@@ -237,7 +258,10 @@ class _TopAction extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                decoration: BoxDecoration(color: const Color(0xFFE95926), borderRadius: BorderRadius.circular(10)),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF783B96),
+                  borderRadius: BorderRadius.circular(10),
+                ),
                 alignment: Alignment.center,
                 child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800)),
               ),
