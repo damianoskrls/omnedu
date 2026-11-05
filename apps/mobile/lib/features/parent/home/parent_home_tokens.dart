@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/utils/greek_grammar.dart';
+
 /// Design tokens for the parent home experience.
 abstract final class ParentHomeTokens {
   static const primary = Color(0xFF783B96);
@@ -59,11 +61,11 @@ abstract final class ParentHomeTokens {
       ];
 
   static String greetingForHour(int hour, String firstName) {
-    final name = firstName.trim().isEmpty ? '' : ', $firstName';
-    if (hour >= 5 && hour < 12) return 'Καλημέρα$name';
-    if (hour >= 12 && hour < 17) return 'Καλό απόγευμα$name';
-    if (hour >= 17 && hour < 22) return 'Καλησπέρα$name';
-    return 'Καλό βράδυ$name';
+    final spoken = firstName.trim().isEmpty ? '' : ', ${greekVocative(firstName.trim())}';
+    if (hour >= 5 && hour < 12) return 'Καλημέρα$spoken';
+    if (hour >= 12 && hour < 17) return 'Καλό απόγευμα$spoken';
+    if (hour >= 17 && hour < 22) return 'Καλησπέρα$spoken';
+    return 'Καλό βράδυ$spoken';
   }
 
   static String greetingSubtitle({required int childCount}) {

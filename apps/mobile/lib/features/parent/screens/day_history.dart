@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
+import '../../../core/utils/greek_grammar.dart';
 import '../../../core/widgets/person_face.dart';
 import 'bulletin_screen.dart';
 import 'event_instructions.dart';
@@ -787,7 +788,13 @@ class DayDiaryCard extends StatelessWidget {
     final teacherName = teacher?['fullName'] as String? ?? '';
     final teacherPhoto = teacher?['avatarUrl'] as String?;
     final emoji = mood != null ? (_moodEmojis[mood.toLowerCase()] ?? '😐') : '😐';
-    final moodLabel = mood != null ? (_moodLabels[mood.toLowerCase()] ?? mood) : '';
+    final moodLabel = mood != null
+        ? moodLabelForGender(
+            mood,
+            gender: child?['gender']?.toString(),
+            firstName: firstNameOf(child?['fullName']?.toString() ?? ''),
+          )
+        : '';
 
     final mealBreakfast = _text(report['mealBreakfast']);
     final mealLunch = _text(report['mealLunch']);
