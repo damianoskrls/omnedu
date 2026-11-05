@@ -8,6 +8,7 @@ import '../screens/day_history.dart';
 import '../screens/parent_child_pages.dart';
 import 'parent_home_tokens.dart';
 import 'parent_icons.dart';
+import 'today_pending_illustration.dart';
 
 final homeSelectedChildIdProvider = StateProvider<String?>((ref) => null);
 
@@ -398,25 +399,9 @@ class HomeTodayCard extends ConsumerWidget {
           }
         }
         if (todayReport == null) {
-          return HomeSurfaceCard(
-            color: ParentHomeTokens.lilac.withValues(alpha: 0.35),
-            child: Row(
-              children: [
-                const ParentIcon(
-                  ParentIconData.emptyToday,
-                  size: 40,
-                  color: ParentHomeTokens.primary,
-                  accent: ParentHomeTokens.lilac,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Δεν έχει καταχωριστεί ακόμη ενημέρωση για σήμερα.',
-                    style: ParentHomeTokens.bodyStyle.copyWith(color: ParentHomeTokens.textSecondary, fontSize: 14),
-                  ),
-                ),
-              ],
-            ),
+          return TodayUpdatePendingCard(
+            childName: showChildLabel ? child['fullName']?.toString() : null,
+            margin: const EdgeInsets.symmetric(horizontal: ParentHomeTokens.pagePadding),
           );
         }
 
