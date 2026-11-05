@@ -397,6 +397,9 @@ export const fiscalApi = {
     api.post(`/schools/${schoolId}/fiscal-documents/${id}/refresh`),
   resend: (schoolId: string, id: string) =>
     api.post(`/schools/${schoolId}/fiscal-documents/${id}/resend`),
+  /** Issue Fuse credit note (11.4 / 5.1) reversing an issued receipt or invoice. */
+  credit: (schoolId: string, id: string, data?: { series?: string; description?: string }) =>
+    api.post(`/schools/${schoolId}/fiscal-documents/${id}/credit`, data || {}),
 };
 
 export const levelsApi = {

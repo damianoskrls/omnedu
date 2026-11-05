@@ -215,6 +215,29 @@ export default function BillingPage() {
     }
   }
 
+  async function creditFiscalDoc(doc: any) {
+    const kind =
+      doc.documentKind === 'service_invoice'
+        ? 'πιστωτικό τιμολόγιο (5.1)'
+        : 'πιστωτικό απόδειξης (11.4)';
+    const ok = window.confirm(
+      `Έκδοση ${kind} για ${doc.series}-${doc.number} (€${Number(doc.grossValue).toFixed(2)}) μέσω Elorus Fuse;\n\nΘα δημιουργηθεί νέο παραστατικό με τα ίδια ποσά.`,
+    );
+    if (!ok) return;
+    setRefreshingFiscalId(doc.id);
+    try {
+      const result: any = await fiscalApi.credit(schoolId, doc.id);
+      if (result?.status === 'failed') {
+        window.alert(result.errorMessage || 'Η έκδοση πιστωτικού απέτυχε');
+      }
+      await loadFiscalDocs();
+    } catch (err: any) {
+      window.alert(err?.response?.data?.message || err?.message || 'Αποτυχία έκδοσης πιστωτικού');
+    } finally {
+      setRefreshingFiscalId(null);
+    }
+  }
+
   async function loadEventEnrollments(eventId: string) {
     setLoadingEnrollments(eventId);
     try {
@@ -604,6 +627,7 @@ export default function BillingPage() {
           loading={fiscalDocsLoading}
           refreshingId={refreshingFiscalId}
           onRefreshDoc={(id) => void refreshFiscalDoc(id)}
+          onCreditDoc={(doc) => void creditFiscalDoc(doc)}
           onRefreshList={() => void loadFiscalDocs()}
           onIssue={(prefill) => {
             setFiscalPrefill(prefill ?? null);

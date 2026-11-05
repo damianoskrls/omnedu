@@ -30,6 +30,8 @@ export type FuseCreateInvoicePayload = {
     postal_code?: string;
     city?: string;
   };
+  /** MARK of the related invoice (required for associated credit 5.1). */
+  correlated_invoices?: number[];
   payment_methods?: Array<{ type: number; amount: string }>;
 };
 

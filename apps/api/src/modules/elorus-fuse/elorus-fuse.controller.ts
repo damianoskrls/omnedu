@@ -3,7 +3,11 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
-import { ElorusFuseService, IssueFiscalDocumentDto } from './elorus-fuse.service';
+import {
+  ElorusFuseService,
+  IssueCreditNoteDto,
+  IssueFiscalDocumentDto,
+} from './elorus-fuse.service';
 
 @ApiTags('elorus-fuse')
 @ApiBearerAuth('access-token')
@@ -72,6 +76,16 @@ export class ElorusFuseController {
   @Roles('school_admin', 'super_admin')
   issue(@Param('schoolId') schoolId: string, @Body() body: IssueFiscalDocumentDto) {
     return this.fuse.issue(schoolId, body);
+  }
+
+  @Post('fiscal-documents/:id/credit')
+  @Roles('school_admin', 'super_admin')
+  issueCredit(
+    @Param('schoolId') schoolId: string,
+    @Param('id') id: string,
+    @Body() body: IssueCreditNoteDto,
+  ) {
+    return this.fuse.issueCredit(schoolId, id, body || {});
   }
 
   @Post('fiscal-documents/:id/refresh')
