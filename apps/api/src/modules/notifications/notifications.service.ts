@@ -115,10 +115,24 @@ export class NotificationsService implements OnModuleInit {
       },
       update: {},
     });
-    const pushDevices = await this.prisma.fcmToken.count({
-      where: { user: { schoolMemberships: { some: { schoolId, isActive: true } } } },
-    });
-    return { ...settings, pushConfigured: Boolean(this.fcmApp), pushDevices };
+    const tokenWhere = { user: { schoolMemberships: { some: { schoolId, isActive: true } } } };
+    const [pushDevices, iosDevices, androidDevices] = await Promise.all([
+      this.prisma.fcmToken.count({ where: tokenWhere }),
+      this.prisma.fcmToken.count({ where: { ...tokenWhere, platform: 'ios' } }),
+      this.prisma.fcmToken.count({ where: { ...tokenWhere, platform: 'android' } }),
+    ]);
+    return {
+      ...settings,
+      pushConfigured: Boolean(this.fcmApp),
+      pushDevices,
+      iosDevices,
+      androidDevices,
+      pushHint: !this.fcmApp
+        ? 'missing_firebase_env'
+        : pushDevices === 0
+          ? 'no_device_tokens'
+          : 'ok',
+    };
   }
 
   async updateSettings(schoolId: string, data: any) {
@@ -173,6 +187,7 @@ export class NotificationsService implements OnModuleInit {
     ]).slice(0, 5);
 
     // ─── Push notifications ─────────────────────────────────
+    const pushFailureCounts = new Map<string, number>();
     if (channels.includes('push')) {
       const tokens = await this.getTargetTokens(userIds);
       pushDevices = tokens.length;
@@ -206,9 +221,16 @@ export class NotificationsService implements OnModuleInit {
             });
             pushDelivered += res.successCount;
             recipientCount += res.successCount;
+            for (const [code, count] of this.collectPushFailures(res)) {
+              pushFailureCounts.set(code, (pushFailureCounts.get(code) ?? 0) + count);
+            }
             this.logPushFailures(res);
           } catch (e) {
             this.logger.error('FCM send error', e);
+            const code = String((e as { code?: string; errorInfo?: { code?: string } })?.errorInfo?.code
+              || (e as { code?: string })?.code
+              || 'fcm-send-error');
+            pushFailureCounts.set(code, (pushFailureCounts.get(code) ?? 0) + 1);
           }
         }
       }
@@ -277,11 +299,21 @@ export class NotificationsService implements OnModuleInit {
       });
     }
 
+    const pushFailures = [...pushFailureCounts.entries()]
+      .map(([code, count]) => ({ code, count }))
+      .sort((a, b) => b.count - a.count);
     return {
       ...broadcast,
       pushConfigured: Boolean(this.fcmApp),
       pushDevices,
       pushDelivered,
+      pushFailures,
+      pushDiagnosis: this.diagnosePush({
+        configured: Boolean(this.fcmApp),
+        devices: pushDevices,
+        delivered: pushDelivered,
+        failures: pushFailures,
+      }),
     };
   }
 
@@ -419,16 +451,61 @@ export class NotificationsService implements OnModuleInit {
     };
   }
 
-  private logPushFailures(res: admin.messaging.BatchResponse) {
+  private collectPushFailures(res: admin.messaging.BatchResponse) {
     const counts = new Map<string, number>();
     for (const item of res.responses) {
       const code = item.error?.code;
-      if (!code || code.includes('registration-token-not-registered') || code.includes('invalid-registration-token')) continue;
+      if (!code) continue;
       counts.set(code, (counts.get(code) ?? 0) + 1);
+    }
+    return counts;
+  }
+
+  private logPushFailures(res: admin.messaging.BatchResponse) {
+    const counts = this.collectPushFailures(res);
+    for (const staleCode of ['messaging/registration-token-not-registered', 'messaging/invalid-registration-token']) {
+      counts.delete(staleCode);
     }
     if (counts.size) {
       this.logger.warn(`FCM failures: ${[...counts.entries()].map(([code, count]) => `${code} x${count}`).join(', ')}`);
     }
+  }
+
+  private diagnosePush(input: {
+    configured: boolean;
+    devices: number;
+    delivered: number;
+    failures: { code: string; count: number }[];
+  }) {
+    if (!input.configured) {
+      return {
+        code: 'missing_firebase_env',
+        message: 'Λείπουν FIREBASE_PROJECT_ID / CLIENT_EMAIL / PRIVATE_KEY στον server.',
+      };
+    }
+    if (!input.devices) {
+      return {
+        code: 'no_device_tokens',
+        message: 'Κανένα κινητό δεν έχει δηλώσει FCM token. Άνοιξε το app 1.0.46+, δώσε άδεια ειδοποιήσεων.',
+      };
+    }
+    const top = input.failures[0]?.code || '';
+    if (top.includes('third-party-auth') || top.includes('apns') || top.includes('AuthError')) {
+      return {
+        code: 'apns_not_configured',
+        message: 'Το Firebase δεν έχει έγκυρο APNs key (.p8) για το iOS app. Ανέβασέ το στο Firebase → Cloud Messaging.',
+      };
+    }
+    if (input.delivered > 0) {
+      return { code: 'ok', message: `Παραδόθηκε σε ${input.delivered} συσκευές.` };
+    }
+    if (input.failures.length) {
+      return {
+        code: 'fcm_rejected',
+        message: `Το FCM απέρριψε την αποστολή (${input.failures.map((f) => `${f.code}×${f.count}`).join(', ')}).`,
+      };
+    }
+    return { code: 'unknown', message: 'Δεν παραδόθηκε push· έλεγξε Firebase APNs και tokens.' };
   }
 
   private async pushToUsers(userIds: string[], title: string, body: string, data: Record<string, string>) {
