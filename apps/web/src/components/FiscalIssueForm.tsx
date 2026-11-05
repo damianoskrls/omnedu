@@ -382,7 +382,7 @@ export function FiscalIssueForm({ schoolId, prefill, onCancel, onIssued, allowSt
 
   return (
     <div className="mx-auto max-w-3xl pb-28">
-      <div className="sticky top-0 z-10 -mx-1 mb-4 border-b border-gray-100 bg-white/95 px-1 py-3 backdrop-blur">
+      <div className="sticky top-[var(--app-shell-header-offset)] z-20 -mx-1 mb-4 border-b border-gray-100 bg-white/95 px-1 py-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/90">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
             <button

@@ -90,7 +90,7 @@ function AppShellInner({
     <div className="min-h-screen">
       <Sidebar variant={variant} open={open} onClose={() => setOpen(false)} />
       <div className="lg:pl-[17.5rem]">
-        <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-[#77328d]/10 bg-[#f7f4ef]/80 px-4 py-3 backdrop-blur-md sm:px-8">
+        <header className="app-shell-header sticky top-0 z-30 flex min-h-14 items-center gap-3 border-b border-[#77328d]/10 bg-[#f7f4ef] px-4 py-3 sm:px-8">
           <button
             type="button"
             onClick={() => setOpen(true)}
@@ -110,7 +110,7 @@ function AppShellInner({
             </p>
           </div>
         </header>
-        <main className="app-main mx-auto max-w-7xl px-4 py-6 sm:px-8 sm:py-8">{children}</main>
+        <main className="app-main mx-auto max-w-7xl scroll-mt-16 px-4 py-6 sm:px-8 sm:py-8">{children}</main>
       </div>
     </div>
   );

@@ -25,6 +25,8 @@
     --brand-purple: #77328d;
     --brand-orange: #e95926;
     --brand-green: #cce3ac;
+    /* Sticky page toolbars sit below the school app header */
+    --app-shell-header-offset: 3.5rem;
   }
 
   .dark {
@@ -50,7 +52,10 @@
 
 @layer base {
   * { @apply border-border; }
-  html { scroll-behavior: smooth; }
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: calc(var(--app-shell-header-offset) + 0.75rem);
+  }
   body {
     @apply bg-background text-foreground antialiased;
     background:
