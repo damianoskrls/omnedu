@@ -5,8 +5,6 @@ import '../../../core/notifications/notification_center.dart';
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/utils/system_insets.dart';
 import '../../../core/widgets/app_top_bar.dart';
-import '../home/parent_home_tokens.dart';
-import '../home/parent_icons.dart';
 import 'home_screen.dart';
 import 'activities_screen.dart';
 import 'events_screen.dart';
@@ -40,7 +38,7 @@ class _ParentShellState extends ConsumerState<ParentShell> {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.dark,
       child: Scaffold(
-        backgroundColor: ParentHomeTokens.background,
+        backgroundColor: const Color(0xFFF6F3FA),
         extendBody: false,
         body: Stack(
           children: [
@@ -48,7 +46,7 @@ class _ParentShellState extends ConsumerState<ParentShell> {
             NotificationWatcher(schoolId: schoolId),
           ],
         ),
-        bottomNavigationBar: _ParentBottomNav(
+        bottomNavigationBar: _FloatingNavBar(
           selectedIndex: index < 4 ? index : -1,
           onTap: (i) => ref.read(shellTabProvider.notifier).state = i,
         ),
@@ -57,112 +55,155 @@ class _ParentShellState extends ConsumerState<ParentShell> {
   }
 }
 
-class _ParentBottomNav extends StatelessWidget {
+class _NavItem {
+  final IconData? icon;
+  final IconData? activeIcon;
+  final String? asset;
+  final String? activeAsset;
+  final String label;
+  const _NavItem({
+    this.icon,
+    this.activeIcon,
+    this.asset,
+    this.activeAsset,
+    required this.label,
+  });
+}
+
+class _FloatingNavBar extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onTap;
 
-  const _ParentBottomNav({required this.selectedIndex, required this.onTap});
+  const _FloatingNavBar({required this.selectedIndex, required this.onTap});
 
   static const _items = [
-    (ParentIconData.home, 'Αρχική'),
-    (ParentIconData.activities, 'Δραστηριότητες'),
-    (ParentIconData.events, 'Εκδηλώσεις'),
-    (ParentIconData.billing, 'Οικονομικά'),
+    _NavItem(
+      asset: 'assets/images/nav_home_owl.png',
+      activeAsset: 'assets/images/nav_home_owl_active.png',
+      label: 'Αρχική',
+    ),
+    _NavItem(icon: Icons.sports_soccer_outlined, activeIcon: Icons.sports_soccer_rounded, label: 'Δραστηριότητες'),
+    _NavItem(icon: Icons.event_outlined, activeIcon: Icons.event_rounded, label: 'Εκδηλώσεις'),
+    _NavItem(icon: Icons.account_balance_wallet_outlined, activeIcon: Icons.account_balance_wallet_rounded, label: 'Οικονομικά'),
   ];
 
   @override
   Widget build(BuildContext context) {
     final bottomInset = systemBottomInset(context);
-    return Material(
-      color: ParentHomeTokens.surface,
-      elevation: 0,
+    return Padding(
+      padding: EdgeInsets.fromLTRB(12, 0, 12, bottomInset + 16),
       child: Container(
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: ParentHomeTokens.border)),
+        height: 70,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(36),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF77328D).withValues(alpha: 0.18),
+              blurRadius: 32,
+              offset: const Offset(0, 10),
+            ),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.07),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
-        padding: EdgeInsets.fromLTRB(8, 6, 8, bottomInset + 6),
-        child: SizedBox(
-          height: 58,
-          child: Row(
-            children: [
-              for (var i = 0; i < _items.length; i++)
-                Expanded(
-                  child: _NavTab(
-                    icon: _items[i].$1,
-                    label: _items[i].$2,
-                    selected: i == selectedIndex,
-                    onTap: () {
-                      HapticFeedback.selectionClick();
-                      onTap(i);
-                    },
+        child: Row(
+          children: _items.asMap().entries.map((e) {
+            final i = e.key;
+            final item = e.value;
+            final selected = i == selectedIndex;
+            return Expanded(
+              flex: selected ? 5 : 3,
+              child: GestureDetector(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  onTap(i);
+                },
+                behavior: HitTestBehavior.opaque,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeInOut,
+                  margin: EdgeInsets.symmetric(
+                    horizontal: selected ? 4 : 6,
+                    vertical: selected ? 8 : 10,
+                  ),
+                  decoration: selected
+                      ? BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF77328D), Color(0xFFE95926)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(28),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF77328D).withValues(alpha: 0.35),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        )
+                      : null,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 200),
+                        child: _navGlyph(item, selected),
+                      ),
+                      if (selected) ...[
+                        const SizedBox(height: 2),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              item.label,
+                              maxLines: 1,
+                              softWrap: false,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-            ],
-          ),
+              ),
+            );
+          }).toList(),
         ),
       ),
     );
   }
 }
 
-class _NavTab extends StatelessWidget {
-  final ParentIconData icon;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _NavTab({
-    required this.icon,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final color = selected ? ParentHomeTokens.primary : ParentHomeTokens.textSecondary;
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: label,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOut,
-          margin: const EdgeInsets.symmetric(horizontal: 2),
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          decoration: BoxDecoration(
-            color: selected ? ParentHomeTokens.lilac.withValues(alpha: 0.85) : Colors.transparent,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              ParentIcon(
-                icon,
-                size: 22,
-                color: color,
-                accent: selected ? ParentHomeTokens.lilac : ParentHomeTokens.border,
-              ),
-              const SizedBox(height: 3),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 10.5,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  color: color,
-                  height: 1.1,
-                ),
-              ),
-            ],
-          ),
-        ),
+Widget _navGlyph(_NavItem item, bool selected) {
+  final color = selected ? Colors.white : const Color(0xFFBBB8D4);
+  final asset = selected ? item.activeAsset : item.asset;
+  if (asset != null) {
+    return ColorFiltered(
+      key: ValueKey(selected),
+      colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+      child: Image.asset(
+        asset,
+        height: 30,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.medium,
       ),
     );
   }
+  return Icon(
+    selected ? item.activeIcon : item.icon,
+    key: ValueKey(selected),
+    size: 22,
+    color: color,
+  );
 }

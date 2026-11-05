@@ -8,11 +8,8 @@ import '../../../core/widgets/app_image.dart';
 import '../../../core/widgets/app_top_bar.dart';
 import '../../../core/widgets/person_face.dart';
 import '../home/home_widgets.dart';
-import '../home/parent_home_tokens.dart';
-import '../home/parent_icons.dart';
 import '../parent_children.dart';
 import 'billing_screen.dart';
-import 'bulletin_screen.dart';
 import 'bus_closure.dart';
 import 'party_invitation_screen.dart';
 import 'child_hub_screen.dart';
@@ -114,28 +111,12 @@ class HomeScreen extends ConsumerWidget {
     final user = ref.watch(authProvider).user;
     final firstName = user?.fullName.split(' ').first ?? '';
     final cards = _childMaps(childrenAsync.asData?.value ?? const []);
-    final selectedId = ref.watch(homeSelectedChildIdProvider);
-
-    ref.listen(myChildrenProvider(schoolId), (prev, next) {
-      next.whenData((children) {
-        final maps = _childMaps(children);
-        if (maps.isEmpty) return;
-        final ids = maps.map((c) => c['id']?.toString() ?? '').where((id) => id.isNotEmpty).toSet();
-        final current = ref.read(homeSelectedChildIdProvider);
-        if (current == null || !ids.contains(current)) {
-          ref.read(homeSelectedChildIdProvider.notifier).state = maps.first['id']?.toString();
-        }
-      });
-    });
-
-    final focused = cards.where((c) => c['id']?.toString() == selectedId).toList();
-    final scope = focused.isNotEmpty ? focused : cards;
     final multi = cards.length > 1;
 
     return Scaffold(
-      backgroundColor: ParentHomeTokens.background,
+      backgroundColor: const Color(0xFFF6F3FA),
       body: RefreshIndicator(
-        color: ParentHomeTokens.primary,
+        color: const Color(0xFF77328D),
         onRefresh: () async {
           ref.invalidate(myChildrenProvider(schoolId));
           ref.invalidate(childDayReportsProvider);
@@ -166,7 +147,7 @@ class HomeScreen extends ConsumerWidget {
               child: childrenAsync.when(
                 loading: () => const Padding(
                   padding: EdgeInsets.symmetric(vertical: 24),
-                  child: Center(child: CircularProgressIndicator(color: ParentHomeTokens.primary)),
+                  child: Center(child: CircularProgressIndicator(color: Color(0xFF77328D))),
                 ),
                 error: (e, _) => Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -176,16 +157,8 @@ class HomeScreen extends ConsumerWidget {
                   if (children.isEmpty) {
                     return const Padding(
                       padding: EdgeInsets.fromLTRB(20, 24, 20, 0),
-                      child: Text('Δεν βρέθηκαν παιδιά.', style: TextStyle(color: ParentHomeTokens.textSecondary)),
+                      child: Text('Δεν βρέθηκαν παιδιά.', style: TextStyle(color: Color(0xFF9CA3AF))),
                     );
-                  }
-                  final ids = cards.map((c) => c['id']?.toString() ?? '').where((id) => id.isNotEmpty).toSet();
-                  if (selectedId == null || !ids.contains(selectedId)) {
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (cards.isNotEmpty) {
-                        ref.read(homeSelectedChildIdProvider.notifier).state = cards.first['id']?.toString();
-                      }
-                    });
                   }
                   final plans = thematicAsync.asData?.value ?? const [];
                   final meetings = meetingsAsync.asData?.value ?? const [];
@@ -199,13 +172,6 @@ class HomeScreen extends ConsumerWidget {
                       .toList();
                   final now = DateTime.now();
                   final isWeekend = now.weekday == DateTime.saturday || now.weekday == DateTime.sunday;
-                  final scopedInvites = invitations.where((inv) {
-                    if (!multi || focused.isEmpty) return true;
-                    final kids = inv['forMyChildren'];
-                    if (kids is! List) return true;
-                    final ids = focused.map((c) => c['id']?.toString()).toSet();
-                    return kids.whereType<Map>().any((k) => ids.contains(k['id']?.toString()));
-                  }).toList();
 
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -214,8 +180,6 @@ class HomeScreen extends ConsumerWidget {
                         delayMs: 40,
                         child: HomeChildSelector(
                           children: cards,
-                          selectedId: selectedId ?? cards.first['id']?.toString(),
-                          onSelect: (id) => ref.read(homeSelectedChildIdProvider.notifier).state = id,
                           onOpenHub: (child) => Navigator.of(context).push(
                             MaterialPageRoute(
                               builder: (_) => ChildHubScreen(schoolId: schoolId, child: child),
@@ -223,81 +187,84 @@ class HomeScreen extends ConsumerWidget {
                           ),
                         ),
                       ),
-                      if (scope.any(childHasBus)) BusClosedNotice(schoolId: schoolId),
+                      if (cards.any(childHasBus)) BusClosedNotice(schoolId: schoolId),
                       HomeFadeIn(
                         delayMs: 70,
                         child: _UpcomingBlock(
-                          children: scope,
-                          allChildrenCount: cards.length,
+                          children: cards,
                           meetings: meetings,
-                          invitations: scopedInvites,
+                          invitations: invitations,
                           schoolId: schoolId,
+                          showChildLabels: multi,
                         ),
                       ),
                       if (!isWeekend) ...[
-                        const HomeSectionHeader(title: 'Σήμερα', icon: ParentIconData.mood),
-                        for (final child in scope)
+                        daySectionTitle(Icons.today_rounded, 'Ενημέρωση Σήμερα', dayHistoryColors),
+                        for (final child in cards)
                           HomeFadeIn(
                             delayMs: 90,
                             child: Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.only(top: 12, bottom: 4),
                               child: HomeTodayCard(
                                 schoolId: schoolId,
                                 child: child,
-                                showChildLabel: multi && focused.isEmpty,
+                                showChildLabel: multi,
                               ),
                             ),
                           ),
-                        for (final child in scope)
-                          HomeWeekMoodStrip(schoolId: schoolId, child: child),
-                        const HomeSectionHeader(title: 'Το σημερινό μενού', icon: ParentIconData.food),
+                        daySectionTitle(Icons.restaurant_rounded, 'Διατροφολόγιο Σήμερα', dayHistoryColors),
                         HomeFadeIn(
                           delayMs: 110,
-                          child: HomeMenuCard(schoolId: schoolId),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                            child: SharedTodayMenu(schoolId: schoolId, children: cards),
+                          ),
                         ),
                       ],
-                      HomeSectionHeader(
-                        title: 'Πρόσφατες ενημερώσεις',
-                        icon: ParentIconData.notes,
-                        actionLabel: scope.length == 1 ? 'Προβολή όλων' : null,
-                        onAction: scope.length == 1
-                            ? () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => BulletinScreen(
-                                      schoolId: schoolId,
-                                      child: scope.first,
-                                    ),
-                                  ),
-                                )
-                            : null,
-                      ),
-                      for (final child in scope)
-                        _HomeRecentCompact(
-                          schoolId: schoolId,
-                          child: child,
-                          showChildLabel: multi && focused.isEmpty,
+                      daySectionTitle(Icons.history_rounded, 'Πρόσφατες Ενημερώσεις', dayHistoryColors),
+                      for (final child in cards)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                          child: ChildRecentUpdates(schoolId: schoolId, child: child, latestOnly: true),
                         ),
                       _FoundNoticesHome(schoolId: schoolId, embedded: true),
-                      if (scope.any(childHasInstructions)) ...[
-                        const HomeSectionHeader(title: 'Οδηγίες από το σχολείο', icon: ParentIconData.notes),
-                        for (final child in scope) ChildInstructionCards(child: child),
+                      if (cards.any(childHasInstructions)) ...[
+                        daySectionTitle(Icons.assignment_rounded, 'Οδηγίες από το Σχολείο', dayHistoryColors),
+                        for (final child in cards) ChildInstructionCards(child: child),
                       ],
-                      if (scope.any(childHasEvents) || posts.isNotEmpty) ...[
-                        HomeSectionHeader(
-                          title: 'Εκδηλώσεις',
-                          icon: ParentIconData.events,
-                          actionLabel: scope.any(childHasEvents) ? 'Εμφάνιση όλων' : null,
-                          onAction: scope.any(childHasEvents)
-                              ? () => ref.read(shellTabProvider.notifier).state = 2
-                              : null,
+                      if (cards.any(childHasEvents) || posts.isNotEmpty) ...[
+                        daySectionTitle(
+                          Icons.event_rounded,
+                          'Εκδηλώσεις',
+                          dayHistoryColors,
+                          badge: () {
+                            final pending = cards.fold<int>(0, (sum, child) => sum + childPendingEvents(child));
+                            return pending > 0 ? '$pending εκκρεμεί' : null;
+                          }(),
                         ),
-                        for (final child in scope)
+                        for (final child in cards)
                           if (childHasEvents(child))
                             ChildEventCards(schoolId: schoolId, child: child, maxItems: 1),
+                        if (cards.any(childHasEvents))
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                            child: SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton(
+                                onPressed: () => ref.read(shellTabProvider.notifier).state = 2,
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: const Color(0xFF77328D),
+                                  side: const BorderSide(color: Color(0xFF77328D)),
+                                  minimumSize: const Size.fromHeight(44),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                ),
+                                child: const Text('Εμφάνιση όλων', style: TextStyle(fontWeight: FontWeight.w700)),
+                              ),
+                            ),
+                          ),
                         if (posts.isNotEmpty)
                           Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                             child: Column(
                               children: [
                                 for (final post in posts)
@@ -315,7 +282,7 @@ class HomeScreen extends ConsumerWidget {
                                     ),
                                     child: const Text(
                                       'Όλα τα νέα',
-                                      style: TextStyle(color: ParentHomeTokens.primary, fontWeight: FontWeight.w700),
+                                      style: TextStyle(color: Color(0xFF77328D), fontWeight: FontWeight.w700),
                                     ),
                                   ),
                                 ),
@@ -324,13 +291,13 @@ class HomeScreen extends ConsumerWidget {
                           ),
                       ],
                       _FinancialPendingSection(charges: chargesAsync.asData?.value ?? const []),
-                      _GroupedExtras(schoolId: schoolId, children: scope, plans: plans),
+                      _GroupedExtras(schoolId: schoolId, children: cards, plans: plans),
                     ],
                   );
                 },
               ),
             ),
-            const SliverToBoxAdapter(child: SizedBox(height: 96)),
+            const SliverToBoxAdapter(child: SizedBox(height: 110)),
           ],
         ),
       ),
@@ -338,75 +305,19 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-class _HomeRecentCompact extends ConsumerWidget {
-  final String schoolId;
-  final Map<String, dynamic> child;
-  final bool showChildLabel;
-  const _HomeRecentCompact({
-    required this.schoolId,
-    required this.child,
-    required this.showChildLabel,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final studentId = child['id'] as String? ?? '';
-    final reportsAsync = ref.watch(childDayReportsProvider((schoolId: schoolId, studentId: studentId)));
-    final today = DateTime.now();
-    final todayDay = DateTime(today.year, today.month, today.day);
-    return reportsAsync.when(
-      loading: () => const Padding(
-        padding: EdgeInsets.only(bottom: 8),
-        child: HomeSkeletonCard(height: 88),
-      ),
-      error: (_, __) => const SizedBox.shrink(),
-      data: (reports) {
-        final earlier = reports.where((raw) {
-          final day = reportCalendarDay(raw);
-          return day != null && day.isBefore(todayDay);
-        }).toList()
-          ..sort((a, b) {
-            final left = reportCalendarDay(a);
-            final right = reportCalendarDay(b);
-            if (left == null || right == null) return 0;
-            return right.compareTo(left);
-          });
-        if (earlier.isEmpty) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: HomeSurfaceCard(
-              child: Text(
-                'Δεν υπάρχουν προηγούμενες ενημερώσεις',
-                style: ParentHomeTokens.captionStyle,
-              ),
-            ),
-          );
-        }
-        final raw = earlier.first;
-        return HomeRecentUpdateCard(
-          schoolId: schoolId,
-          child: child,
-          report: Map<String, dynamic>.from(raw as Map),
-          showChildLabel: showChildLabel,
-        );
-      },
-    );
-  }
-}
-
 class _UpcomingBlock extends StatelessWidget {
   final List<Map<String, dynamic>> children;
-  final int allChildrenCount;
   final List<dynamic> meetings;
   final List<Map<String, dynamic>> invitations;
   final String schoolId;
+  final bool showChildLabels;
 
   const _UpcomingBlock({
     required this.children,
-    required this.allChildrenCount,
     required this.meetings,
     required this.invitations,
     required this.schoolId,
+    required this.showChildLabels,
   });
 
   @override
@@ -423,17 +334,15 @@ class _UpcomingBlock extends StatelessWidget {
       }
     }
     if (meetingRows.isEmpty && invitations.isEmpty) return const SizedBox.shrink();
-    final showChild = allChildrenCount > 1;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const HomeSectionHeader(title: 'Προσεχώς', icon: ParentIconData.calendar),
+        daySectionTitle(Icons.event_available_rounded, 'Προσεχώς', dayHistoryColors),
         for (final row in meetingRows)
           HomeMeetingTile(
             child: row.key,
             meeting: row.value,
-            showChild: showChild,
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(
@@ -450,7 +359,7 @@ class _UpcomingBlock extends StatelessWidget {
         for (final inv in invitations.take(3))
           HomePartyInviteTile(
             invitation: inv,
-            showChildren: showChild,
+            showChildren: showChildLabels,
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(
@@ -529,7 +438,7 @@ class _GroupedExtras extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        HomeSectionHeader(title: 'Διαθεματικό $month', icon: ParentIconData.notes),
+        daySectionTitle(Icons.auto_stories_rounded, 'Διαθεματικό $month', dayHistoryColors),
         for (final child in children) Builder(builder: (ctx) {
           final plan = _thematicFor(plans, child);
           final enrollments = child['enrollments'] as List? ?? [];

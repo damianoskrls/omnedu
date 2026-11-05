@@ -1097,117 +1097,148 @@ class DayMenuCard extends StatelessWidget {
     final childName = (child?['fullName'] as String?) ??
         (children.isNotEmpty ? children.first['fullName'] as String? : null) ??
         '';
+    final rootNavigator = Navigator.of(context);
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      isDismissible: true,
+      enableDrag: true,
+      useSafeArea: true,
+      showDragHandle: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
       builder: (ctx) {
-        final maxH = MediaQuery.of(ctx).size.height * 0.85;
-        return SafeArea(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: maxH),
-            child: Padding(
-            padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + MediaQuery.of(ctx).viewInsets.bottom),
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE5E7EB),
-                        borderRadius: BorderRadius.circular(99),
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.62,
+          minChildSize: 0.32,
+          maxChildSize: 0.92,
+          builder: (sheetCtx, scrollController) {
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 40),
+                      Expanded(
+                        child: Text(
+                          'Διατροφολόγιο σήμερα',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: colors[0]),
+                        ),
                       ),
+                      IconButton(
+                        tooltip: 'Κλείσιμο',
+                        onPressed: () => Navigator.of(sheetCtx).maybePop(),
+                        icon: const Icon(Icons.close_rounded, color: Color(0xFF6B7280)),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: ListView(
+                    controller: scrollController,
+                    padding: EdgeInsets.fromLTRB(
+                      20,
+                      4,
+                      20,
+                      20 + MediaQuery.paddingOf(sheetCtx).bottom,
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Διατροφολόγιο σήμερα',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: colors[0]),
-                  ),
-                  const SizedBox(height: 14),
-                  ...filled.map(
-                    (item) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(item.$2, size: 18, color: colors[0]),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(item.$1,
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFFE95926),
-                                    )),
-                                const SizedBox(height: 2),
-                                Text(
-                                  item.$3 as String,
-                                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Color(0xFF2C2422)),
+                    children: [
+                      ...filled.map(
+                        (item) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(item.$2, size: 18, color: colors[0]),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item.$1,
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFFE95926),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      item.$3 as String,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                        color: Color(0xFF2C2422),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (monthNotes.isNotEmpty || dayNotes.isNotEmpty) ...[
+                        const Divider(height: 28),
+                        Text(
+                          'Σημειώσεις',
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: colors[0]),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          monthNotes.isNotEmpty ? monthNotes : dayNotes,
+                          style: const TextStyle(fontSize: 13, height: 1.5, color: Color(0xFF374151)),
+                        ),
+                      ],
+                      if (schoolId != null) ...[
+                        const SizedBox(height: 18),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: FilledButton.icon(
+                            onPressed: () {
+                              Navigator.of(sheetCtx).pop();
+                              rootNavigator.push(
+                                MaterialPageRoute(
+                                  builder: (_) => MonthlyMealsScreen(
+                                    schoolId: schoolId!,
+                                    childName: childName.isEmpty ? 'Μαθητής' : childName,
+                                  ),
+                                ),
+                              );
+                            },
+                            style: FilledButton.styleFrom(
+                              backgroundColor: colors[0],
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            ),
+                            icon: const Icon(Icons.calendar_month_rounded),
+                            label: const Text(
+                              'Όλο το διατροφολόγιο του μήνα',
+                              style: TextStyle(fontWeight: FontWeight.w700),
                             ),
                           ),
-                        ],
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      TextButton(
+                        onPressed: () => Navigator.of(sheetCtx).maybePop(),
+                        child: Text(
+                          'Κλείσιμο',
+                          style: TextStyle(color: colors[0], fontWeight: FontWeight.w700),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
-                  if (monthNotes.isNotEmpty || dayNotes.isNotEmpty) ...[
-                    const Divider(height: 28),
-                    Text(
-                      'Σημειώσεις',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: colors[0]),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      monthNotes.isNotEmpty ? monthNotes : dayNotes,
-                      style: const TextStyle(fontSize: 13, height: 1.5, color: Color(0xFF374151)),
-                    ),
-                  ],
-                  if (schoolId != null) ...[
-                    const SizedBox(height: 18),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: FilledButton.icon(
-                        onPressed: () {
-                          Navigator.of(ctx).pop();
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => MonthlyMealsScreen(
-                                schoolId: schoolId!,
-                                childName: childName.isEmpty ? 'Μαθητής' : childName,
-                              ),
-                            ),
-                          );
-                        },
-                        style: FilledButton.styleFrom(
-                          backgroundColor: colors[0],
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        ),
-                        icon: const Icon(Icons.calendar_month_rounded),
-                        label: const Text(
-                          'Όλο το διατροφολόγιο του μήνα',
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            ),
-          ),
+                ),
+              ],
+            );
+          },
         );
       },
     );

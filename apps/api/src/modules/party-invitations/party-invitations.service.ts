@@ -12,7 +12,7 @@ export class PartyInvitationsService {
   async list(schoolId: string) {
     return this.prisma.partyInvitation.findMany({
       where: { schoolId },
-      include: { birthdayStudent: { select: { id: true, fullName: true, avatarUrl: true } } },
+      include: { birthdayStudent: { select: { id: true, fullName: true, avatarUrl: true, gender: true } } },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -20,7 +20,7 @@ export class PartyInvitationsService {
   async get(schoolId: string, id: string, requestingUserId: string) {
     const row = await this.prisma.partyInvitation.findFirst({
       where: { id, schoolId },
-      include: { birthdayStudent: { select: { id: true, fullName: true, avatarUrl: true } } },
+      include: { birthdayStudent: { select: { id: true, fullName: true, avatarUrl: true, gender: true } } },
     });
     if (!row) throw new NotFoundException('Η πρόσκληση δεν βρέθηκε');
 
@@ -97,7 +97,7 @@ export class PartyInvitationsService {
         eventDate: data.eventDate ?? null,
         recipientStudentIds: data.recipientStudentIds,
       },
-      include: { birthdayStudent: { select: { id: true, fullName: true, avatarUrl: true } } },
+      include: { birthdayStudent: { select: { id: true, fullName: true, avatarUrl: true, gender: true } } },
     });
   }
 
@@ -121,7 +121,7 @@ export class PartyInvitationsService {
         ...(data.eventDate !== undefined ? { eventDate: data.eventDate } : {}),
         ...(data.recipientStudentIds !== undefined ? { recipientStudentIds: data.recipientStudentIds } : {}),
       },
-      include: { birthdayStudent: { select: { id: true, fullName: true, avatarUrl: true } } },
+      include: { birthdayStudent: { select: { id: true, fullName: true, avatarUrl: true, gender: true } } },
     });
   }
 
@@ -164,7 +164,7 @@ export class PartyInvitationsService {
     return this.prisma.partyInvitation.update({
       where: { id },
       data: isReminder ? { reminderSentAt: now } : { sentAt: now },
-      include: { birthdayStudent: { select: { id: true, fullName: true, avatarUrl: true } } },
+      include: { birthdayStudent: { select: { id: true, fullName: true, avatarUrl: true, gender: true } } },
     });
   }
 
@@ -177,7 +177,7 @@ export class PartyInvitationsService {
     if (!childIds.length) return [];
     return this.prisma.partyInvitation.findMany({
       where: { schoolId, birthdayStudentId: { in: childIds } },
-      include: { birthdayStudent: { select: { id: true, fullName: true, avatarUrl: true } } },
+      include: { birthdayStudent: { select: { id: true, fullName: true, avatarUrl: true, gender: true } } },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -193,7 +193,7 @@ export class PartyInvitationsService {
 
     const rows = await this.prisma.partyInvitation.findMany({
       where: { schoolId, sentAt: { not: null } },
-      include: { birthdayStudent: { select: { id: true, fullName: true, avatarUrl: true } } },
+      include: { birthdayStudent: { select: { id: true, fullName: true, avatarUrl: true, gender: true } } },
       orderBy: { sentAt: 'desc' },
     });
 

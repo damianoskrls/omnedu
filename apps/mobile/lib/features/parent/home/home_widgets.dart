@@ -8,6 +8,7 @@ import '../screens/day_history.dart';
 import '../screens/parent_child_pages.dart';
 import 'parent_home_tokens.dart';
 import 'parent_icons.dart';
+import 'today_pending_illustration.dart';
 
 final homeSelectedChildIdProvider = StateProvider<String?>((ref) => null);
 
@@ -155,141 +156,130 @@ class HomeGreeting extends StatelessWidget {
   }
 }
 
+/// Square child cards: photo on top, name + class below.
 class HomeChildSelector extends StatelessWidget {
   final List<Map<String, dynamic>> children;
-  final String? selectedId;
-  final ValueChanged<String> onSelect;
   final ValueChanged<Map<String, dynamic>> onOpenHub;
 
   const HomeChildSelector({
     super.key,
     required this.children,
-    required this.selectedId,
-    required this.onSelect,
     required this.onOpenHub,
   });
+
+  static String? classNameOf(Map<String, dynamic> child) {
+    final enrollments = child['enrollments'] as List? ?? [];
+    if (enrollments.isEmpty || enrollments.first is! Map) return null;
+    final klass = enrollments.first['class'];
+    if (klass is! Map) return null;
+    final name = klass['name']?.toString().trim() ?? '';
+    return name.isEmpty ? null : name;
+  }
 
   @override
   Widget build(BuildContext context) {
     if (children.isEmpty) return const SizedBox.shrink();
-    if (children.length == 1) {
-      final child = children.first;
-      final name = child['fullName']?.toString() ?? '';
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(ParentHomeTokens.pagePadding, 12, ParentHomeTokens.pagePadding, 4),
-        child: Material(
-          color: ParentHomeTokens.lilac.withValues(alpha: 0.55),
-          borderRadius: BorderRadius.circular(ParentHomeTokens.radiusChip),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(ParentHomeTokens.radiusChip),
-            onTap: () => onOpenHub(child),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Row(
-                children: [
-                  PersonFace(
-                    name: name,
-                    photoUrl: child['avatarUrl']?.toString(),
-                    size: 40,
-                    radius: 14,
-                    fontSize: 15,
-                    background: ParentHomeTokens.primary,
-                    foreground: Colors.white,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: ParentHomeTokens.text,
-                      ),
-                    ),
-                  ),
-                  const ParentIcon(ParentIconData.chevron, size: 18, color: ParentHomeTokens.primary),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
     return SizedBox(
-      height: 72,
+      height: 198,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(ParentHomeTokens.pagePadding, 12, ParentHomeTokens.pagePadding, 4),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
         itemCount: children.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
         itemBuilder: (context, index) {
           final child = children[index];
-          final id = child['id']?.toString() ?? '';
-          final selected = id == selectedId;
           final name = child['fullName']?.toString() ?? '';
-          final first = name.split(' ').first;
+          final className = classNameOf(child);
+          final gender = (child['gender']?.toString() ?? '').toLowerCase();
+          final girl = gender == 'female';
+          final accent = girl ? const Color(0xFFDB2777) : const Color(0xFF77328D);
+          final wash = girl ? const Color(0xFFFFF1F7) : const Color(0xFFF7F0FB);
           return Material(
-            color: selected ? ParentHomeTokens.primary : ParentHomeTokens.surface,
-            borderRadius: BorderRadius.circular(ParentHomeTokens.radiusChip),
+            color: Colors.transparent,
             child: InkWell(
-              borderRadius: BorderRadius.circular(ParentHomeTokens.radiusChip),
+              borderRadius: BorderRadius.circular(22),
               onTap: () {
                 HapticFeedback.selectionClick();
-                onSelect(id);
+                onOpenHub(child);
               },
-              onLongPress: () => onOpenHub(child),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                curve: Curves.easeOut,
-                padding: const EdgeInsets.fromLTRB(8, 8, 12, 8),
+              child: Ink(
+                width: 132,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(ParentHomeTokens.radiusChip),
-                  border: Border.all(
-                    color: selected ? ParentHomeTokens.primary : ParentHomeTokens.border,
-                    width: selected ? 1.5 : 1,
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: accent.withValues(alpha: 0.18)),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.white, wash],
                   ),
-                  boxShadow: selected ? ParentHomeTokens.softShadow : null,
-                ),
-                child: Row(
-                  children: [
-                    PersonFace(
-                      name: name,
-                      photoUrl: child['avatarUrl']?.toString(),
-                      size: 40,
-                      radius: 14,
-                      fontSize: 15,
-                      background: selected ? Colors.white : ParentHomeTokens.lilac,
-                      foreground: ParentHomeTokens.primary,
+                  boxShadow: [
+                    BoxShadow(
+                      color: accent.withValues(alpha: 0.12),
+                      blurRadius: 16,
+                      offset: const Offset(0, 8),
                     ),
-                    const SizedBox(width: 8),
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 96),
-                      child: Text(
-                        first,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: selected ? Colors.white : ParentHomeTokens.text,
+                  ],
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
+                  child: Column(
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(18),
+                          boxShadow: [
+                            BoxShadow(
+                              color: accent.withValues(alpha: 0.18),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: PersonFace(
+                          name: name,
+                          photoUrl: child['avatarUrl']?.toString(),
+                          size: 96,
+                          radius: 18,
+                          fontSize: 32,
+                          background: accent,
+                          foreground: Colors.white,
                         ),
                       ),
-                    ),
-                    if (selected) ...[
-                      const SizedBox(width: 4),
-                      IconButton(
-                        tooltip: 'Προφίλ παιδιού',
-                        onPressed: () => onOpenHub(child),
-                        icon: const ParentIcon(ParentIconData.chevron, size: 16, color: Colors.white),
-                        visualDensity: VisualDensity.compact,
-                        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                        padding: EdgeInsets.zero,
+                      const SizedBox(height: 10),
+                      Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                          height: 1.15,
+                          color: Color(0xFF2C2422),
+                        ),
                       ),
+                      if (className != null) ...[
+                        const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: accent.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            className,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: accent,
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -409,25 +399,9 @@ class HomeTodayCard extends ConsumerWidget {
           }
         }
         if (todayReport == null) {
-          return HomeSurfaceCard(
-            color: ParentHomeTokens.lilac.withValues(alpha: 0.35),
-            child: Row(
-              children: [
-                const ParentIcon(
-                  ParentIconData.emptyToday,
-                  size: 40,
-                  color: ParentHomeTokens.primary,
-                  accent: ParentHomeTokens.lilac,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Δεν έχει καταχωριστεί ακόμη ενημέρωση για σήμερα.',
-                    style: ParentHomeTokens.bodyStyle.copyWith(color: ParentHomeTokens.textSecondary, fontSize: 14),
-                  ),
-                ),
-              ],
-            ),
+          return TodayUpdatePendingCard(
+            childName: showChildLabel ? child['fullName']?.toString() : null,
+            margin: const EdgeInsets.symmetric(horizontal: ParentHomeTokens.pagePadding),
           );
         }
 
@@ -785,77 +759,183 @@ class HomeMeetingTile extends StatelessWidget {
   final Map<String, dynamic> child;
   final Map<String, dynamic> meeting;
   final VoidCallback onTap;
-  final bool showChild;
 
   const HomeMeetingTile({
     super.key,
     required this.child,
     required this.meeting,
     required this.onTap,
-    this.showChild = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final date = DateTime.tryParse(meeting['meetingDate']?.toString() ?? '');
     final slot = meeting['acceptedSlot']?.toString() ?? '';
-    return HomeSurfaceCard(
-      margin: const EdgeInsets.fromLTRB(ParentHomeTokens.pagePadding, 0, ParentHomeTokens.pagePadding, 8),
-      onTap: onTap,
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 52,
-            decoration: BoxDecoration(
-              color: ParentHomeTokens.lilac,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  date != null ? '${date.day}' : '—',
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: ParentHomeTokens.deep),
-                ),
-                Text(
-                  date != null ? ParentHomeTokens.monthsShort[date.month] : '',
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: ParentHomeTokens.primary),
-                ),
-              ],
-            ),
+    final mention = ChildMention.fromMap(child);
+    final daysLeft = date == null
+        ? null
+        : DateTime(date.year, date.month, date.day)
+            .difference(DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day))
+            .inDays;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE7D4F0)),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFFFFFFF), Color(0xFFF7F0FB)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF77328D).withValues(alpha: 0.08),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Συνάντηση με εκπαιδευτικό',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: ParentHomeTokens.text),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  [
-                    if (date != null) ParentHomeTokens.formatDayMonth(date),
-                    if (slot.isNotEmpty) slot,
-                  ].join(' · '),
-                  style: ParentHomeTokens.captionStyle,
-                ),
-                if (showChild) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    child['fullName']?.toString() ?? '',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: ParentHomeTokens.primary),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const ParentIcon(ParentIconData.chevron, size: 18, color: ParentHomeTokens.textSecondary),
         ],
       ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              children: [
+                if (daysLeft != null) ...[
+                  _MeetingCountdownBadge(daysLeft: daysLeft),
+                  const SizedBox(width: 12),
+                ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (mention != null) ...[
+                        ChildMentions(people: [mention]),
+                        const SizedBox(height: 8),
+                      ],
+                      const Text(
+                        'Συνάντηση με εκπαιδευτικό',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF2C2422)),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        [
+                          if (date != null) ParentHomeTokens.formatDayMonth(date),
+                          if (slot.isNotEmpty) 'στις $slot',
+                        ].join(' · '),
+                        style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280), fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded, color: Color(0xFF77328D), size: 20),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MeetingCountdownBadge extends StatefulWidget {
+  final int daysLeft;
+  const _MeetingCountdownBadge({required this.daysLeft});
+
+  @override
+  State<_MeetingCountdownBadge> createState() => _MeetingCountdownBadgeState();
+}
+
+class _MeetingCountdownBadgeState extends State<_MeetingCountdownBadge>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _scale;
+  late final Animation<int> _count;
+
+  @override
+  void initState() {
+    super.initState();
+    final target = widget.daysLeft.clamp(0, 99);
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
+    _scale = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.86, end: 1.06), weight: 55),
+      TweenSequenceItem(tween: Tween(begin: 1.06, end: 1.0), weight: 45),
+    ]).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
+    _count = IntTween(begin: 0, end: target).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
+    );
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final label = widget.daysLeft <= 0
+        ? 'Σήμερα'
+        : widget.daysLeft == 1
+            ? 'αύριο'
+            : 'ημέρες';
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        return Transform.scale(
+          scale: _scale.value,
+          child: Container(
+            width: 64,
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF77328D), Color(0xFFE95926)],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF77328D).withValues(alpha: 0.28),
+                  blurRadius: 12,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  widget.daysLeft <= 0 ? '!' : '${_count.value}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    height: 1,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    height: 1.1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -876,58 +956,129 @@ class HomePartyInviteTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final title = invitation['title']?.toString() ?? 'Πρόσκληση Πάρτυ';
     final eventDate = DateTime.tryParse(invitation['eventDate']?.toString() ?? '');
-    final kids = invitation['forMyChildren'];
-    final names = kids is List
-        ? kids.whereType<Map>().map((e) => e['fullName']?.toString() ?? '').where((e) => e.isNotEmpty).join(', ')
-        : '';
+    final birthday = invitation['birthdayStudent'] is Map
+        ? Map<String, dynamic>.from(invitation['birthdayStudent'] as Map)
+        : null;
+    final gender = (birthday?['gender']?.toString() ?? '').toLowerCase();
+    final isGirl = gender == 'female';
+    final isBoy = gender == 'male';
+    final accent = isGirl
+        ? const Color(0xFFDB2777)
+        : isBoy
+            ? const Color(0xFF2563EB)
+            : const Color(0xFFDB2777);
+    final wash = isGirl
+        ? const Color(0xFFFFF1F7)
+        : isBoy
+            ? const Color(0xFFEFF6FF)
+            : const Color(0xFFFFF1F7);
+    final border = isGirl
+        ? const Color(0xFFFBCFE8)
+        : isBoy
+            ? const Color(0xFFBFDBFE)
+            : const Color(0xFFFCE7F3);
+    final emoji = isBoy ? '🎈' : '🎂';
+    final hostName = birthday?['fullName']?.toString().trim() ?? '';
+    final mentions = _partyInviteMentions(invitation);
 
-    return HomeSurfaceCard(
-      margin: const EdgeInsets.fromLTRB(ParentHomeTokens.pagePadding, 0, ParentHomeTokens.pagePadding, 8),
-      color: ParentHomeTokens.peach.withValues(alpha: 0.55),
-      onTap: onTap,
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.8),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            alignment: Alignment.center,
-            child: const ParentIcon(ParentIconData.cake, size: 24, color: ParentHomeTokens.primary, accent: ParentHomeTokens.butter),
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+      decoration: BoxDecoration(
+        color: wash,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: border),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withValues(alpha: 0.12),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
               children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: ParentHomeTokens.text),
-                ),
-                if (eventDate != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    ParentHomeTokens.formatDayMonthTime(eventDate),
-                    style: ParentHomeTokens.captionStyle,
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: border),
+                    boxShadow: [
+                      BoxShadow(
+                        color: accent.withValues(alpha: 0.12),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
                   ),
-                ],
-                if (showChildren && names.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(names, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: ParentHomeTokens.primary)),
-                ],
+                  alignment: Alignment.center,
+                  child: Text(emoji, style: const TextStyle(fontSize: 24)),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (hostName.isNotEmpty)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: accent.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            isBoy ? 'Από τον $hostName' : 'Από την $hostName',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: accent),
+                          ),
+                        ),
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF111827)),
+                      ),
+                      if (eventDate != null) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          ParentHomeTokens.formatDayMonthTime(eventDate),
+                          style: TextStyle(fontSize: 12, color: accent.withValues(alpha: 0.85), fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                      if (showChildren && mentions.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        ChildMentions(people: mentions),
+                      ],
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, size: 20, color: accent),
               ],
             ),
           ),
-          const ParentIcon(ParentIconData.chevron, size: 18, color: ParentHomeTokens.textSecondary),
-        ],
+        ),
       ),
     );
   }
+}
+
+List<ChildMention> _partyInviteMentions(Map<String, dynamic> inv) {
+  final raw = inv['forMyChildren'];
+  if (raw is! List) return const [];
+  return raw
+      .whereType<Map>()
+      .map((row) => ChildMention.fromMap(row))
+      .whereType<ChildMention>()
+      .toList();
 }
 
 class HomeRecentUpdateCard extends StatelessWidget {

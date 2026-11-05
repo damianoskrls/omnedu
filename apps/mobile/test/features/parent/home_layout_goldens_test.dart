@@ -1,46 +1,64 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnedu/features/parent/home/home_widgets.dart';
-import 'package:omnedu/features/parent/home/parent_home_tokens.dart';
-import 'package:omnedu/features/parent/home/parent_icons.dart';
-import 'package:omnedu/features/parent/screens/parent_shell.dart';
 
 void main() {
   testWidgets('home composition at mobile widths', (tester) async {
     for (final width in [360.0, 390.0, 430.0]) {
-      await tester.binding.setSurfaceSize(Size(width, 800));
+      await tester.binding.setSurfaceSize(Size(width, 900));
       await tester.pumpWidget(MaterialApp(
         theme: ThemeData(fontFamily: 'Roboto', useMaterial3: true),
         home: Scaffold(
-          backgroundColor: ParentHomeTokens.background,
+          backgroundColor: const Color(0xFFF6F3FA),
           body: ListView(
             children: [
               const HomeGreeting(firstName: 'Δαμιανέ', childCount: 2),
               HomeChildSelector(
                 children: const [
-                  {'id': '1', 'fullName': 'Μαρίνα Παπαδοπούλου'},
-                  {'id': '2', 'fullName': 'Νίκος Παπαδόπουλος'},
+                  {
+                    'id': '1',
+                    'fullName': 'Μαρίνα Παπαδοπούλου',
+                    'gender': 'female',
+                    'enrollments': [
+                      {
+                        'class': {'name': 'Προνήπιο Α'},
+                      },
+                    ],
+                  },
+                  {
+                    'id': '2',
+                    'fullName': 'Νίκος Παπαδόπουλος',
+                    'gender': 'male',
+                    'enrollments': [
+                      {
+                        'class': {'name': 'Νήπιο Β'},
+                      },
+                    ],
+                  },
                 ],
-                selectedId: '1',
-                onSelect: (_) {},
                 onOpenHub: (_) {},
               ),
-              const HomeSectionHeader(title: 'Σήμερα', icon: ParentIconData.mood),
-              HomeSurfaceCard(
-                color: ParentHomeTokens.lilac.withValues(alpha: 0.35),
-                child: const Row(
-                  children: [
-                    ParentIcon(ParentIconData.emptyToday, size: 40),
-                    SizedBox(width: 12),
-                    Expanded(child: Text('Δεν έχει καταχωριστεί ακόμη ενημέρωση για σήμερα.')),
-                  ],
-                ),
+              HomeMeetingTile(
+                child: const <String, dynamic>{
+                  'id': '1',
+                  'fullName': 'Μαρίνα Παπαδοπούλου',
+                  'avatarUrl': null,
+                },
+                meeting: {
+                  'meetingDate': DateTime.now().add(const Duration(days: 3)).toIso8601String(),
+                  'acceptedSlot': '10:30',
+                },
+                onTap: () {},
               ),
-              const HomeSectionHeader(title: 'Προσεχώς', icon: ParentIconData.calendar),
               HomePartyInviteTile(
                 invitation: {
                   'title': 'Πάρτυ γενεθλίων',
                   'eventDate': '2026-11-11T13:20:00.000Z',
+                  'birthdayStudent': {
+                    'id': '9',
+                    'fullName': 'Ελένη',
+                    'gender': 'female',
+                  },
                   'forMyChildren': [
                     {'id': '1', 'fullName': 'Μαρίνα'},
                   ],
@@ -48,41 +66,65 @@ void main() {
                 showChildren: true,
                 onTap: () {},
               ),
-              const HomeSectionHeader(title: 'Το σημερινό μενού', icon: ParentIconData.food),
-              HomeSurfaceCard(
-                padding: EdgeInsets.zero,
-                child: Column(
-                  children: [
-                    for (final row in [
-                      (ParentIconData.snack, 'Δεκατιανό', 'Φρυγανιές με μέλι'),
-                      (ParentIconData.lunch, 'Μεσημεριανό', 'Κοτόπουλο με ρύζι και σαλάτα'),
-                      (ParentIconData.afternoon, 'Απογευματινό', 'Γιαούρτι με φρούτα'),
-                    ])
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                        child: Row(
-                          children: [
-                            ParentIcon(row.$1, size: 18),
-                            const SizedBox(width: 12),
-                            Expanded(child: Text('${row.$2}: ${row.$3}')),
-                          ],
-                        ),
-                      ),
+              HomePartyInviteTile(
+                invitation: {
+                  'title': 'Πάρτυ του Γιώργου',
+                  'eventDate': '2026-11-14T16:00:00.000Z',
+                  'birthdayStudent': {
+                    'id': '8',
+                    'fullName': 'Γιώργος',
+                    'gender': 'male',
+                  },
+                  'forMyChildren': [
+                    {'id': '2', 'fullName': 'Νίκος'},
                   ],
-                ),
+                },
+                showChildren: true,
+                onTap: () {},
               ),
               const SizedBox(height: 24),
             ],
           ),
-          bottomNavigationBar: Material(
-            child: SizedBox(
+          bottomNavigationBar: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+            child: Container(
               height: 70,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(36),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF77328D).withValues(alpha: 0.18),
+                    blurRadius: 32,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
               child: Row(
-                children: const [
-                  Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [ParentIcon(ParentIconData.home, size: 22), Text('Αρχική', style: TextStyle(fontSize: 10))])),
-                  Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [ParentIcon(ParentIconData.activities, size: 22), Text('Δραστηριότητες', style: TextStyle(fontSize: 10))])),
-                  Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [ParentIcon(ParentIconData.events, size: 22), Text('Εκδηλώσεις', style: TextStyle(fontSize: 10))])),
-                  Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [ParentIcon(ParentIconData.billing, size: 22), Text('Οικονομικά', style: TextStyle(fontSize: 10))])),
+                children: [
+                  Expanded(
+                    flex: 5,
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF77328D), Color(0xFFE95926)],
+                        ),
+                        borderRadius: BorderRadius.circular(28),
+                      ),
+                      child: const Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.home_rounded, color: Colors.white, size: 22),
+                          SizedBox(height: 2),
+                          Text('Αρχική', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const Expanded(flex: 3, child: Icon(Icons.sports_soccer_outlined, color: Color(0xFFBBB8D4))),
+                  const Expanded(flex: 3, child: Icon(Icons.event_outlined, color: Color(0xFFBBB8D4))),
+                  const Expanded(flex: 3, child: Icon(Icons.account_balance_wallet_outlined, color: Color(0xFFBBB8D4))),
                 ],
               ),
             ),
@@ -92,10 +134,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(find.textContaining('Δαμιανέ'), findsOneWidget);
-      expect(find.textContaining('ματιά'), findsOneWidget);
-      expect(find.text('Σήμερα'), findsOneWidget);
-      expect(find.text('Προσεχώς'), findsOneWidget);
-      expect(find.text('Το σημερινό μενού'), findsOneWidget);
+      expect(find.textContaining('Μαρίνα'), findsWidgets);
+      expect(find.text('Προνήπιο Α'), findsOneWidget);
+      expect(find.textContaining('Συνάντηση με εκπαιδευτικό'), findsOneWidget);
+      expect(find.textContaining('Από την Ελένη'), findsOneWidget);
+      expect(find.textContaining('Από τον Γιώργο'), findsOneWidget);
       await expectLater(
         find.byType(MaterialApp),
         matchesGoldenFile('goldens/parent_home_${width.toInt()}.png'),
