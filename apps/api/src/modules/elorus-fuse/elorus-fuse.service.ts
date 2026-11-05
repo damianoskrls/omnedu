@@ -63,6 +63,40 @@ function fiscalKindLabel(kind: string): string {
   }
 }
 
+/** EU/EEA members for myDATA service invoice type 2.2 (intra-community). */
+const EU_COUNTRY_CODES = new Set([
+  'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU',
+  'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE',
+]);
+
+function normalizeCountry(raw?: string | null): string {
+  const c = String(raw || 'GR').trim().toUpperCase();
+  return c.length === 2 ? c : 'GR';
+}
+
+/**
+ * Strip an optional ISO country prefix from a VAT id (e.g. DE123… → 123…)
+ * when it matches cp_country. Fuse wants country in cp_country, number in cp_vat_number.
+ */
+function normalizeVatNumber(raw: string, country: string): string {
+  let v = String(raw || '').trim().toUpperCase().replace(/[\s.-]/g, '');
+  if (v.startsWith(country) && v.length > country.length + 2) {
+    v = v.slice(country.length);
+  }
+  return v;
+}
+
+function isLikelyGreekVat(vat: string): boolean {
+  return /^\d{9}$/.test(vat);
+}
+
+/** myDATA service invoice type from counterparty country. */
+function serviceInvoiceTypeForCountry(country: string): '2.1' | '2.2' | '2.3' {
+  if (country === 'GR') return '2.1';
+  if (EU_COUNTRY_CODES.has(country)) return '2.2';
+  return '2.3';
+}
+
 function money(n: number): string {
   return (Math.round((n + Number.EPSILON) * 100) / 100).toFixed(2);
 }
@@ -338,7 +372,43 @@ export class ElorusFuseService {
       throw new BadRequestException('Άκυρος τύπος παραστατικού');
     }
 
-    const invoiceType = kind === 'retail_receipt' ? '11.2' : '2.1';
+    // Counterparty first — country picks myDATA invoice type (2.1 / 2.2 / 2.3).
+    let counterparty = dto.counterparty;
+    const cpName = String(counterparty?.name || '').trim();
+    const cpCountry = normalizeCountry(counterparty?.country);
+    const cpVat = normalizeVatNumber(String(counterparty?.vatNumber || ''), cpCountry);
+    if (kind === 'service_invoice') {
+      if (!cpName) {
+        throw new BadRequestException('Για τιμολόγιο απαιτείται επωνυμία πελάτη');
+      }
+      if (!cpVat) {
+        throw new BadRequestException(
+          cpCountry === 'GR'
+            ? 'Για τιμολόγιο στην Ελλάδα απαιτείται ΑΦΜ παραλήπτη'
+            : 'Για ενδοκοινοτικό/εξωτερικό τιμολόγιο απαιτείται ΑΦΜ/VAT αριθμός παραλήπτη',
+        );
+      }
+      if (cpCountry === 'GR' && !isLikelyGreekVat(cpVat)) {
+        throw new BadRequestException(
+          'Το ελληνικό ΑΦΜ πρέπει να είναι 9 ψηφία. Για πελάτη εξωτερικού άλλαξε τη Χώρα (π.χ. DE, CY, BG).',
+        );
+      }
+    }
+    if (cpName) {
+      counterparty = {
+        ...counterparty,
+        vatNumber: cpVat || undefined,
+        name: cpName,
+        country: cpCountry,
+      };
+    } else {
+      counterparty = undefined;
+    }
+
+    const invoiceType =
+      kind === 'retail_receipt'
+        ? '11.2'
+        : serviceInvoiceTypeForCountry(counterparty?.country || 'GR');
     const defaultSeries =
       kind === 'retail_receipt'
         ? (school.fiscalRetailSeries || 'ΑΠ')
@@ -371,14 +441,23 @@ export class ElorusFuseService {
         ? dto.vatExemptionCategory
         : school.fiscalVatExemptionCategory;
 
+    // Intra-community (2.2) / third-country (2.3) service invoices are typically
+    // reverse-charge / out of scope → 0% VAT. Default exemption 14 (VAT code art. 44)
+    // unless the school already configured an exemption.
+    if (invoiceType === '2.2' || invoiceType === '2.3') {
+      if (dto.vatCategory == null && (school.fiscalVatCategory == null || school.fiscalVatCategory === 1)) {
+        vatCategory = 7;
+      }
+      if (vatExemptionCategory == null) {
+        vatExemptionCategory = 14;
+      }
+    }
+
     // Exemption without category 7/8 makes myDATA reject vatAmount vs vatCategory (229).
     if (vatExemptionCategory != null && vatCategory !== 7 && vatCategory !== 8) {
       vatCategory = 7;
     }
     if ((vatCategory === 7 || vatCategory === 8) && vatExemptionCategory == null) {
-      // Category 7 requires an exemption code; leave unset only for category 8
-      // (records without VAT). Prefer empty exemption → treat as normal 24% if
-      // admin left category at default by mistake — only force when explicitly 7.
       if (vatCategory === 7) {
         throw new BadRequestException(
           'Για ΦΠΑ 0% (κατηγορία 7) πρέπει να οριστεί κατηγορία απαλλαγής ΦΠΑ στις ρυθμίσεις.',
@@ -393,27 +472,6 @@ export class ElorusFuseService {
     const net = split.net;
     const vatAmount = split.vat;
     const grossOut = split.gross;
-
-    // Counterparty = πελάτης (γονέας). Required for invoices; recommended for
-    // service receipts so the printed/Fuse document matches classic school APYs.
-    let counterparty = dto.counterparty;
-    const cpName = String(counterparty?.name || '').trim();
-    const cpVat = String(counterparty?.vatNumber || '').trim();
-    if (kind === 'service_invoice') {
-      if (!cpVat || !cpName) {
-        throw new BadRequestException('Για τιμολόγιο απαιτούνται ΑΦΜ και επωνυμία πελάτη (γονέα)');
-      }
-    }
-    if (cpName) {
-      counterparty = {
-        ...counterparty,
-        vatNumber: cpVat || undefined,
-        name: cpName,
-        country: String(counterparty?.country || 'GR').trim() || 'GR',
-      };
-    } else {
-      counterparty = undefined;
-    }
 
     const issueDate = dto.issueDate
       ? new Date(dto.issueDate)
