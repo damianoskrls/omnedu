@@ -188,6 +188,11 @@ class HomeScreen extends ConsumerWidget {
                         ),
                       ),
                       if (cards.any(childHasBus)) BusClosedNotice(schoolId: schoolId),
+                      for (final child in cards.where(childHasBus))
+                        HomeFadeIn(
+                          delayMs: 50,
+                          child: HomeBusRouteCard(schoolId: schoolId, child: child),
+                        ),
                       HomeFadeIn(
                         delayMs: 70,
                         child: _UpcomingBlock(
@@ -204,7 +209,7 @@ class HomeScreen extends ConsumerWidget {
                           HomeFadeIn(
                             delayMs: 90,
                             child: Padding(
-                              padding: const EdgeInsets.only(top: 12, bottom: 4),
+                              padding: const EdgeInsets.only(top: 12, bottom: 8),
                               child: HomeTodayCard(
                                 schoolId: schoolId,
                                 child: child,
