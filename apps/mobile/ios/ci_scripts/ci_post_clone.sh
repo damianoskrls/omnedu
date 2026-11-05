@@ -38,6 +38,18 @@ flutter pub get
 echo "ci_post_clone: flutter build ios --config-only…"
 flutter build ios --config-only --release --no-codesign
 
+# Keep iOS CFBundleVersion above prior TestFlight uploads (YYYYMMDDHHMM).
+# Android keeps the shorter pubspec build; this override is iOS/Xcode Cloud only.
+IOS_BUILD_NUMBER="$(date -u +%Y%m%d%H%M)"
+if [ -f "ios/Flutter/Generated.xcconfig" ]; then
+  if grep -q '^FLUTTER_BUILD_NUMBER=' ios/Flutter/Generated.xcconfig; then
+    sed -i '' "s/^FLUTTER_BUILD_NUMBER=.*/FLUTTER_BUILD_NUMBER=$IOS_BUILD_NUMBER/" ios/Flutter/Generated.xcconfig
+  else
+    echo "FLUTTER_BUILD_NUMBER=$IOS_BUILD_NUMBER" >> ios/Flutter/Generated.xcconfig
+  fi
+  echo "ci_post_clone: FLUTTER_BUILD_NUMBER=$IOS_BUILD_NUMBER"
+fi
+
 HOMEBREW_NO_AUTO_UPDATE=1
 export HOMEBREW_NO_AUTO_UPDATE
 if ! command -v pod >/dev/null 2>&1; then
