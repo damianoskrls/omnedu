@@ -4,6 +4,8 @@ import { ConfigService } from '@nestjs/config';
 /** Wire payload for POST /v1_0/invoice/ (snake_case per Elorus Fuse OpenAPI). */
 export type FuseCreateInvoicePayload = {
   issuer_vat_number: string;
+  /** Optional display name for the issuer on the Fuse PDF. */
+  issuer_name?: string;
   invoice_type: string;
   number: string;
   issue_date: string;
@@ -18,6 +20,7 @@ export type FuseCreateInvoicePayload = {
   total_net_value: string;
   total_vat_amount: string;
   total_gross_value: string;
+  /** Ignored by Fuse for retail types 11.1–11.5 (unless Tax-free). */
   cp_vat_number?: string;
   cp_name?: string;
   cp_country?: string;

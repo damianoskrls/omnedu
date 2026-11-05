@@ -394,9 +394,21 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued, a
                 }`}
               >
                 <div className="font-semibold">Τιμολόγιο</div>
-                <div className="text-[11px] opacity-70">π.χ. για τράπεζα / επιδότηση · 2.1</div>
+                <div className="text-[11px] opacity-70">Με όνομα/ΑΦΜ στο ΠΕΛΑΤΗΣ · 2.1</div>
               </button>
             </div>
+            {kind === 'retail_receipt' ? (
+              <p className="mt-2 rounded-lg bg-amber-50 text-amber-900 text-[11px] leading-relaxed px-3 py-2">
+                Στο Elorus Fuse / myDATA η απόδειξη <strong>11.2</strong> δείχνει πάντα «Πελάτης λιανικής»
+                — τα πεδία ονόματος/διεύθυνσης <em>αγνοούνται</em> από το API.
+                Το όνομα μπαίνει στην περιγραφή γραμμής. Για εμφάνιση στο μπλοκ ΠΕΛΑΤΗΣ επίλεξε{' '}
+                <strong>Τιμολόγιο</strong> (απαιτεί ΑΦΜ).
+              </p>
+            ) : (
+              <p className="mt-2 rounded-lg bg-emerald-50 text-emerald-900 text-[11px] leading-relaxed px-3 py-2">
+                Το τιμολόγιο <strong>2.1</strong> στέλνει όνομα, ΑΦΜ και διεύθυνση στο Fuse και εμφανίζονται στο παραστατικό.
+              </p>
+            )}
           </div>
 
           {(allowStudentPicker || Boolean(prefill?.studentId)) && (

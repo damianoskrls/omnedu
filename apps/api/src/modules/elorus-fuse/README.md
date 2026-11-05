@@ -16,8 +16,8 @@ ELORUS_FUSE_API_TOKEN=<token>
 3. Run migrations so `fiscal_documents` / school AFM fields exist.
 4. In Admin → Οικονομικά → Ρυθμίσεις, set school AFM (demo org VAT) and series (e.g. `ΑΠ`, `ΤΙΜ`).
 5. Open a student → Οικονομικά → **Έκδοση παραστατικού**:
-   - Απόδειξη (no counterparty AFM)
-   - Τιμολόγιο (requires counterparty AFM + name)
+   - **Απόδειξη `11.2`**: Fuse/myDATA ignores `cp_*` (shows «Πελάτης λιανικής»). Customer name/address are stored locally and appended to the line description so they still appear on the PDF body.
+   - **Τιμολόγιο `2.1`**: requires counterparty AFM + name; Fuse renders them in the ΠΕΛΑΤΗΣ block ([developer docs](https://developer.elorusfuse.gr/)).
 6. Confirm the document appears in the Fuse demo portal / myDATA demo. Use **Ανανέωση** if MARK is still pending (`mydata_status` may be queued after HTTP 201).
 
 ## Endpoints
