@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { X } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { fiscalApi, studentsApi } from '@/lib/api';
 
 export type FiscalParentOption = {
@@ -32,11 +32,36 @@ export type FiscalIssuePrefill = {
   defaultKind?: 'retail_receipt' | 'service_invoice';
 };
 
+/** Build deep-link to the full-page fiscal issue form. */
+export function buildFiscalIssueHref(opts: {
+  studentId?: string;
+  monthlyChargeId?: string;
+  oneTimeChargeId?: string;
+  amount?: number;
+  description?: string;
+  kind?: 'retail_receipt' | 'service_invoice';
+  manual?: boolean;
+  picker?: boolean;
+  returnTo?: string;
+}): string {
+  const p = new URLSearchParams();
+  if (opts.studentId) p.set('studentId', opts.studentId);
+  if (opts.monthlyChargeId) p.set('monthlyChargeId', opts.monthlyChargeId);
+  if (opts.oneTimeChargeId) p.set('oneTimeChargeId', opts.oneTimeChargeId);
+  if (opts.amount != null && Number.isFinite(opts.amount)) p.set('amount', String(opts.amount));
+  if (opts.description) p.set('description', opts.description);
+  if (opts.kind) p.set('kind', opts.kind);
+  if (opts.manual) p.set('manual', '1');
+  if (opts.picker) p.set('picker', '1');
+  if (opts.returnTo) p.set('returnTo', opts.returnTo);
+  const qs = p.toString();
+  return qs ? `/school/fiscal/issue?${qs}` : '/school/fiscal/issue';
+}
+
 type Props = {
   schoolId: string;
-  open: boolean;
   prefill: FiscalIssuePrefill | null;
-  onClose: () => void;
+  onCancel: () => void;
   onIssued: (doc: any) => void;
   /** Allow picking any student from the school (billing Παραστατικά flow). */
   allowStudentPicker?: boolean;
@@ -125,7 +150,7 @@ function buildSuggestions(studentName?: string, className?: string) {
   ];
 }
 
-export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued, allowStudentPicker = false }: Props) {
+export function FiscalIssueForm({ schoolId, prefill, onCancel, onIssued, allowStudentPicker = false }: Props) {
   const [kind, setKind] = useState<'retail_receipt' | 'service_invoice'>('retail_receipt');
   const [recipientMode, setRecipientMode] = useState<'student' | 'manual'>('student');
   const [grossAmount, setGrossAmount] = useState('');
@@ -166,14 +191,13 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued, a
   );
 
   useEffect(() => {
-    if (!open || !schoolId) return;
+    if (!schoolId) return;
     fiscalApi.getSettings(schoolId).then((s: any) => {
       setDefaults(s);
     }).catch(() => setDefaults(null));
-  }, [open, schoolId]);
+  }, [schoolId]);
 
   useEffect(() => {
-    if (!open) return;
     const startManual = Boolean(prefill?.manualRecipient) || (!prefill?.studentId && !allowStudentPicker);
     setRecipientMode(startManual ? 'manual' : 'student');
     setKind(prefill?.defaultKind || (startManual ? 'service_invoice' : 'retail_receipt'));
@@ -207,7 +231,7 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued, a
       setParentUserId('');
       clearCustomer(setters);
     }
-  }, [open, prefill, allowStudentPicker, setters]);
+  }, [prefill, allowStudentPicker, setters]);
 
   useEffect(() => {
     if (!defaults) return;
@@ -219,7 +243,7 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued, a
   }, [kind, defaults]);
 
   useEffect(() => {
-    if (!open || !allowStudentPicker || recipientMode !== 'student') return;
+    if (!allowStudentPicker || recipientMode !== 'student') return;
     const q = studentQuery.trim().toLowerCase();
     let cancelled = false;
     setLoadingStudents(true);
@@ -237,7 +261,7 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued, a
       .catch(() => { if (!cancelled) setStudentOptions([]); })
       .finally(() => { if (!cancelled) setLoadingStudents(false); });
     return () => { cancelled = true; };
-  }, [open, allowStudentPicker, recipientMode, schoolId, studentQuery]);
+  }, [allowStudentPicker, recipientMode, schoolId, studentQuery]);
 
   async function selectStudent(id: string) {
     setLoadingStudent(true);
@@ -272,8 +296,6 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued, a
     const parent = parents.find((p) => p.userId === userId);
     applyParent(parent, studentAddress, setters);
   }
-
-  if (!open) return null;
 
   async function submit() {
     setError('');
@@ -347,7 +369,6 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued, a
         return;
       }
       onIssued(doc);
-      onClose();
     } catch (err: any) {
       const msg =
         err?.response?.data?.message ||
@@ -360,21 +381,44 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued, a
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4">
-      <div className="w-full sm:max-w-xl bg-white rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[94vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <div>
-            <h3 className="text-base font-bold text-gray-900">Έκδοση παραστατικού</h3>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Απόδειξη ή τιμολόγιο μέσω Elorus Fuse
-            </p>
+    <div className="mx-auto max-w-3xl pb-28">
+      <div className="sticky top-0 z-10 -mx-1 mb-4 border-b border-gray-100 bg-white/95 px-1 py-3 backdrop-blur">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="mt-0.5 rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
+              aria-label="Πίσω"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">Έκδοση παραστατικού</h1>
+              <p className="text-sm text-gray-500">Απόδειξη ή τιμολόγιο μέσω Elorus Fuse / myDATA</p>
+            </div>
           </div>
-          <button type="button" onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-2 sm:shrink-0">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="rounded-lg px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+            >
+              Ακύρωση
+            </button>
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => void submit()}
+              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {submitting ? 'Έκδοση...' : 'Έκδοση στο Elorus'}
+            </button>
+          </div>
         </div>
+      </div>
 
-        <div className="px-5 py-4 space-y-4">
+      <div className="space-y-5 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm sm:p-6">
           {defaults && !defaults.fuseConfigured && (
             <div className="rounded-lg bg-amber-50 text-amber-800 text-sm px-3 py-2">
               Λείπει το <code className="text-xs">ELORUS_FUSE_API_TOKEN</code> στο API.
@@ -691,21 +735,6 @@ export function FiscalIssueModal({ schoolId, open, prefill, onClose, onIssued, a
             <div className="rounded-lg bg-red-50 text-red-700 text-sm px-3 py-2">{error}</div>
           )}
         </div>
-
-        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100">
-          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-lg">
-            Ακύρωση
-          </button>
-          <button
-            type="button"
-            disabled={submitting}
-            onClick={() => void submit()}
-            className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-50"
-          >
-            {submitting ? 'Έκδοση...' : 'Έκδοση στο Elorus'}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

@@ -8,7 +8,7 @@ import { payerOptions, paymentNote } from '@/lib/payment-note';
 import { PaymentConfirmModal, PaymentPrompt } from '@/components/PaymentConfirmModal';
 import { PaymentDetailsLink } from '@/components/PaymentDetailsLink';
 import { PaymentHistoryStrip } from '@/components/PaymentHistoryStrip';
-import { FiscalIssueModal, type FiscalIssuePrefill } from '@/components/FiscalIssueModal';
+import { buildFiscalIssueHref } from '@/components/FiscalIssueForm';
 import { useStoredUser } from '@/lib/auth';
 import { currentMonthKey } from '@/lib/month-quote';
 import { DebtorsPanel } from './debtors-panel';
@@ -63,13 +63,16 @@ export default function BillingPage() {
   const [levelFees, setLevelFees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
-  const [tab, setTab] = useState<'charges' | 'debtors' | 'events' | 'fiscal' | 'settings'>('charges');
+  const [tab, setTab] = useState<'charges' | 'debtors' | 'events' | 'fiscal' | 'settings'>(() => {
+    if (typeof window === 'undefined') return 'charges';
+    const t = new URLSearchParams(window.location.search).get('tab');
+    if (t === 'charges' || t === 'debtors' || t === 'events' || t === 'fiscal' || t === 'settings') return t;
+    return 'charges';
+  });
   const [showUnpaidOnly, setShowUnpaidOnly] = useState(false);
   const [fiscalDocs, setFiscalDocs] = useState<any[]>([]);
   const [fiscalDocsLoading, setFiscalDocsLoading] = useState(false);
   const [refreshingFiscalId, setRefreshingFiscalId] = useState<string | null>(null);
-  const [fiscalIssueOpen, setFiscalIssueOpen] = useState(false);
-  const [fiscalPrefill, setFiscalPrefill] = useState<FiscalIssuePrefill | null>(null);
 
   // Events tab state
   const [events, setEvents] = useState<any[]>([]);
@@ -629,9 +632,11 @@ export default function BillingPage() {
           onRefreshDoc={(id) => void refreshFiscalDoc(id)}
           onCreditDoc={(doc) => void creditFiscalDoc(doc)}
           onRefreshList={() => void loadFiscalDocs()}
-          onIssue={(prefill) => {
-            setFiscalPrefill(prefill ?? null);
-            setFiscalIssueOpen(true);
+          onIssue={() => {
+            router.push(buildFiscalIssueHref({
+              picker: true,
+              returnTo: '/school/billing?tab=fiscal',
+            }));
           }}
         />
       ) : tab === 'debtors' ? (
@@ -1109,15 +1114,6 @@ export default function BillingPage() {
       )}
 
       <PaymentConfirmModal prompt={payPrompt} onClose={() => setPayPrompt(null)} />
-
-      <FiscalIssueModal
-        schoolId={schoolId}
-        open={fiscalIssueOpen}
-        prefill={fiscalPrefill}
-        allowStudentPicker
-        onClose={() => { setFiscalIssueOpen(false); setFiscalPrefill(null); }}
-        onIssued={() => { void loadFiscalDocs(); }}
-      />
 
       {/* Student settings modal (override + subsidies) */}
       {editingOverride && (
