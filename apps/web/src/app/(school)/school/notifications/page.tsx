@@ -170,6 +170,8 @@ export default function NotificationsPage() {
   const [showHistory, setShowHistory] = useState(false);
   const [pushConfigured, setPushConfigured] = useState<boolean | null>(null);
   const [pushDevices, setPushDevices] = useState(0);
+  const [iosDevices, setIosDevices] = useState(0);
+  const [androidDevices, setAndroidDevices] = useState(0);
 
   const load = useCallback(async () => {
     if (!schoolId) return;
@@ -209,6 +211,8 @@ export default function NotificationsPage() {
       if (settingsData) {
         setPushConfigured(Boolean((settingsData as any).pushConfigured));
         setPushDevices(Number((settingsData as any).pushDevices ?? 0));
+        setIosDevices(Number((settingsData as any).iosDevices ?? 0));
+        setAndroidDevices(Number((settingsData as any).androidDevices ?? 0));
       }
     } finally {
       setLoading(false);
@@ -349,7 +353,10 @@ export default function NotificationsPage() {
 
       const result: any = await broadcastsApi.send(schoolId, payload);
       if (form.channels.includes('push')) {
-        if (!result?.pushConfigured) {
+        const diagnosis = result?.pushDiagnosis?.message as string | undefined;
+        if (diagnosis) {
+          setSendNote(diagnosis);
+        } else if (!result?.pushConfigured) {
           setSendNote('Η ειδοποίηση μπήκε στην εφαρμογή. Δεν χτυπάει με κλειστό app, γιατί δεν έχει συνδεθεί το Firebase της Ονειροχώρας.');
         } else if (!result?.pushDevices) {
           setSendNote('Η ειδοποίηση μπήκε στην εφαρμογή. Κανένα κινητό δεν έχει ανοίξει ακόμα την έκδοση που δέχεται ειδοποιήσεις με κλειστό app.');
@@ -538,12 +545,18 @@ export default function NotificationsPage() {
 
       {isAdmin && pushConfigured === false && (
         <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Η ειδοποίηση φαίνεται μέσα στην εφαρμογή όταν είναι ανοιχτή. Για να χτυπάει στο κινητό και με κλειστή εφαρμογή, όπως στο Facebook, χρειάζεται σύνδεση Firebase. Αυτή δεν έχει μπει ακόμα στον server.
+          <p className="font-semibold">Firebase δεν είναι συνδεδεμένο στον server</p>
+          <p className="mt-1">Βάλε στο Railway/hosting: <code className="text-xs">FIREBASE_PROJECT_ID</code>, <code className="text-xs">FIREBASE_CLIENT_EMAIL</code>, <code className="text-xs">FIREBASE_PRIVATE_KEY</code>. Χωρίς αυτά, οι ειδοποιήσεις φαίνονται μόνο όταν ανοίγει η εφαρμογή.</p>
         </div>
       )}
       {isAdmin && pushConfigured === true && pushDevices === 0 && (
         <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Το Firebase είναι συνδεδεμένο, αλλά κανένα κινητό δεν έχει ανοίξει ακόμα την έκδοση που δηλώνει το τηλέφωνο για ειδοποιήσεις.
+          Το Firebase είναι συνδεδεμένο, αλλά κανένα κινητό δεν έχει δηλώσει token. Άνοιξε το app <strong>1.0.46+</strong>, δώσε άδεια ειδοποιήσεων, και ξαναδοκίμασε.
+        </div>
+      )}
+      {isAdmin && pushConfigured === true && pushDevices > 0 && (
+        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          Push έτοιμο: {pushDevices} συσκευές (iOS {iosDevices} · Android {androidDevices}). Αν iPhone δεν χτυπάει με κλειστή εφαρμογή, στο Firebase → Cloud Messaging πρέπει να υπάρχει APNs Authentication Key (.p8) για το iOS app.
         </div>
       )}
 
