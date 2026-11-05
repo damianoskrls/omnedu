@@ -33,12 +33,32 @@ function enrollmentMeta(doc: any) {
   };
 }
 
+function fiscalKindLabel(kind: string) {
+  if (kind === 'service_invoice') return 'Τιμολόγιο';
+  if (kind === 'retail_credit_note') return 'Πιστωτικό απόδειξης';
+  if (kind === 'service_credit_note') return 'Πιστωτικό τιμολογίου';
+  if (kind === 'retail_receipt') return 'Απόδειξη';
+  return kind;
+}
+
+function canIssueCredit(doc: any, all: any[]) {
+  if (doc.status !== 'issued') return false;
+  if (doc.documentKind !== 'retail_receipt' && doc.documentKind !== 'service_invoice') return false;
+  return !all.some(
+    (d) =>
+      d.relatedDocumentId === doc.id &&
+      (d.documentKind === 'retail_credit_note' || d.documentKind === 'service_credit_note') &&
+      d.status !== 'failed',
+  );
+}
+
 export function FiscalPanel({
   schoolId,
   docs,
   loading,
   refreshingId,
   onRefreshDoc,
+  onCreditDoc,
   onRefreshList,
   onIssue,
 }: {
@@ -47,12 +67,13 @@ export function FiscalPanel({
   loading: boolean;
   refreshingId: string | null;
   onRefreshDoc: (id: string) => void;
+  onCreditDoc?: (doc: any) => void;
   onRefreshList: () => void;
   onIssue: (prefill?: FiscalIssuePrefill | null) => void;
 }) {
   const router = useRouter();
   const [search, setSearch] = useState('');
-  const [kindFilter, setKindFilter] = useState<'all' | 'retail_receipt' | 'service_invoice'>('all');
+  const [kindFilter, setKindFilter] = useState<'all' | 'retail_receipt' | 'service_invoice' | 'credit'>('all');
   const [monthFilter, setMonthFilter] = useState('');
   const [levelFilter, setLevelFilter] = useState('');
   const [classFilter, setClassFilter] = useState('');
@@ -80,7 +101,11 @@ export function FiscalPanel({
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return docs.filter((doc) => {
-      if (kindFilter !== 'all' && doc.documentKind !== kindFilter) return false;
+      if (kindFilter === 'credit') {
+        if (doc.documentKind !== 'retail_credit_note' && doc.documentKind !== 'service_credit_note') return false;
+      } else if (kindFilter !== 'all' && doc.documentKind !== kindFilter) {
+        return false;
+      }
       if (statusFilter !== 'all' && doc.status !== statusFilter) return false;
       if (monthFilter && docMonthKey(doc) !== monthFilter) return false;
       const meta = enrollmentMeta(doc);
@@ -106,13 +131,15 @@ export function FiscalPanel({
     let total = 0;
     for (const doc of filtered) {
       const gross = Number(doc.grossValue) || 0;
-      total += gross;
-      if (doc.documentKind === 'service_invoice') {
+      const isCredit =
+        doc.documentKind === 'retail_credit_note' || doc.documentKind === 'service_credit_note';
+      total += isCredit ? -gross : gross;
+      if (doc.documentKind === 'service_invoice' || doc.documentKind === 'service_credit_note') {
         invoices += 1;
-        invoiceSum += gross;
+        invoiceSum += isCredit ? -gross : gross;
       } else {
         receipts += 1;
-        receiptSum += gross;
+        receiptSum += isCredit ? -gross : gross;
       }
       if (doc.status === 'issued') issued += 1;
       else if (doc.status === 'failed') failed += 1;
@@ -322,6 +349,7 @@ export function FiscalPanel({
             <option value="all">Όλοι οι τύποι</option>
             <option value="retail_receipt">Μόνο αποδείξεις</option>
             <option value="service_invoice">Μόνο τιμολόγια</option>
+            <option value="credit">Μόνο πιστωτικά</option>
           </select>
           <select
             value={statusFilter}
@@ -403,7 +431,8 @@ export function FiscalPanel({
               <div className="divide-y divide-gray-50">
                 {group.docs.map((doc: any) => {
                   const href = doc.verificationUrl || doc.qrUrl;
-                  const kind = doc.documentKind === 'service_invoice' ? 'Τιμολόγιο' : 'Απόδειξη';
+                  const kind = fiscalKindLabel(doc.documentKind);
+                  const showCredit = Boolean(onCreditDoc) && canIssueCredit(doc, docs);
                   return (
                     <div key={doc.id} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 px-4 py-3">
                       <div className="flex-1 min-w-0">
@@ -424,7 +453,7 @@ export function FiscalPanel({
                           {doc.mark ? ` · MARK ${doc.mark}` : ''}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
                         {doc.studentId && (
                           <button
                             type="button"
@@ -438,6 +467,16 @@ export function FiscalPanel({
                           <a href={href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800">
                             <ExternalLink className="h-3.5 w-3.5" /> Επαλήθευση
                           </a>
+                        )}
+                        {showCredit && (
+                          <button
+                            type="button"
+                            onClick={() => onCreditDoc?.(doc)}
+                            disabled={refreshingId === doc.id}
+                            className="text-xs font-medium text-rose-700 hover:text-rose-900 disabled:opacity-50"
+                          >
+                            Πιστωτικό
+                          </button>
                         )}
                         <button
                           type="button"

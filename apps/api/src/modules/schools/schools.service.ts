@@ -45,6 +45,8 @@ export class SchoolsService implements OnModuleInit {
       `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "billing_city" TEXT`,
       `ALTER TABLE "fiscal_documents" ADD COLUMN IF NOT EXISTS "cp_profession" TEXT`,
       `ALTER TABLE "fiscal_documents" ADD COLUMN IF NOT EXISTS "cp_tax_office" TEXT`,
+      `ALTER TABLE "fiscal_documents" ADD COLUMN IF NOT EXISTS "related_document_id" TEXT`,
+      `CREATE INDEX IF NOT EXISTS "fiscal_documents_related_document_id_idx" ON "fiscal_documents"("related_document_id")`,
       `ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "vat_number" TEXT`,
       `ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "fiscal_retail_series" TEXT`,
       `ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "fiscal_invoice_series" TEXT`,

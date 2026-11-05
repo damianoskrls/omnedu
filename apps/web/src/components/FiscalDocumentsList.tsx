@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ExternalLink, RefreshCw, Send } from 'lucide-react';
+import { ExternalLink, FileMinus2, RefreshCw, Send } from 'lucide-react';
 import { fiscalApi } from '@/lib/api';
 
 type Props = {
@@ -15,7 +15,21 @@ type Props = {
 function kindLabel(kind: string) {
   if (kind === 'retail_receipt') return 'Απόδειξη';
   if (kind === 'service_invoice') return 'Τιμολόγιο';
+  if (kind === 'retail_credit_note') return 'Πιστωτικό απόδειξης';
+  if (kind === 'service_credit_note') return 'Πιστωτικό τιμολογίου';
   return kind;
+}
+
+function canIssueCredit(doc: any, all: any[]) {
+  if (doc.status !== 'issued') return false;
+  if (doc.documentKind !== 'retail_receipt' && doc.documentKind !== 'service_invoice') return false;
+  const already = all.some(
+    (d) =>
+      d.relatedDocumentId === doc.id &&
+      (d.documentKind === 'retail_credit_note' || d.documentKind === 'service_credit_note') &&
+      d.status !== 'failed',
+  );
+  return !already;
 }
 
 function statusBadge(status: string, mydataStatus?: string | null) {
@@ -39,6 +53,7 @@ export function FiscalDocumentsList({
   setRefreshingId,
 }: Props) {
   const [resendingId, setResendingId] = useState<string | null>(null);
+  const [creditingId, setCreditingId] = useState<string | null>(null);
 
   if (!documents.length) {
     return (
@@ -78,6 +93,33 @@ export function FiscalDocumentsList({
     }
   }
 
+  async function credit(doc: any) {
+    const kind =
+      doc.documentKind === 'service_invoice'
+        ? 'πιστωτικό τιμολόγιο (5.1)'
+        : 'πιστωτικό απόδειξης (11.4)';
+    const ok = window.confirm(
+      `Έκδοση ${kind} για ${doc.series}-${doc.number} (€${Number(doc.grossValue).toFixed(2)}) μέσω Elorus Fuse;\n\nΘα δημιουργηθεί νέο παραστατικό με τα ίδια ποσά.`,
+    );
+    if (!ok) return;
+    setCreditingId(doc.id);
+    try {
+      const result: any = await fiscalApi.credit(schoolId, doc.id);
+      if (result?.status === 'failed') {
+        window.alert(result.errorMessage || 'Η έκδοση πιστωτικού απέτυχε');
+      }
+      onChanged();
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Αποτυχία έκδοσης πιστωτικού';
+      window.alert(Array.isArray(msg) ? msg.join(', ') : String(msg));
+    } finally {
+      setCreditingId(null);
+    }
+  }
+
   return (
     <div className="divide-y divide-gray-100 rounded-xl border border-gray-100 bg-white overflow-hidden">
       {documents.map((doc) => {
@@ -99,12 +141,13 @@ export function FiscalDocumentsList({
                 €{Number(doc.grossValue).toFixed(2)}
                 {doc.mark ? ` · MARK ${doc.mark}` : ''}
                 {doc.fuseUid ? ` · UID ${String(doc.fuseUid).slice(0, 8)}…` : ''}
+                {doc.relatedDocumentId ? ' · πιστωτικό' : ''}
               </p>
               {doc.status === 'failed' && doc.errorMessage && (
                 <p className="text-xs text-red-600 mt-1">{doc.errorMessage}</p>
               )}
             </div>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
               {href && (
                 <a
                   href={href}
@@ -115,6 +158,17 @@ export function FiscalDocumentsList({
                   <ExternalLink className="h-3.5 w-3.5" />
                   Επαλήθευση
                 </a>
+              )}
+              {canIssueCredit(doc, documents) && (
+                <button
+                  type="button"
+                  onClick={() => void credit(doc)}
+                  disabled={creditingId === doc.id}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-rose-700 hover:text-rose-900 disabled:opacity-50"
+                >
+                  <FileMinus2 className={`h-3.5 w-3.5 ${creditingId === doc.id ? 'animate-pulse' : ''}`} />
+                  {creditingId === doc.id ? 'Έκδοση…' : 'Πιστωτικό'}
+                </button>
               )}
               {doc.studentId && doc.status !== 'failed' && (
                 <button

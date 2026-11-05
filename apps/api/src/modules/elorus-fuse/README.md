@@ -24,6 +24,7 @@ ELORUS_FUSE_API_TOKEN=<token>
 
 - `GET/PATCH /schools/:schoolId/fiscal-settings`
 - `GET/POST /schools/:schoolId/fiscal-documents`
+- `POST /schools/:schoolId/fiscal-documents/:id/credit` — credit note via Fuse (`11.4` for απόδειξη, `5.1` + MARK for τιμολόγιο)
 - `POST /schools/:schoolId/fiscal-documents/:id/refresh`
 - `POST /schools/:schoolId/fiscal-documents/:id/resend` (push/email to parents again)
 - Parent: `GET .../fiscal-documents/mine`, `GET .../mine/:id`, `POST .../mine/:id/refresh`

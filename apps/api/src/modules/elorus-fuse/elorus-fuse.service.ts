@@ -42,6 +42,27 @@ export type IssueFiscalDocumentDto = {
   };
 };
 
+export type IssueCreditNoteDto = {
+  /** Optional credit series override (defaults ΠΙΣ / ΠΤ). */
+  series?: string;
+  /** Optional description override; defaults to «Πιστωτικό: …» of the original. */
+  description?: string;
+};
+
+function fiscalKindLabel(kind: string): string {
+  switch (kind) {
+    case 'service_invoice':
+      return 'Τιμολόγιο';
+    case 'retail_credit_note':
+      return 'Πιστωτικό απόδειξης';
+    case 'service_credit_note':
+      return 'Πιστωτικό τιμολογίου';
+    case 'retail_receipt':
+    default:
+      return 'Απόδειξη';
+  }
+}
+
 function money(n: number): string {
   return (Math.round((n + Number.EPSILON) * 100) / 100).toFixed(2);
 }
@@ -205,7 +226,7 @@ export class ElorusFuseService {
       invoiceType: doc.invoiceType,
       series: doc.series,
       number: doc.number,
-      title: `${doc.documentKind === 'service_invoice' ? 'Τιμολόγιο' : 'Απόδειξη'} ${doc.series}-${doc.number}`,
+      title: `${fiscalKindLabel(doc.documentKind)} ${doc.series}-${doc.number}`,
       description: doc.description,
       // Decimal → number so mobile always gets a plain JSON number
       grossValue: Number(doc.grossValue),
@@ -479,6 +500,201 @@ export class ElorusFuseService {
     }
   }
 
+  /**
+   * Issue a Fuse credit note that reverses an existing receipt/invoice.
+   * - retail_receipt (11.2) → retail_credit_note (11.4)
+   * - service_invoice (2.1) → service_credit_note (5.1) with correlated MARK
+   */
+  async issueCredit(schoolId: string, originalId: string, dto: IssueCreditNoteDto = {}) {
+    if (!this.client.isConfigured()) {
+      throw new ServiceUnavailableException(
+        'Elorus Fuse δεν είναι ρυθμισμένο. Ορίστε ELORUS_FUSE_API_TOKEN στο API env.',
+      );
+    }
+
+    const school = await this.prisma.school.findUnique({ where: { id: schoolId } });
+    if (!school) throw new NotFoundException('School not found');
+    const issuerVat = String(school.vatNumber || '').trim();
+    if (!issuerVat) {
+      throw new BadRequestException('Λείπει το ΑΦΜ σχολείου. Συμπλήρωσέ το στις ρυθμίσεις οικονομικών.');
+    }
+
+    const original = await this.prisma.fiscalDocument.findFirst({
+      where: { id: originalId, schoolId },
+    });
+    if (!original) throw new NotFoundException('Το παραστατικό δεν βρέθηκε');
+
+    if (original.documentKind === 'retail_credit_note' || original.documentKind === 'service_credit_note') {
+      throw new BadRequestException('Δεν μπορείς να εκδώσεις πιστωτικό πάνω σε πιστωτικό');
+    }
+    if (original.documentKind !== 'retail_receipt' && original.documentKind !== 'service_invoice') {
+      throw new BadRequestException('Άκυρος τύπος παραστατικού για πιστωτικό');
+    }
+    if (original.status !== 'issued') {
+      throw new BadRequestException('Πιστωτικό εκδίδεται μόνο για παραστατικά που έχουν ήδη εκδοθεί');
+    }
+
+    const existingCredit = await this.prisma.fiscalDocument.findFirst({
+      where: {
+        schoolId,
+        relatedDocumentId: original.id,
+        status: { in: ['pending', 'issued'] },
+        documentKind: { in: ['retail_credit_note', 'service_credit_note'] },
+      },
+      select: { id: true, series: true, number: true, status: true },
+    });
+    if (existingCredit) {
+      throw new BadRequestException(
+        `Υπάρχει ήδη πιστωτικό ${existingCredit.series}-${existingCredit.number} για αυτό το παραστατικό`,
+      );
+    }
+
+    const isInvoice = original.documentKind === 'service_invoice';
+    const creditKind = isInvoice ? 'service_credit_note' : 'retail_credit_note';
+    const invoiceType = isInvoice ? '5.1' : '11.4';
+    const markInt = original.mark != null && String(original.mark).trim() !== ''
+      ? Number(String(original.mark).trim())
+      : NaN;
+    if (isInvoice && !Number.isFinite(markInt)) {
+      throw new BadRequestException(
+        'Για πιστωτικό τιμολογίου (5.1) χρειάζεται MARK του αρχικού. Πάτα Ανανέωση και ξαναδοκίμασε.',
+      );
+    }
+
+    const defaultSeries = isInvoice ? 'ΠΤ' : 'ΠΙΣ';
+    const series = String(dto.series || defaultSeries).trim();
+    if (!series) throw new BadRequestException('Λείπει η σειρά πιστωτικού');
+
+    const description = String(
+      dto.description || `Πιστωτικό: ${original.description}`,
+    ).trim();
+    if (!description) throw new BadRequestException('Λείπει η περιγραφή');
+
+    const net = Number(original.netValue);
+    const vatAmount = Number(original.vatAmount);
+    const gross = Number(original.grossValue);
+    if (![net, vatAmount, gross].every((n) => Number.isFinite(n) && n >= 0) || gross <= 0) {
+      throw new BadRequestException('Άκυρα ποσά στο αρχικό παραστατικό');
+    }
+
+    const issueDateStr = new Date().toISOString().slice(0, 10);
+    const number = await this.nextNumber(schoolId, series);
+    const paymentMethodType = original.paymentMethodType ?? 3;
+
+    const pending = await this.prisma.fiscalDocument.create({
+      data: {
+        schoolId,
+        studentId: original.studentId,
+        monthlyChargeId: original.monthlyChargeId,
+        oneTimeChargeId: original.oneTimeChargeId,
+        documentKind: creditKind,
+        invoiceType,
+        series,
+        number,
+        issueDate: new Date(`${issueDateStr}T00:00:00.000Z`),
+        description,
+        netValue: decimal(net),
+        vatCategory: original.vatCategory,
+        vatExemptionCategory: original.vatExemptionCategory,
+        vatAmount: decimal(vatAmount),
+        grossValue: decimal(gross),
+        paymentMethodType,
+        cpVatNumber: original.cpVatNumber,
+        cpName: original.cpName,
+        cpCountry: original.cpCountry,
+        cpStreet: original.cpStreet,
+        cpNumber: original.cpNumber,
+        cpPostalCode: original.cpPostalCode,
+        cpCity: original.cpCity,
+        cpProfession: original.cpProfession,
+        cpTaxOffice: original.cpTaxOffice,
+        relatedDocumentId: original.id,
+        status: 'pending',
+      },
+    });
+
+    const lineDescription =
+      !isInvoice && original.cpName
+        ? `${description} — ${original.cpName}`
+        : description;
+
+    const line: FuseCreateInvoicePayload['lines'][number] = {
+      net_value: money(net),
+      vat_category: original.vatCategory,
+      vat_amount: money(vatAmount),
+      description: lineDescription,
+    };
+    if (original.vatExemptionCategory != null) {
+      line.vat_exemption_category = original.vatExemptionCategory;
+    }
+
+    const payload: FuseCreateInvoicePayload = {
+      issuer_vat_number: issuerVat,
+      issuer_name: String(school.name || '').trim() || undefined,
+      invoice_type: invoiceType,
+      number,
+      issue_date: issueDateStr,
+      series,
+      lines: [line],
+      total_net_value: money(net),
+      total_vat_amount: money(vatAmount),
+      total_gross_value: money(gross),
+      payment_methods: [{ type: paymentMethodType, amount: money(gross) }],
+    };
+
+    // Associated credit invoice 5.1 requires the original MARK.
+    // Retail credit 11.4 does not use correlated_invoices in Fuse.
+    if (isInvoice) {
+      payload.correlated_invoices = [markInt];
+      if (original.cpName) {
+        payload.cp_name = original.cpName;
+        payload.cp_vat_number = original.cpVatNumber || undefined;
+        payload.cp_country = original.cpCountry || 'GR';
+        if (original.cpStreet || original.cpCity || original.cpPostalCode) {
+          payload.cp_address = {
+            street: original.cpStreet || undefined,
+            number: original.cpNumber || undefined,
+            postal_code: original.cpPostalCode || undefined,
+            city: original.cpCity || undefined,
+          };
+        }
+      }
+    }
+
+    try {
+      const result = await this.client.createInvoice(issuerVat, payload);
+      const saved = await this.persistFuseSuccess(pending.id, result);
+      await this.notifyParentsOfIssue(schoolId, saved);
+      return saved;
+    } catch (err) {
+      if (err instanceof ElorusFuseApiError && err.statusCode === 0) {
+        try {
+          const found = await this.client.listInvoices(issuerVat, { series, number, page_size: 5 });
+          const match = (found.results || []).find(
+            (r) => String((r as any).series || '') === series && String((r as any).number || '') === number,
+          ) || (found.results || [])[0];
+          if (match && (match.uid || (match as any).id)) {
+            this.logger.warn(`Recovered Fuse credit after transport error for ${series}-${number}`);
+            return this.persistFuseSuccess(pending.id, match);
+          }
+        } catch (lookupErr) {
+          this.logger.warn(`Fuse credit recovery lookup failed: ${(lookupErr as Error).message}`);
+        }
+      }
+
+      const message = err instanceof Error ? err.message : 'Άγνωστο σφάλμα Elorus Fuse';
+      this.logger.error(`Credit issue failed for ${series}-${number}: ${message}`);
+      return this.prisma.fiscalDocument.update({
+        where: { id: pending.id },
+        data: {
+          status: 'failed',
+          errorMessage: message,
+          rawResponse: err instanceof ElorusFuseApiError ? JSON.stringify(err.body) : null,
+        },
+      });
+    }
+  }
+
   private async persistFuseSuccess(id: string, result: FuseInvoiceResult) {
     const uid = pickField(result, 'uid', 'uid');
     const mark = pickField(result, 'mark', 'mark');
@@ -533,7 +749,7 @@ export class ElorusFuseService {
     student?: { id: string; fullName: string } | null;
   }) {
     if (!doc.studentId) return;
-    const kindLabel = doc.documentKind === 'service_invoice' ? 'Τιμολόγιο' : 'Απόδειξη';
+    const kindLabel = fiscalKindLabel(doc.documentKind);
     const title = `${kindLabel} ${doc.series}-${doc.number}`;
     const amount = Number(doc.grossValue || 0).toFixed(2);
     const body = `Εκδόθηκε ${kindLabel.toLowerCase()} €${amount} — ${doc.description}`;

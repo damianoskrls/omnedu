@@ -882,8 +882,8 @@ model FiscalDocument {
   studentId            String?   @map("student_id")
   monthlyChargeId      String?   @map("monthly_charge_id")
   oneTimeChargeId      String?   @map("one_time_charge_id")
-  documentKind         String    @map("document_kind") // retail_receipt | service_invoice
-  invoiceType          String    @map("invoice_type") // myDATA 11.2 | 2.1
+  documentKind         String    @map("document_kind") // retail_receipt | service_invoice | retail_credit_note | service_credit_note
+  invoiceType          String    @map("invoice_type") // myDATA 11.2 | 2.1 | 11.4 | 5.1
   series               String
   number               String
   issueDate            DateTime  @map("issue_date") @db.Date
@@ -903,6 +903,8 @@ model FiscalDocument {
   cpCity               String?   @map("cp_city")
   cpProfession         String?   @map("cp_profession")
   cpTaxOffice          String?   @map("cp_tax_office")
+  /// Original document this credit note reverses (Fuse 11.4 / 5.1).
+  relatedDocumentId    String?   @map("related_document_id")
   fuseUid              String?   @map("fuse_uid")
   mark                 String?
   authenticationCode   String?   @map("authentication_code")
@@ -922,6 +924,7 @@ model FiscalDocument {
   @@index([schoolId, studentId])
   @@index([schoolId, status])
   @@index([fuseUid])
+  @@index([relatedDocumentId])
   @@map("fiscal_documents")
 }
 
