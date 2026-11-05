@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/utils/greek_grammar.dart';
 import '../../../core/widgets/person_face.dart';
 import '../screens/bulletin_screen.dart';
 import '../screens/bus_map_screen.dart';
@@ -370,20 +371,6 @@ class HomeTodayCard extends ConsumerWidget {
     'ενθουσιασμένος': '🤩',
   };
 
-  static const _moodLabels = {
-    'χαρούμενος': 'Χαρούμενος',
-    'happy': 'Χαρούμενος',
-    'ήρεμος': 'Ήρεμος',
-    'calm': 'Ήρεμος',
-    'κουρασμένος': 'Κουρασμένος',
-    'tired': 'Κουρασμένος',
-    'λυπημένος': 'Λυπημένος',
-    'sad': 'Λυπημένος',
-    'αγχωμένος': 'Αγχωμένος',
-    'anxious': 'Αγχωμένος',
-    'ενθουσιασμένος': 'Ενθουσιασμένος',
-  };
-
   static const _mealLabels = {
     'all': 'Όλο',
     'most': 'Τα πιο πολλά',
@@ -440,11 +427,16 @@ class HomeTodayCard extends ConsumerWidget {
             ? rawActs.map((e) => e.toString()).where((e) => e.trim().isNotEmpty).toList()
             : const <String>[];
 
+        final childFirst = firstNameOf(childName);
         final rows = <(String, String, Color)>[
           if (mood != null && mood.isNotEmpty)
             (
               '${_moodEmojis[mood.toLowerCase()] ?? '🙂'} Διάθεση',
-              _moodLabels[mood.toLowerCase()] ?? mood,
+              moodLabelForGender(
+                mood,
+                gender: child['gender']?.toString(),
+                firstName: childFirst,
+              ),
               const Color(0xFFFFF4D6),
             ),
           if (breakfast != null || lunch != null || snack != null)
@@ -675,10 +667,8 @@ class _TodayIntroLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final teacherFirst = teacherName.split(' ').where((p) => p.trim().isNotEmpty).firstOrNull ?? 'εκπαιδευτικός';
-    final childFirst = childName.split(' ').where((p) => p.trim().isNotEmpty).firstOrNull ?? 'το παιδί';
-    final girl = (childGender ?? '').toLowerCase() == 'female';
-    final childPhrase = girl ? 'την $childFirst' : 'τον $childFirst';
+    final teacherFirst = firstNameOf(teacherName).isEmpty ? 'εκπαιδευτικός' : firstNameOf(teacherName);
+    final childPhrase = childAccusativePhrase(childName, gender: childGender);
     final hasTeacher = teacherName.trim().isNotEmpty;
 
     return Row(
@@ -1517,7 +1507,11 @@ class HomeRecentUpdateCard extends StatelessWidget {
             const SizedBox(height: 8),
             _StatusChip(
               icon: ParentIconData.mood,
-              label: HomeTodayCard._moodLabels[mood.toLowerCase()] ?? mood,
+              label: moodLabelForGender(
+                mood,
+                gender: child['gender']?.toString(),
+                firstName: firstNameOf(child['fullName']?.toString() ?? ''),
+              ),
               tint: ParentHomeTokens.butter,
             ),
           ],
