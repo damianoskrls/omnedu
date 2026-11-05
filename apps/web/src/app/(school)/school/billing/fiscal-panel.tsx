@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ExternalLink, FileText, Search } from 'lucide-react';
 import type { FiscalIssuePrefill } from '@/components/FiscalIssueModal';
+import { fiscalDocNetGross, pairFiscalDocuments } from '@/lib/fiscal-document-pairs';
 
 const MONTHS_SHORT = ['', 'Ιαν', 'Φεβ', 'Μάρ', 'Απρ', 'Μάι', 'Ιουν', 'Ιουλ', 'Αυγ', 'Σεπ', 'Οκτ', 'Νοε', 'Δεκ'];
 
@@ -168,7 +169,8 @@ export function FiscalPanel({
         key: 'all',
         title: 'Όλα τα παραστατικά',
         docs: filtered,
-        total: filtered.reduce((s, d) => s + (Number(d.grossValue) || 0), 0),
+        pairs: pairFiscalDocuments(filtered),
+        total: filtered.reduce((s, d) => s + fiscalDocNetGross(d), 0),
       }] as Group[];
     }
     const map = new Map<string, Group>();
@@ -187,10 +189,11 @@ export function FiscalPanel({
       }
       const cur = map.get(key) ?? { key, title, subtitle, docs: [], total: 0 };
       cur.docs.push(doc);
-      cur.total += Number(doc.grossValue) || 0;
+      cur.total += fiscalDocNetGross(doc);
       map.set(key, cur);
     }
     return Array.from(map.values())
+      .map((g) => ({ ...g, pairs: pairFiscalDocuments(g.docs) }))
       .sort((a, b) => {
         if (groupBy === 'month') return b.key.localeCompare(a.key);
         return a.title.localeCompare(b.title, 'el');
@@ -428,64 +431,97 @@ export function FiscalPanel({
                   <span className="font-bold text-gray-800">{fmt(group.total)}</span>
                 </div>
               )}
-              <div className="divide-y divide-gray-50">
-                {group.docs.map((doc: any) => {
-                  const href = doc.verificationUrl || doc.qrUrl;
-                  const kind = fiscalKindLabel(doc.documentKind);
-                  const showCredit = Boolean(onCreditDoc) && canIssueCredit(doc, docs);
+              <div className="p-2 space-y-2">
+                {(group.pairs || pairFiscalDocuments(group.docs)).map((pair: any) => {
+                  const framed = pair.credits.length > 0;
+                  const rows = [pair.primary, ...pair.credits];
                   return (
-                    <div key={doc.id} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 px-4 py-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-semibold text-gray-900">{kind} {doc.series}-{doc.number}</span>
-                          <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
-                            doc.status === 'failed' ? 'bg-red-100 text-red-700'
-                              : doc.status === 'issued' ? 'bg-emerald-100 text-emerald-700'
-                                : 'bg-amber-100 text-amber-800'
-                          }`}>
-                            {doc.status === 'failed' ? 'Αποτυχία' : doc.status === 'issued' ? 'Εκδόθηκε' : 'Σε εξέλιξη'}
-                          </span>
+                    <div
+                      key={pair.key}
+                      className={
+                        framed
+                          ? 'rounded-xl border-2 border-rose-200 bg-rose-50/40 overflow-hidden'
+                          : 'rounded-xl border border-gray-100 overflow-hidden'
+                      }
+                    >
+                      {framed && (
+                        <div className="px-3 py-1 bg-rose-100/80 border-b border-rose-200 text-[11px] font-medium text-rose-800">
+                          Παραστατικό + πιστωτικό ακύρωσης
                         </div>
-                        <p className="text-xs text-gray-500 mt-0.5 truncate">
-                          {groupBy !== 'student' && (doc.student?.fullName || doc.cpName || '—') + ' · '}
-                          {doc.description} · {fmt(Number(doc.grossValue))}
-                          {doc.issueDate && ` · ${new Date(doc.issueDate).toLocaleDateString('el-GR')}`}
-                          {doc.mark ? ` · MARK ${doc.mark}` : ''}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-                        {doc.studentId && (
-                          <button
-                            type="button"
-                            onClick={() => router.push(`/school/students/${doc.studentId}`)}
-                            className="text-xs font-medium text-gray-600 hover:text-gray-900"
-                          >
-                            Μαθητής
-                          </button>
-                        )}
-                        {href && (
-                          <a href={href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800">
-                            <ExternalLink className="h-3.5 w-3.5" /> Επαλήθευση
-                          </a>
-                        )}
-                        {showCredit && (
-                          <button
-                            type="button"
-                            onClick={() => onCreditDoc?.(doc)}
-                            disabled={refreshingId === doc.id}
-                            className="text-xs font-medium text-rose-700 hover:text-rose-900 disabled:opacity-50"
-                          >
-                            Πιστωτικό
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => onRefreshDoc(doc.id)}
-                          disabled={refreshingId === doc.id}
-                          className="text-xs font-medium text-gray-600 hover:text-gray-900 disabled:opacity-50"
-                        >
-                          {refreshingId === doc.id ? '…' : 'Ανανέωση'}
-                        </button>
+                      )}
+                      <div className="divide-y divide-gray-100">
+                        {rows.map((doc: any, idx: number) => {
+                          const href = doc.verificationUrl || doc.qrUrl;
+                          const kind = fiscalKindLabel(doc.documentKind);
+                          const showCredit = Boolean(onCreditDoc) && canIssueCredit(doc, docs);
+                          const isCredit = idx > 0 || doc.documentKind === 'retail_credit_note' || doc.documentKind === 'service_credit_note';
+                          return (
+                            <div
+                              key={doc.id}
+                              className={`flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 px-4 py-3 ${
+                                isCredit ? 'bg-rose-50/70' : 'bg-white'
+                              }`}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {isCredit && (
+                                    <span className="text-[10px] font-semibold uppercase tracking-wide text-rose-700">
+                                      ακυρώνει
+                                    </span>
+                                  )}
+                                  <span className="text-sm font-semibold text-gray-900">{kind} {doc.series}-{doc.number}</span>
+                                  <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
+                                    doc.status === 'failed' ? 'bg-red-100 text-red-700'
+                                      : doc.status === 'issued' ? 'bg-emerald-100 text-emerald-700'
+                                        : 'bg-amber-100 text-amber-800'
+                                  }`}>
+                                    {doc.status === 'failed' ? 'Αποτυχία' : doc.status === 'issued' ? 'Εκδόθηκε' : 'Σε εξέλιξη'}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-gray-500 mt-0.5 truncate">
+                                  {groupBy !== 'student' && (doc.student?.fullName || doc.cpName || '—') + ' · '}
+                                  {doc.description} · {fmt(Number(doc.grossValue))}
+                                  {doc.issueDate && ` · ${new Date(doc.issueDate).toLocaleDateString('el-GR')}`}
+                                  {doc.mark ? ` · MARK ${doc.mark}` : ''}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                                {doc.studentId && (
+                                  <button
+                                    type="button"
+                                    onClick={() => router.push(`/school/students/${doc.studentId}`)}
+                                    className="text-xs font-medium text-gray-600 hover:text-gray-900"
+                                  >
+                                    Μαθητής
+                                  </button>
+                                )}
+                                {href && (
+                                  <a href={href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800">
+                                    <ExternalLink className="h-3.5 w-3.5" /> Επαλήθευση
+                                  </a>
+                                )}
+                                {showCredit && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onCreditDoc?.(doc)}
+                                    disabled={refreshingId === doc.id}
+                                    className="text-xs font-medium text-rose-700 hover:text-rose-900 disabled:opacity-50"
+                                  >
+                                    Πιστωτικό
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => onRefreshDoc(doc.id)}
+                                  disabled={refreshingId === doc.id}
+                                  className="text-xs font-medium text-gray-600 hover:text-gray-900 disabled:opacity-50"
+                                >
+                                  {refreshingId === doc.id ? '…' : 'Ανανέωση'}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   );

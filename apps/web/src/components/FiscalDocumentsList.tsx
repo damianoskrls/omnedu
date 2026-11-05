@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ExternalLink, FileMinus2, RefreshCw, Send } from 'lucide-react';
 import { fiscalApi } from '@/lib/api';
+import { pairFiscalDocuments } from '@/lib/fiscal-document-pairs';
 
 type Props = {
   schoolId: string;
@@ -20,13 +21,17 @@ function kindLabel(kind: string) {
   return kind;
 }
 
+function isCreditKind(kind: string) {
+  return kind === 'retail_credit_note' || kind === 'service_credit_note';
+}
+
 function canIssueCredit(doc: any, all: any[]) {
   if (doc.status !== 'issued') return false;
   if (doc.documentKind !== 'retail_receipt' && doc.documentKind !== 'service_invoice') return false;
   const already = all.some(
     (d) =>
       d.relatedDocumentId === doc.id &&
-      (d.documentKind === 'retail_credit_note' || d.documentKind === 'service_credit_note') &&
+      isCreditKind(d.documentKind) &&
       d.status !== 'failed',
   );
   return !already;
@@ -54,6 +59,7 @@ export function FiscalDocumentsList({
 }: Props) {
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [creditingId, setCreditingId] = useState<string | null>(null);
+  const pairs = useMemo(() => pairFiscalDocuments(documents), [documents]);
 
   if (!documents.length) {
     return (
@@ -120,76 +126,110 @@ export function FiscalDocumentsList({
     }
   }
 
+  function renderRow(doc: any, opts?: { isCredit?: boolean }) {
+    const badge = statusBadge(doc.status, doc.mydataStatus);
+    const href = doc.verificationUrl || doc.qrUrl;
+    const creditRow = Boolean(opts?.isCredit) || isCreditKind(doc.documentKind);
+    return (
+      <div
+        key={doc.id}
+        className={`px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 ${
+          creditRow ? 'bg-rose-50/60' : 'bg-white'
+        }`}
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            {creditRow && (
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-rose-700">
+                ακυρώνει
+              </span>
+            )}
+            <span className="text-sm font-semibold text-gray-900">
+              {kindLabel(doc.documentKind)} {doc.series}-{doc.number}
+            </span>
+            <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${badge.className}`}>
+              {badge.text}
+            </span>
+          </div>
+          <p className="text-xs text-gray-500 mt-0.5 truncate">{doc.description}</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            €{Number(doc.grossValue).toFixed(2)}
+            {doc.mark ? ` · MARK ${doc.mark}` : ''}
+            {doc.fuseUid ? ` · UID ${String(doc.fuseUid).slice(0, 8)}…` : ''}
+          </p>
+          {doc.status === 'failed' && doc.errorMessage && (
+            <p className="text-xs text-red-600 mt-1">{doc.errorMessage}</p>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+          {href && (
+            <a
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Επαλήθευση
+            </a>
+          )}
+          {canIssueCredit(doc, documents) && (
+            <button
+              type="button"
+              onClick={() => void credit(doc)}
+              disabled={creditingId === doc.id}
+              className="inline-flex items-center gap-1 text-xs font-medium text-rose-700 hover:text-rose-900 disabled:opacity-50"
+            >
+              <FileMinus2 className={`h-3.5 w-3.5 ${creditingId === doc.id ? 'animate-pulse' : ''}`} />
+              {creditingId === doc.id ? 'Έκδοση…' : 'Πιστωτικό'}
+            </button>
+          )}
+          {doc.studentId && doc.status !== 'failed' && (
+            <button
+              type="button"
+              onClick={() => void resend(doc.id)}
+              disabled={resendingId === doc.id}
+              className="inline-flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-gray-900 disabled:opacity-50"
+            >
+              <Send className={`h-3.5 w-3.5 ${resendingId === doc.id ? 'animate-pulse' : ''}`} />
+              Επαναποστολή
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => void refresh(doc.id)}
+            disabled={refreshingId === doc.id}
+            className="inline-flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-gray-900 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshingId === doc.id ? 'animate-spin' : ''}`} />
+            Ανανέωση
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="divide-y divide-gray-100 rounded-xl border border-gray-100 bg-white overflow-hidden">
-      {documents.map((doc) => {
-        const badge = statusBadge(doc.status, doc.mydataStatus);
-        const href = doc.verificationUrl || doc.qrUrl;
+    <div className="space-y-3">
+      {pairs.map((pair) => {
+        const framed = pair.credits.length > 0;
         return (
-          <div key={doc.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-semibold text-gray-900">
-                  {kindLabel(doc.documentKind)} {doc.series}-{doc.number}
-                </span>
-                <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${badge.className}`}>
-                  {badge.text}
-                </span>
+          <div
+            key={pair.key}
+            className={
+              framed
+                ? 'rounded-xl border-2 border-rose-200 bg-rose-50/30 overflow-hidden shadow-sm'
+                : 'rounded-xl border border-gray-100 bg-white overflow-hidden'
+            }
+          >
+            {framed && (
+              <div className="px-4 py-1.5 bg-rose-100/80 border-b border-rose-200 text-[11px] font-medium text-rose-800">
+                Παραστατικό + πιστωτικό ακύρωσης
               </div>
-              <p className="text-xs text-gray-500 mt-0.5 truncate">{doc.description}</p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                €{Number(doc.grossValue).toFixed(2)}
-                {doc.mark ? ` · MARK ${doc.mark}` : ''}
-                {doc.fuseUid ? ` · UID ${String(doc.fuseUid).slice(0, 8)}…` : ''}
-                {doc.relatedDocumentId ? ' · πιστωτικό' : ''}
-              </p>
-              {doc.status === 'failed' && doc.errorMessage && (
-                <p className="text-xs text-red-600 mt-1">{doc.errorMessage}</p>
-              )}
-            </div>
-            <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-              {href && (
-                <a
-                  href={href}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  Επαλήθευση
-                </a>
-              )}
-              {canIssueCredit(doc, documents) && (
-                <button
-                  type="button"
-                  onClick={() => void credit(doc)}
-                  disabled={creditingId === doc.id}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-rose-700 hover:text-rose-900 disabled:opacity-50"
-                >
-                  <FileMinus2 className={`h-3.5 w-3.5 ${creditingId === doc.id ? 'animate-pulse' : ''}`} />
-                  {creditingId === doc.id ? 'Έκδοση…' : 'Πιστωτικό'}
-                </button>
-              )}
-              {doc.studentId && doc.status !== 'failed' && (
-                <button
-                  type="button"
-                  onClick={() => void resend(doc.id)}
-                  disabled={resendingId === doc.id}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-gray-900 disabled:opacity-50"
-                >
-                  <Send className={`h-3.5 w-3.5 ${resendingId === doc.id ? 'animate-pulse' : ''}`} />
-                  Επαναποστολή
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => void refresh(doc.id)}
-                disabled={refreshingId === doc.id}
-                className="inline-flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-gray-900 disabled:opacity-50"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${refreshingId === doc.id ? 'animate-spin' : ''}`} />
-                Ανανέωση
-              </button>
+            )}
+            <div className="divide-y divide-gray-100">
+              {renderRow(pair.primary)}
+              {pair.credits.map((credit) => renderRow(credit, { isCredit: true }))}
             </div>
           </div>
         );
