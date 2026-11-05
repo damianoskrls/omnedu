@@ -3,3 +3,4 @@
 // Xcode Cloud → Module 'file_picker' not found in GeneratedPluginRegistrant.m.
 #include? "../Pods/Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"
 #include "Generated.xcconfig"
+#include? "Version.xcconfig"
