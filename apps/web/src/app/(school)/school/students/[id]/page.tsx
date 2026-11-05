@@ -140,6 +140,7 @@ export default function StudentProfilePage() {
   const [fiscalDocuments, setFiscalDocuments] = useState<any[]>([]);
   const [refreshingFiscalId, setRefreshingFiscalId] = useState<string | null>(null);
   const [resendingFiscalId, setResendingFiscalId] = useState<string | null>(null);
+  const [creditingFiscalId, setCreditingFiscalId] = useState<string | null>(null);
   const [oneTimeCharges, setOneTimeCharges] = useState<any[]>([]);
   const [chargesLoading, setChargesLoading] = useState(false);
   const [subsidies, setSubsidies] = useState<any[]>([]);
@@ -2233,6 +2234,29 @@ export default function StudentProfilePage() {
                   }
                 }}
                 resendingFiscalId={resendingFiscalId}
+                onCreditFiscal={async (doc) => {
+                  const kind =
+                    doc.documentKind === 'service_invoice'
+                      ? 'πιστωτικό τιμολόγιο (5.1)'
+                      : 'πιστωτικό απόδειξης (11.4)';
+                  const ok = window.confirm(
+                    `Έκδοση ${kind} για ${doc.series}-${doc.number} (€${Number(doc.grossValue).toFixed(2)}) μέσω Elorus Fuse;\n\nΘα δημιουργηθεί νέο παραστατικό με τα ίδια ποσά.`,
+                  );
+                  if (!ok) return;
+                  setCreditingFiscalId(doc.id);
+                  try {
+                    const result: any = await fiscalApi.credit(schoolId, doc.id);
+                    if (result?.status === 'failed') {
+                      window.alert(result.errorMessage || 'Η έκδοση πιστωτικού απέτυχε');
+                    }
+                    await loadBillingData();
+                  } catch (err: any) {
+                    window.alert(err?.response?.data?.message || err?.message || 'Αποτυχία έκδοσης πιστωτικού');
+                  } finally {
+                    setCreditingFiscalId(null);
+                  }
+                }}
+                creditingFiscalId={creditingFiscalId}
                 onPayExtra={(extra) => {
                   if (extra.kind === 'event') {
                     const enrollment = (student.eventEnrollments ?? []).find((row: any) => row.id === extra.id);

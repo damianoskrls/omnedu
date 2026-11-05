@@ -1,8 +1,9 @@
 'use client';
 
-import { useRef, useState, type ComponentProps } from 'react';
-import { ExternalLink, FileText, RefreshCw } from 'lucide-react';
+import { useMemo, useRef, useState, type ComponentProps } from 'react';
+import { ExternalLink, FileMinus2, FileText, RefreshCw } from 'lucide-react';
 import { PaymentDetailsLink } from '@/components/PaymentDetailsLink';
+import { pairFiscalDocuments } from '@/lib/fiscal-document-pairs';
 
 const MONTHS = ['', 'Ιανουάριος', 'Φεβρουάριος', 'Μάρτιος', 'Απρίλιος', 'Μάιος', 'Ιούνιος', 'Ιούλιος', 'Αύγουστος', 'Σεπτέμβριος', 'Οκτώβριος', 'Νοέμβριος', 'Δεκέμβριος'];
 const MONTHS_GEN = ['', 'Ιανουαρίου', 'Φεβρουαρίου', 'Μαρτίου', 'Απριλίου', 'Μαΐου', 'Ιουνίου', 'Ιουλίου', 'Αυγούστου', 'Σεπτεμβρίου', 'Οκτωβρίου', 'Νοεμβρίου', 'Δεκεμβρίου'];
@@ -186,50 +187,121 @@ function MonthActionButtons({
   );
 }
 
+function fiscalShortLabel(doc: any) {
+  const kind = String(doc.documentKind || '');
+  if (kind === 'service_invoice') return 'ΤΙΜ';
+  if (kind === 'service_credit_note') return 'ΠΤ';
+  if (kind === 'retail_credit_note') return 'ΠΙΣ';
+  return 'ΑΠ';
+}
+
+function isCreditKind(kind: string) {
+  return kind === 'retail_credit_note' || kind === 'service_credit_note';
+}
+
+function canIssueCredit(doc: any, all: any[]) {
+  if (doc.status !== 'issued') return false;
+  if (doc.documentKind !== 'retail_receipt' && doc.documentKind !== 'service_invoice') return false;
+  return !all.some(
+    (d) =>
+      d.relatedDocumentId === doc.id &&
+      isCreditKind(String(d.documentKind || '')) &&
+      d.status !== 'failed',
+  );
+}
+
 function MonthFiscalLinks({
   docs,
   onResend,
   resendingId,
+  onCredit,
+  creditingId,
 }: {
   docs: any[];
   onResend?: (id: string) => void | Promise<void>;
   resendingId?: string | null;
+  onCredit?: (doc: any) => void | Promise<void>;
+  creditingId?: string | null;
 }) {
+  const pairs = useMemo(() => pairFiscalDocuments(docs), [docs]);
   if (!docs.length) return null;
+
+  function renderDoc(doc: any, opts?: { isCredit?: boolean }) {
+    const href = doc.verificationUrl || doc.qrUrl;
+    const label = `${fiscalShortLabel(doc)}-${doc.number}`;
+    const pending = doc.status === 'pending' || !href;
+    const creditRow = Boolean(opts?.isCredit) || isCreditKind(String(doc.documentKind || ''));
+    const showCredit = Boolean(onCredit) && canIssueCredit(doc, docs);
+    return (
+      <div key={doc.id} className="flex flex-wrap items-center gap-2">
+        <span
+          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${
+            creditRow
+              ? 'bg-rose-50 text-rose-800 ring-rose-100'
+              : 'bg-emerald-50 text-emerald-800 ring-emerald-100'
+          }`}
+        >
+          <FileText className="h-3 w-3" />
+          {creditRow ? 'ακυρώνει · ' : ''}
+          {label} · €{Number(doc.grossValue).toFixed(2)}
+          {pending ? ' · σε εξέλιξη' : ''}
+        </span>
+        {href && (
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-0.5 text-[11px] font-medium text-[#77328D] hover:underline"
+          >
+            <ExternalLink className="h-3 w-3" /> Προβολή
+          </a>
+        )}
+        {showCredit && (
+          <button
+            type="button"
+            disabled={creditingId === doc.id}
+            onClick={() => void onCredit?.(doc)}
+            className="inline-flex items-center gap-0.5 text-[11px] font-medium text-rose-700 hover:text-rose-900 disabled:opacity-50"
+          >
+            <FileMinus2 className={`h-3 w-3 ${creditingId === doc.id ? 'animate-pulse' : ''}`} />
+            {creditingId === doc.id ? 'Έκδοση…' : 'Πιστωτικό'}
+          </button>
+        )}
+        {onResend && doc.status !== 'failed' && (
+          <button
+            type="button"
+            disabled={resendingId === doc.id}
+            onClick={() => void onResend(doc.id)}
+            className="inline-flex items-center gap-0.5 text-[11px] font-medium text-gray-500 hover:text-gray-800 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3 w-3 ${resendingId === doc.id ? 'animate-spin' : ''}`} />
+            Επαναποστολή
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-1.5">
-      {docs.map((doc) => {
-        const href = doc.verificationUrl || doc.qrUrl;
-        const label = `${doc.documentKind === 'service_invoice' ? 'ΤΙΜ' : 'ΑΠ'}-${doc.number}`;
-        const pending = doc.status === 'pending' || !href;
+    <div className="space-y-2">
+      {pairs.map((pair) => {
+        const framed = pair.credits.length > 0;
         return (
-          <div key={doc.id} className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 ring-1 ring-emerald-100">
-              <FileText className="h-3 w-3" />
-              {label} · €{Number(doc.grossValue).toFixed(2)}
-              {pending ? ' · σε εξέλιξη' : ''}
-            </span>
-            {href && (
-              <a
-                href={href}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-0.5 text-[11px] font-medium text-[#77328D] hover:underline"
-              >
-                <ExternalLink className="h-3 w-3" /> Προβολή
-              </a>
+          <div
+            key={pair.key}
+            className={
+              framed
+                ? 'space-y-1.5 rounded-xl border border-rose-200 bg-rose-50/40 px-2.5 py-2'
+                : 'space-y-1.5'
+            }
+          >
+            {framed && (
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-rose-700">
+                Παραστατικό + πιστωτικό ακύρωσης
+              </p>
             )}
-            {onResend && doc.status !== 'failed' && (
-              <button
-                type="button"
-                disabled={resendingId === doc.id}
-                onClick={() => void onResend(doc.id)}
-                className="inline-flex items-center gap-0.5 text-[11px] font-medium text-gray-500 hover:text-gray-800 disabled:opacity-50"
-              >
-                <RefreshCw className={`h-3 w-3 ${resendingId === doc.id ? 'animate-spin' : ''}`} />
-                Επαναποστολή
-              </button>
-            )}
+            {renderDoc(pair.primary)}
+            {pair.credits.map((credit) => renderDoc(credit, { isCredit: true }))}
           </div>
         );
       })}
@@ -348,6 +420,8 @@ function MonthCard({
   onUndoExtra,
   onResendFiscal,
   resendingFiscalId,
+  onCreditFiscal,
+  creditingFiscalId,
 }: {
   month: any;
   eyebrow?: string;
@@ -367,6 +441,8 @@ function MonthCard({
   onUndoExtra?: (extra: any) => void;
   onResendFiscal?: (id: string) => void | Promise<void>;
   resendingFiscalId?: string | null;
+  onCreditFiscal?: (doc: any) => void | Promise<void>;
+  creditingFiscalId?: string | null;
 }) {
   const badge = statusLabel(month.status, Number(month.totalDue));
   const quiet = month.status === 'upcoming';
@@ -431,6 +507,8 @@ function MonthCard({
             docs={fiscalDocs}
             onResend={isAdmin ? onResendFiscal : undefined}
             resendingId={resendingFiscalId}
+            onCredit={isAdmin ? onCreditFiscal : undefined}
+            creditingId={creditingFiscalId}
           />
         </div>
       )}
@@ -455,6 +533,8 @@ export function StudentStatement({
   onIssueFiscalMonth,
   onResendFiscal,
   resendingFiscalId,
+  onCreditFiscal,
+  creditingFiscalId,
 }: {
   statement: any;
   isAdmin: boolean;
@@ -472,6 +552,8 @@ export function StudentStatement({
   onIssueFiscalMonth?: (target: FiscalMonthTarget) => void;
   onResendFiscal?: (id: string) => void | Promise<void>;
   resendingFiscalId?: string | null;
+  onCreditFiscal?: (doc: any) => void | Promise<void>;
+  creditingFiscalId?: string | null;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [pendingUpload, setPendingUpload] = useState<{ month: number; year: number } | null>(null);
@@ -498,9 +580,18 @@ export function StudentStatement({
 
   function fiscalsForCharge(chargeId?: string | null) {
     if (!chargeId) return [];
-    return (fiscalDocuments || []).filter(
-      (d) => d.monthlyChargeId === chargeId && d.status !== 'failed',
+    const all = (fiscalDocuments || []).filter((d) => d.status !== 'failed');
+    const direct = all.filter((d) => d.monthlyChargeId === chargeId);
+    const ids = new Set(direct.map((d) => d.id));
+    // Pull in related πιστωτικά even if monthlyChargeId was missing on older rows.
+    const relatedCredits = all.filter(
+      (d) =>
+        isCreditKind(String(d.documentKind || '')) &&
+        d.relatedDocumentId &&
+        ids.has(d.relatedDocumentId) &&
+        !ids.has(d.id),
     );
+    return [...direct, ...relatedCredits];
   }
 
   function triggerUpload(month: number, year: number) {
@@ -581,6 +672,8 @@ export function StudentStatement({
           onUndoExtra={onUndoExtra}
           onResendFiscal={onResendFiscal}
           resendingFiscalId={resendingFiscalId}
+          onCreditFiscal={onCreditFiscal}
+          creditingFiscalId={creditingFiscalId}
         />
       )}
 
@@ -660,6 +753,8 @@ export function StudentStatement({
                 onUndoExtra={onUndoExtra}
                 onResendFiscal={onResendFiscal}
                 resendingFiscalId={resendingFiscalId}
+                onCreditFiscal={onCreditFiscal}
+                creditingFiscalId={creditingFiscalId}
               />
             );
           })}
